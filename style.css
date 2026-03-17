@@ -307,6 +307,10 @@ header h2 {
     margin-bottom: 24px;
 }
 
+.low-energy-day-panel {
+    margin-bottom: 24px;
+}
+
 .sos-view-card {
     background: linear-gradient(135deg, #fff8f3 0%, #f9f3ed 100%);
     border: 1px solid #f0dfd4;
@@ -314,6 +318,70 @@ header h2 {
     padding: 28px 24px;
     text-align: center;
     box-shadow: 0 6px 18px rgba(136, 108, 97, 0.08);
+}
+
+.low-energy-day-card {
+    background: linear-gradient(135deg, #f9f8ff 0%, #f4f7fb 100%);
+    border: 1px solid #e4e7f0;
+    border-radius: 18px;
+    padding: 24px;
+    box-shadow: 0 6px 18px rgba(92, 105, 132, 0.08);
+}
+
+.low-energy-day-caption {
+    color: #7f88a1;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 10px;
+}
+
+.low-energy-day-title {
+    font-size: 26px;
+    line-height: 1.3;
+    font-weight: 500;
+    color: #4d5a73;
+    margin-bottom: 8px;
+}
+
+.low-energy-day-text {
+    color: #6f788f;
+    font-size: 15px;
+    margin-bottom: 18px;
+}
+
+.low-energy-focus-card {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 16px;
+    background: rgba(255, 255, 255, 0.88);
+    border: 1px solid #e7ebf3;
+    border-radius: 16px;
+    padding: 16px;
+}
+
+.low-energy-focus-card + .low-energy-focus-card {
+    margin-top: 12px;
+}
+
+.low-energy-focus-label {
+    color: #8b93aa;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 6px;
+}
+
+.low-energy-focus-text {
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 500;
+}
+
+.low-energy-inline-btn {
+    padding: 10px 18px;
+    white-space: nowrap;
 }
 
 .sos-view-caption {
@@ -704,6 +772,10 @@ header h2 {
     max-width: 720px;
 }
 
+.sos-day-modal-card {
+    max-width: 560px;
+}
+
 .voice-helper-message {
     margin-bottom: 16px;
 }
@@ -1069,6 +1141,15 @@ header h2 {
     .voice-modal-actions {
         flex-direction: column-reverse;
     }
+
+    .low-energy-focus-card {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .low-energy-inline-btn {
+        width: 100%;
+    }
 }
 
 .text-btn {
@@ -1097,14 +1178,51 @@ header h2 {
 .template-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    gap: 12px;
     margin-bottom: 12px;
+}
+
+.template-title-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
 .template-header h4 {
     font-size: 15px;
     color: var(--primary-color);
     font-weight: 600;
+}
+
+.template-meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.template-status-pill {
+    display: inline-flex;
+    align-items: center;
+    padding: 4px 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.75);
+    border: 1px solid #d9e8df;
+    color: #6f8c7d;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.template-status-pill.is-active {
+    background: #fff;
+    border-color: #bad3c5;
+    color: var(--primary-color);
+}
+
+.template-toggle-btn {
+    font-size: 12px;
+    padding: 0;
 }
 
 .add-template-all-btn {
@@ -1173,6 +1291,16 @@ header h2 {
 .add-template-task-btn:hover {
     background: var(--primary-color);
     color: white;
+}
+
+.template-auto-modal-card {
+    max-width: 520px;
+}
+
+.template-auto-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 /* Модальное окно "Совет от помощника" */

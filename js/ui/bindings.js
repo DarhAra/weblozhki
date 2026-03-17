@@ -4,6 +4,7 @@ import { createCurrentDayMeta } from '../domain/history.js';
 import { parseVoiceTranscript } from '../domain/voice-parser.js';
 import {
     addTask,
+    applyLowEnergyDay,
     archiveRemainingOverdue,
     archiveOpenRegularTodayTasks,
     clearDeferredTasks,
@@ -20,10 +21,17 @@ import {
     postponeTask,
     reorderTodayTasks,
     reorderWeeklyTasks,
+    swapLowEnergyKeptTask,
     toggleTask,
 } from '../domain/tasks.js';
-import { addResource, addResourceToDay, deleteResource } from '../domain/resources.js';
-import { addAllTemplateTasksToDay, addTemplateTaskToDay, changeTemplateTaskWeight } from '../domain/templates.js';
+import { addResource, addResourceToDay, assignLowEnergyResource, deleteResource } from '../domain/resources.js';
+import {
+    addAllTemplateTasksToDay,
+    addTemplateTaskToDay,
+    applyDailyTemplatesForDate,
+    changeTemplateTaskWeight,
+    setTemplateDailyPreference,
+} from '../domain/templates.js';
 import { createVoiceInputService } from '../services/voice-input.js';
 import { spawnHearts } from './renderers.js';
 
@@ -52,6 +60,8 @@ function bindSubmitOnEnter(input, form) {
 export function bindAppEvents(app) {
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
+    const templateAutoPrompt = runtime.templateAutoPrompt;
+    const LOW_ENERGY_TEMPLATE_ID = 'tpl_4';
 
     function closeVoiceModal({ resetDraft = true } = {}) {
         elements.voiceModal.classList.add('hidden');
@@ -83,6 +93,68 @@ export function bindAppEvents(app) {
         app.renderers.renderMainScreen();
         app.renderers.renderVoiceModal();
         elements.voiceModal.classList.remove('hidden');
+    }
+
+    function closeTemplateAutoModal() {
+        templateAutoPrompt.templateId = null;
+        elements.templateAutoModal.classList.add('hidden');
+    }
+
+    function openTemplateAutoModal(templateId) {
+        const template = store.getState().templates.find(item => item.id === templateId);
+        if (!template) return;
+
+        templateAutoPrompt.templateId = templateId;
+        elements.templateAutoTemplateName.textContent = template.name;
+        elements.templateAutoModal.classList.remove('hidden');
+    }
+
+    function shouldOfferLowEnergyDay(energyBudget, state = store.getState()) {
+        return energyBudget >= 10
+            && energyBudget <= 15
+            && state.currentDayMeta?.date === getLocalDateString()
+            && !state.currentDayMeta.lowEnergyPromptHandled;
+    }
+
+    function closeLowEnergyModal() {
+        elements.lowEnergyModal.classList.add('hidden');
+    }
+
+    function openLowEnergyModal() {
+        const state = store.getState();
+        elements.lowEnergyAvatar.src = state.avatar;
+        elements.lowEnergyModal.classList.remove('hidden');
+    }
+
+    function finalizeLowEnergyDecline() {
+        store.updateState(state => {
+            state.currentDayMeta = {
+                ...state.currentDayMeta,
+                date: getLocalDateString(),
+                lowEnergyPromptHandled: true,
+                lowEnergyDayApplied: false,
+                lowEnergyKeptTaskId: null,
+                lowEnergyResourceId: null,
+                lowEnergyResourceTaskId: null,
+            };
+        });
+        closeLowEnergyModal();
+        app.screens.showMainScreen();
+    }
+
+    function finalizeLowEnergyAcceptance() {
+        const today = getLocalDateString();
+        applyLowEnergyDay(store, today);
+        addAllTemplateTasksToDay(store, LOW_ENERGY_TEMPLATE_ID, today);
+        assignLowEnergyResource(store, { today });
+        closeLowEnergyModal();
+        app.screens.showMainScreen();
+        app.renderers.renderArchive();
+        app.renderers.renderWeeklyScreen();
+    }
+
+    function closeLowEnergySwapModal() {
+        elements.lowEnergySwapModal.classList.add('hidden');
     }
 
     const voiceService = createVoiceInputService({
@@ -139,6 +211,9 @@ export function bindAppEvents(app) {
         elements.archiveModal,
         elements.completedModal,
         elements.templatesModal,
+        elements.templateAutoModal,
+        elements.lowEnergyModal,
+        elements.lowEnergySwapModal,
         elements.helperModal,
         elements.voiceModal,
         elements.sosModal,
@@ -149,6 +224,18 @@ export function bindAppEvents(app) {
             if (modal === elements.voiceModal) {
                 closeVoiceModal();
                 app.renderers.renderMainScreen();
+                return;
+            }
+            if (modal === elements.templateAutoModal) {
+                closeTemplateAutoModal();
+                return;
+            }
+            if (modal === elements.lowEnergyModal) {
+                finalizeLowEnergyDecline();
+                return;
+            }
+            if (modal === elements.lowEnergySwapModal) {
+                closeLowEnergySwapModal();
                 return;
             }
             modal.classList.add('hidden');
@@ -164,12 +251,20 @@ export function bindAppEvents(app) {
     });
 
     elements.startDayBtn.addEventListener('click', () => {
+        const energyBudget = parseInt(elements.energyInput.value, 10);
         store.updateState(state => {
-            state.energyBudget = parseInt(elements.energyInput.value, 10);
+            state.energyBudget = energyBudget;
             state.lastDate = getLocalDateString();
             state.currentDayMeta = createCurrentDayMeta(state.lastDate);
         });
+        applyDailyTemplatesForDate(store, getLocalDateString());
         runtime.sosView = null;
+        if (shouldOfferLowEnergyDay(energyBudget)) {
+            app.screens.showMainScreen();
+            openLowEnergyModal();
+            return;
+        }
+
         app.screens.showMainScreen();
     });
 
@@ -323,6 +418,7 @@ export function bindAppEvents(app) {
     elements.sosArchiveBtn.addEventListener('click', () => {
         store.updateState(state => {
             state.currentDayMeta = {
+                ...state.currentDayMeta,
                 date: getLocalDateString(),
                 usedSos: true,
                 sosDestination: 'deferred',
@@ -335,6 +431,7 @@ export function bindAppEvents(app) {
     elements.sosTomorrowBtn.addEventListener('click', () => {
         store.updateState(state => {
             state.currentDayMeta = {
+                ...state.currentDayMeta,
                 date: getLocalDateString(),
                 usedSos: true,
                 sosDestination: 'tomorrow',
@@ -460,6 +557,48 @@ export function bindAppEvents(app) {
 
     elements.closeTemplatesBtn.addEventListener('click', () => {
         elements.templatesModal.classList.add('hidden');
+    });
+
+    elements.closeTemplateAutoBtn.addEventListener('click', closeTemplateAutoModal);
+
+    elements.templateAutoYesBtn.addEventListener('click', () => {
+        if (!templateAutoPrompt.templateId) return;
+
+        setTemplateDailyPreference(store, {
+            templateId: templateAutoPrompt.templateId,
+            autoAddDaily: true,
+            hasAskedAutoAdd: true,
+            lastAutoAddedDate: getLocalDateString(),
+        });
+        closeTemplateAutoModal();
+        app.renderers.renderTemplates();
+        app.renderers.renderMainScreen();
+    });
+
+    elements.templateAutoNoBtn.addEventListener('click', () => {
+        if (!templateAutoPrompt.templateId) return;
+
+        setTemplateDailyPreference(store, {
+            templateId: templateAutoPrompt.templateId,
+            autoAddDaily: false,
+            hasAskedAutoAdd: true,
+            lastAutoAddedDate: null,
+        });
+        closeTemplateAutoModal();
+        app.renderers.renderTemplates();
+    });
+
+    elements.closeLowEnergyBtn.addEventListener('click', finalizeLowEnergyDecline);
+    elements.lowEnergyDeclineBtn.addEventListener('click', finalizeLowEnergyDecline);
+    elements.lowEnergyAcceptBtn.addEventListener('click', finalizeLowEnergyAcceptance);
+    elements.openLowEnergySwapBtn.addEventListener('click', () => {
+        app.renderers.renderLowEnergySwapModal();
+        elements.lowEnergySwapModal.classList.remove('hidden');
+    });
+    elements.closeLowEnergySwapBtn.addEventListener('click', closeLowEnergySwapModal);
+    elements.changeLowEnergyResourceBtn.addEventListener('click', () => {
+        assignLowEnergyResource(store, { today: getLocalDateString(), cycle: true });
+        app.renderers.renderMainScreen();
     });
 
     elements.finishReviewBtn.addEventListener('click', () => {
@@ -588,6 +727,22 @@ export function bindAppEvents(app) {
         app.renderers.renderWeeklyScreen();
     });
 
+    elements.lowEnergySwapList.addEventListener('click', event => {
+        const target = closestActionTarget(event.target);
+        if (!target || target.dataset.action !== 'choose-low-energy-task') return;
+
+        const taskId = target.dataset.taskId;
+        if (!taskId) return;
+
+        const swappedTask = swapLowEnergyKeptTask(store, { nextTaskId: taskId, today: getLocalDateString() });
+        if (!swappedTask) return;
+
+        closeLowEnergySwapModal();
+        app.renderers.renderMainScreen();
+        app.renderers.renderArchive();
+        app.renderers.renderWeeklyScreen();
+    });
+
     elements.completedList.addEventListener('click', event => {
         const target = closestActionTarget(event.target);
         if (!target) return;
@@ -663,6 +818,40 @@ export function bindAppEvents(app) {
             app.renderers.renderResources();
         }
     });
+
+    elements.templatesContainer.addEventListener('click', event => {
+        const target = closestActionTarget(event.target);
+        if (!target) return;
+
+        if (target.dataset.action === 'add-template-all') {
+            event.stopImmediatePropagation();
+
+            const { template } = addAllTemplateTasksToDay(store, target.dataset.templateId);
+            elements.templatesModal.classList.add('hidden');
+            app.renderers.renderMainScreen();
+            app.renderers.renderWeeklyScreen();
+
+            if (template && !template.hasAskedAutoAdd) {
+                openTemplateAutoModal(template.id);
+            }
+            return;
+        }
+
+        if (target.dataset.action === 'toggle-template-daily') {
+            event.stopImmediatePropagation();
+
+            const template = store.getState().templates.find(item => item.id === target.dataset.templateId);
+            if (!template) return;
+
+            setTemplateDailyPreference(store, {
+                templateId: template.id,
+                autoAddDaily: !template.autoAddDaily,
+                hasAskedAutoAdd: true,
+                lastAutoAddedDate: !template.autoAddDaily ? getLocalDateString() : null,
+            });
+            app.renderers.renderTemplates();
+        }
+    }, true);
 
     elements.templatesContainer.addEventListener('click', event => {
         const target = closestActionTarget(event.target);

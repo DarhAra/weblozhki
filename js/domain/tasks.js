@@ -62,6 +62,117 @@ export function getOpenRegularTodayTasks(state, today = getLocalDateString()) {
     );
 }
 
+function getLightTaskToKeep(state, today = getLocalDateString()) {
+    let selectedTask = null;
+
+    state.tasks.forEach(task => {
+        const isLightCandidate =
+            getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE
+            && task.targetDate === today
+            && !task.completed
+            && !task.isResource
+            && (task.weight || 0) <= 10;
+
+        if (!isLightCandidate) {
+            return;
+        }
+
+        if (!selectedTask || (task.weight || 0) < (selectedTask.weight || 0)) {
+            selectedTask = task;
+        }
+    });
+
+    return selectedTask;
+}
+
+export function getLowEnergySwapCandidates(state, today = getLocalDateString()) {
+    return state.tasks.filter(task =>
+        getTaskStorageStatus(task) === TASK_STORAGE.DEFERRED
+        && task.archivedFromDate === today
+        && !task.completed
+        && !task.isResource
+        && (task.weight || 0) <= 10
+    );
+}
+
+export function applyLowEnergyDay(store, today = getLocalDateString()) {
+    let keptTaskId = null;
+
+    store.updateState(state => {
+        const taskToKeep = getLightTaskToKeep(state, today);
+        keptTaskId = taskToKeep?.id || null;
+
+        state.tasks.forEach(task => {
+            const shouldMoveToDeferred =
+                getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE
+                && task.targetDate === today
+                && !task.completed
+                && !task.isResource
+                && task.id !== keptTaskId;
+
+            if (!shouldMoveToDeferred) {
+                return;
+            }
+
+            task.archivedFromDate = today;
+            task.targetDate = null;
+            setTaskStorageStatus(task, TASK_STORAGE.DEFERRED);
+        });
+
+        state.currentDayMeta = {
+            ...state.currentDayMeta,
+            date: today,
+            lowEnergyPromptHandled: true,
+            lowEnergyDayApplied: true,
+            lowEnergyKeptTaskId: keptTaskId,
+        };
+    });
+
+    return keptTaskId;
+}
+
+export function swapLowEnergyKeptTask(store, { nextTaskId, today = getLocalDateString() }) {
+    let swappedTask = null;
+
+    store.updateState(state => {
+        const currentKeptTaskId = state.currentDayMeta?.lowEnergyKeptTaskId || null;
+        const currentKeptTask = currentKeptTaskId
+            ? state.tasks.find(task => task.id === currentKeptTaskId)
+            : null;
+        const nextTask = state.tasks.find(task => task.id === nextTaskId);
+
+        const canSwapToNext =
+            nextTask
+            && getTaskStorageStatus(nextTask) === TASK_STORAGE.DEFERRED
+            && nextTask.archivedFromDate === today
+            && !nextTask.completed
+            && !nextTask.isResource
+            && (nextTask.weight || 0) <= 10;
+
+        if (!canSwapToNext) {
+            return;
+        }
+
+        if (currentKeptTask && getTaskStorageStatus(currentKeptTask) === TASK_STORAGE.ACTIVE && currentKeptTask.targetDate === today) {
+            currentKeptTask.archivedFromDate = today;
+            currentKeptTask.targetDate = null;
+            setTaskStorageStatus(currentKeptTask, TASK_STORAGE.DEFERRED);
+        }
+
+        nextTask.targetDate = today;
+        setTaskStorageStatus(nextTask, TASK_STORAGE.ACTIVE);
+        state.currentDayMeta = {
+            ...state.currentDayMeta,
+            date: today,
+            lowEnergyDayApplied: true,
+            lowEnergyKeptTaskId: nextTask.id,
+        };
+        swappedTask = nextTask;
+    });
+
+    return swappedTask;
+}
+
 export function getDeferredTasks(state) {
     return state.tasks.filter(task => getTaskStorageStatus(task) === TASK_STORAGE.DEFERRED && !task.completed);
 }

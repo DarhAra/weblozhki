@@ -172,6 +172,30 @@
                 </div>
             </div>
 
+            <div id="low-energy-day-panel" class="low-energy-day-panel hidden">
+                <div class="low-energy-day-card">
+                    <p class="low-energy-day-caption">Очень мало энергии — день уже облегчён</p>
+                    <h3 class="low-energy-day-title">Сегодня можно быть очень бережной к себе.</h3>
+                    <p class="low-energy-day-text">Мы уже убрали лишнее, оставили только один маленький шаг и спокойную опору на сегодня.</p>
+
+                    <div id="low-energy-kept-card" class="low-energy-focus-card hidden">
+                        <div>
+                            <div class="low-energy-focus-label">Оставим только одно маленькое дело</div>
+                            <div id="low-energy-kept-text" class="low-energy-focus-text"></div>
+                        </div>
+                        <button id="open-low-energy-swap-btn" class="secondary-btn low-energy-inline-btn" type="button">Поменять</button>
+                    </div>
+
+                    <div id="low-energy-resource-card" class="low-energy-focus-card hidden">
+                        <div>
+                            <div class="low-energy-focus-label">Сегодня можно опереться на это</div>
+                            <div id="low-energy-resource-text" class="low-energy-focus-text"></div>
+                        </div>
+                        <button id="change-low-energy-resource-btn" class="secondary-btn low-energy-inline-btn" type="button">Другое</button>
+                    </div>
+                </div>
+            </div>
+
             <div id="main-content-grid" class="main-content-grid">
                 <!-- Слот "Для себя" -->
                 <div id="self-care-slot" class="self-care-slot">
@@ -318,6 +342,54 @@
         </div>
 
         <!-- Модальное окно "Совет от помощника" -->
+        <div id="template-auto-modal" class="modal hidden">
+            <div class="modal-content template-auto-modal-card">
+                <div class="modal-header">
+                    <h3>Добавлять каждый день?</h3>
+                    <button id="close-template-auto-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Шаблон <strong id="template-auto-template-name">Шаблон</strong> уже добавлен на сегодня. Хочешь, чтобы мы добавляли его автоматически каждое утро?</p>
+                    <div class="template-auto-actions">
+                        <button id="template-auto-yes-btn" class="primary-btn advice-btn" type="button">Да, каждый день</button>
+                        <button id="template-auto-no-btn" class="secondary-btn advice-btn" type="button">Нет, только сегодня</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="low-energy-modal" class="modal hidden">
+            <div class="modal-content sos-day-modal-card">
+                <div class="modal-header">
+                    <h3>Похоже, сегодня сил совсем немного</h3>
+                    <button id="close-low-energy-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="helper-message voice-helper-message">
+                        <img id="low-energy-avatar" class="helper-avatar" alt="Аватар помощника">
+                        <p id="low-energy-text" class="helper-text dialog-bubble">Похоже, сегодня батарейка почти на нуле. Хочешь, я помогу сделать день очень мягким?</p>
+                    </div>
+                    <div class="template-auto-actions">
+                        <button id="low-energy-accept-btn" class="primary-btn advice-btn" type="button">Да, помоги</button>
+                        <button id="low-energy-decline-btn" class="secondary-btn advice-btn" type="button">Я справлюсь</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="low-energy-swap-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Выбрать другое маленькое дело</h3>
+                    <button id="close-low-energy-swap-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Здесь только лёгкие задачи, которые можно оставить на сегодня вместо текущей.</p>
+                    <div id="low-energy-swap-list" class="task-list"></div>
+                </div>
+            </div>
+        </div>
+
         <div id="helper-modal" class="modal hidden">
             <div class="modal-content helper-advice-card">
                 <div class="modal-header" style="justify-content: flex-end; margin-bottom: 0;">
@@ -388,7 +460,7 @@
         </div>
     </div>
 
-    <script src="js/app.bundle.js?v=20260317-voice-input"></script>
+    <script src="js/app.bundle.js?v=20260317-low-energy-day"></script>
 </body>
 
 </html>

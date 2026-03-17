@@ -14,6 +14,9 @@
       archiveModal: doc.getElementById("archive-modal"),
       completedModal: doc.getElementById("completed-modal"),
       templatesModal: doc.getElementById("templates-modal"),
+      templateAutoModal: doc.getElementById("template-auto-modal"),
+      lowEnergyModal: doc.getElementById("low-energy-modal"),
+      lowEnergySwapModal: doc.getElementById("low-energy-swap-modal"),
       helperModal: doc.getElementById("helper-modal"),
       voiceModal: doc.getElementById("voice-modal"),
       sosModal: doc.getElementById("sos-modal"),
@@ -36,6 +39,13 @@
       sosView: doc.getElementById("sos-view"),
       sosViewCaption: doc.getElementById("sos-view-caption"),
       exitSosViewBtn: doc.getElementById("exit-sos-view-btn"),
+      lowEnergyDayPanel: doc.getElementById("low-energy-day-panel"),
+      lowEnergyKeptCard: doc.getElementById("low-energy-kept-card"),
+      lowEnergyKeptText: doc.getElementById("low-energy-kept-text"),
+      openLowEnergySwapBtn: doc.getElementById("open-low-energy-swap-btn"),
+      lowEnergyResourceCard: doc.getElementById("low-energy-resource-card"),
+      lowEnergyResourceText: doc.getElementById("low-energy-resource-text"),
+      changeLowEnergyResourceBtn: doc.getElementById("change-low-energy-resource-btn"),
       mainContentGrid: doc.getElementById("main-content-grid"),
       selfCareSlot: doc.getElementById("self-care-slot"),
       tasksSection: doc.getElementById("tasks-section"),
@@ -95,6 +105,17 @@
       openTemplatesBtn: doc.getElementById("open-templates-btn"),
       closeTemplatesBtn: doc.getElementById("close-templates-btn"),
       templatesContainer: doc.getElementById("templates-container"),
+      closeTemplateAutoBtn: doc.getElementById("close-template-auto-btn"),
+      templateAutoTemplateName: doc.getElementById("template-auto-template-name"),
+      templateAutoYesBtn: doc.getElementById("template-auto-yes-btn"),
+      templateAutoNoBtn: doc.getElementById("template-auto-no-btn"),
+      closeLowEnergyBtn: doc.getElementById("close-low-energy-btn"),
+      lowEnergyAvatar: doc.getElementById("low-energy-avatar"),
+      lowEnergyText: doc.getElementById("low-energy-text"),
+      lowEnergyAcceptBtn: doc.getElementById("low-energy-accept-btn"),
+      lowEnergyDeclineBtn: doc.getElementById("low-energy-decline-btn"),
+      closeLowEnergySwapBtn: doc.getElementById("close-low-energy-swap-btn"),
+      lowEnergySwapList: doc.getElementById("low-energy-swap-list"),
       onboardingStep1: doc.getElementById("onboarding-step-1"),
       onboardingStep2: doc.getElementById("onboarding-step-2"),
       onboardingStep3: doc.getElementById("onboarding-step-3"),
@@ -132,7 +153,23 @@
     return {
       date,
       usedSos: false,
-      sosDestination: null
+      sosDestination: null,
+      lowEnergyPromptHandled: false,
+      lowEnergyDayApplied: false,
+      lowEnergyKeptTaskId: null,
+      lowEnergyResourceId: null,
+      lowEnergyResourceTaskId: null
+    };
+  }
+  function normalizeCurrentDayMeta(currentDayMeta, date = getLocalDateString()) {
+    const base = createCurrentDayMeta(date);
+    if (!currentDayMeta || typeof currentDayMeta !== "object") {
+      return base;
+    }
+    return {
+      ...base,
+      ...currentDayMeta,
+      date
     };
   }
   function normalizeMoodHistory(moodHistory) {
@@ -152,7 +189,7 @@
     const regularTasks = dayTasks.filter((task) => !task.isResource);
     const resourceTasks = dayTasks.filter((task) => task.isResource);
     const completedRegularTasks = regularTasks.filter((task) => task.completed || task.completedAtDate === date);
-    const currentDayMeta = ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === date ? state.currentDayMeta : createCurrentDayMeta(date);
+    const currentDayMeta = ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === date ? normalizeCurrentDayMeta(state.currentDayMeta, date) : createCurrentDayMeta(date);
     const plannedWeight = regularTasks.reduce((sum, task) => sum + (task.weight || 0), 0);
     const completedWeight = completedRegularTasks.reduce((sum, task) => sum + (task.weight || 0), 0);
     return {
@@ -249,13 +286,83 @@
       (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource
     );
   }
+  function getLightTaskToKeep(state, today = getLocalDateString()) {
+    let selectedTask = null;
+    state.tasks.forEach((task) => {
+      const isLightCandidate = getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && (task.weight || 0) <= 10;
+      if (!isLightCandidate) {
+        return;
+      }
+      if (!selectedTask || (task.weight || 0) < (selectedTask.weight || 0)) {
+        selectedTask = task;
+      }
+    });
+    return selectedTask;
+  }
+  function getLowEnergySwapCandidates(state, today = getLocalDateString()) {
+    return state.tasks.filter(
+      (task) => getTaskStorageStatus(task) === TASK_STORAGE.DEFERRED && task.archivedFromDate === today && !task.completed && !task.isResource && (task.weight || 0) <= 10
+    );
+  }
+  function applyLowEnergyDay(store, today = getLocalDateString()) {
+    let keptTaskId = null;
+    store.updateState((state) => {
+      const taskToKeep = getLightTaskToKeep(state, today);
+      keptTaskId = (taskToKeep == null ? void 0 : taskToKeep.id) || null;
+      state.tasks.forEach((task) => {
+        const shouldMoveToDeferred = getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && task.id !== keptTaskId;
+        if (!shouldMoveToDeferred) {
+          return;
+        }
+        task.archivedFromDate = today;
+        task.targetDate = null;
+        setTaskStorageStatus(task, TASK_STORAGE.DEFERRED);
+      });
+      state.currentDayMeta = {
+        ...state.currentDayMeta,
+        date: today,
+        lowEnergyPromptHandled: true,
+        lowEnergyDayApplied: true,
+        lowEnergyKeptTaskId: keptTaskId
+      };
+    });
+    return keptTaskId;
+  }
+  function swapLowEnergyKeptTask(store, { nextTaskId, today = getLocalDateString() }) {
+    let swappedTask = null;
+    store.updateState((state) => {
+      var _a;
+      const currentKeptTaskId = ((_a = state.currentDayMeta) == null ? void 0 : _a.lowEnergyKeptTaskId) || null;
+      const currentKeptTask = currentKeptTaskId ? state.tasks.find((task) => task.id === currentKeptTaskId) : null;
+      const nextTask = state.tasks.find((task) => task.id === nextTaskId);
+      const canSwapToNext = nextTask && getTaskStorageStatus(nextTask) === TASK_STORAGE.DEFERRED && nextTask.archivedFromDate === today && !nextTask.completed && !nextTask.isResource && (nextTask.weight || 0) <= 10;
+      if (!canSwapToNext) {
+        return;
+      }
+      if (currentKeptTask && getTaskStorageStatus(currentKeptTask) === TASK_STORAGE.ACTIVE && currentKeptTask.targetDate === today) {
+        currentKeptTask.archivedFromDate = today;
+        currentKeptTask.targetDate = null;
+        setTaskStorageStatus(currentKeptTask, TASK_STORAGE.DEFERRED);
+      }
+      nextTask.targetDate = today;
+      setTaskStorageStatus(nextTask, TASK_STORAGE.ACTIVE);
+      state.currentDayMeta = {
+        ...state.currentDayMeta,
+        date: today,
+        lowEnergyDayApplied: true,
+        lowEnergyKeptTaskId: nextTask.id
+      };
+      swappedTask = nextTask;
+    });
+    return swappedTask;
+  }
   function getDeferredTasks(state) {
     return state.tasks.filter((task) => getTaskStorageStatus(task) === TASK_STORAGE.DEFERRED && !task.completed);
   }
   function getDoneTasks(state) {
     return state.tasks.filter((task) => getTaskStorageStatus(task) === TASK_STORAGE.DONE);
   }
-  function addTask(store, { text, weight, isResource, targetDate = null }) {
+  function addTask2(store, { text, weight, isResource, targetDate = null }) {
     const newTask = {
       id: `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
       text,
@@ -430,10 +537,59 @@
   var STORAGE_KEY = "resourceTodoState";
   function getDefaultTemplates() {
     return [
-      { id: "tpl_1", name: "Утро", tasks: [{ id: "tt_11", text: "Выпить воду", weight: 5 }, { id: "tt_12", text: "Принять лекарства", weight: 5 }, { id: "tt_13", text: "Почистить зубы", weight: 5 }, { id: "tt_14", text: "Завтрак-минимум", weight: 5 }] },
-      { id: "tpl_2", name: "Выход из дома", tasks: [{ id: "tt_21", text: "Ключи", weight: 5 }, { id: "tt_22", text: "Телефон", weight: 5 }, { id: "tt_23", text: "Наушники", weight: 5 }, { id: "tt_24", text: "Проверить плиту", weight: 5 }, { id: "tt_25", text: "Проверить розетки", weight: 5 }, { id: "tt_26", text: "Проверить входную дверь", weight: 5 }] },
-      { id: "tpl_3", name: "Вечер", tasks: [{ id: "tt_31", text: "Поставить устройства на зарядку", weight: 5 }, { id: "tt_32", text: "Проветрить", weight: 5 }, { id: "tt_33", text: "Вечерние таблетки", weight: 5 }] },
-      { id: "tpl_4", name: "Low Energy Day (SOS)", tasks: [{ id: "tt_41", text: "Делегировать/отложить дела", weight: 5 }, { id: "tt_42", text: "Пить воду", weight: 5 }, { id: "tt_43", text: "Лежать в тишине", weight: 5 }] }
+      {
+        id: "tpl_1",
+        name: "Утро",
+        autoAddDaily: false,
+        hasAskedAutoAdd: false,
+        lastAutoAddedDate: null,
+        tasks: [
+          { id: "tt_11", text: "Выпить воду", weight: 5 },
+          { id: "tt_12", text: "Принять лекарства", weight: 5 },
+          { id: "tt_13", text: "Почистить зубы", weight: 5 },
+          { id: "tt_14", text: "Завтрак-минимум", weight: 5 }
+        ]
+      },
+      {
+        id: "tpl_2",
+        name: "Выход из дома",
+        autoAddDaily: false,
+        hasAskedAutoAdd: false,
+        lastAutoAddedDate: null,
+        tasks: [
+          { id: "tt_21", text: "Ключи", weight: 5 },
+          { id: "tt_22", text: "Телефон", weight: 5 },
+          { id: "tt_23", text: "Наушники", weight: 5 },
+          { id: "tt_24", text: "Проверить плиту", weight: 5 },
+          { id: "tt_25", text: "Проверить розетки", weight: 5 },
+          { id: "tt_26", text: "Проверить входную дверь", weight: 5 }
+        ]
+      },
+      {
+        id: "tpl_3",
+        name: "Вечер",
+        autoAddDaily: false,
+        hasAskedAutoAdd: false,
+        lastAutoAddedDate: null,
+        tasks: [
+          { id: "tt_31", text: "Поставить устройства на зарядку", weight: 5 },
+          { id: "tt_32", text: "Проветрить", weight: 5 },
+          { id: "tt_33", text: "Вечерние таблетки", weight: 5 }
+        ]
+      },
+      {
+        id: "tpl_4",
+        name: "SOS-день",
+        autoAddDaily: false,
+        hasAskedAutoAdd: false,
+        lastAutoAddedDate: null,
+        tasks: [
+          { id: "tt_41", text: "Выпить воды", weight: 5 },
+          { id: "tt_42", text: "Поесть или взять перекус", weight: 5 },
+          { id: "tt_43", text: "Принять лекарства или проверить базовый уход", weight: 5 },
+          { id: "tt_44", text: "Полежать или посидеть в тишине 10 минут", weight: 5 }
+        ]
+      }
     ];
   }
   function getDefaultState() {
@@ -456,7 +612,22 @@
       templates: []
     };
   }
+  function ensureTemplateDefaults(template) {
+    if (typeof template.autoAddDaily !== "boolean") {
+      template.autoAddDaily = false;
+    }
+    if (typeof template.hasAskedAutoAdd !== "boolean") {
+      template.hasAskedAutoAdd = false;
+    }
+    if (typeof template.lastAutoAddedDate !== "string") {
+      template.lastAutoAddedDate = null;
+    }
+    if (!Array.isArray(template.tasks)) {
+      template.tasks = [];
+    }
+  }
   function ensureTemplateMigrations(state) {
+    state.templates.forEach(ensureTemplateDefaults);
     const exitHomeTemplate = state.templates.find((template) => template.id === "tpl_2");
     if (!(exitHomeTemplate == null ? void 0 : exitHomeTemplate.tasks)) {
       return;
@@ -467,6 +638,26 @@
     if (!exitHomeTemplate.tasks.find((task) => task.id === "tt_26")) {
       exitHomeTemplate.tasks.push({ id: "tt_26", text: "Проверить входную дверь", weight: 5 });
     }
+    const sosTemplate = state.templates.find((template) => template.id === "tpl_4");
+    if (!(sosTemplate == null ? void 0 : sosTemplate.tasks)) {
+      return;
+    }
+    const sosTaskMap = {
+      tt_41: "Выпить воды",
+      tt_42: "Поесть или взять перекус",
+      tt_43: "Принять лекарства или проверить базовый уход",
+      tt_44: "Полежать или посидеть в тишине 10 минут"
+    };
+    sosTemplate.name = "SOS-день";
+    Object.entries(sosTaskMap).forEach(([taskId, text]) => {
+      const existingTask = sosTemplate.tasks.find((task) => task.id === taskId);
+      if (existingTask) {
+        existingTask.text = text;
+        existingTask.weight = 5;
+      } else {
+        sosTemplate.tasks.push({ id: taskId, text, weight: 5 });
+      }
+    });
   }
   function createStore() {
     let state = getDefaultState();
@@ -490,9 +681,11 @@
     function loadState() {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (!saved) {
+        state.templates = getDefaultTemplates();
         return state;
       }
       try {
+        const today = getLocalDateString();
         state = { ...state, ...JSON.parse(saved) };
         if (!Array.isArray(state.tasks)) state.tasks = [];
         if (!Array.isArray(state.resources)) state.resources = [];
@@ -507,6 +700,8 @@
         }
         if (!state.currentDayMeta || typeof state.currentDayMeta !== "object") {
           state.currentDayMeta = createCurrentDayMeta(state.lastDate);
+        } else {
+          state.currentDayMeta = normalizeCurrentDayMeta(state.currentDayMeta, state.currentDayMeta.date || state.lastDate || today);
         }
         if (state.lastDate && state.currentDayMeta.date !== state.lastDate) {
           state.currentDayMeta = createCurrentDayMeta(state.lastDate);
@@ -532,13 +727,14 @@
         if (state.avatar && !state.avatar.includes(".png")) {
           state.avatar = "assets/girl.png";
         }
-        const today = getLocalDateString();
         const hasOverdue = state.tasks.some((task) => task.targetDate && task.targetDate < today);
         if (!state.pendingReviewDate && state.lastDate !== today && hasOverdue) {
           state.pendingReviewDate = today;
         }
       } catch (error) {
         console.error("Failed to load state", error);
+        state = getDefaultState();
+        state.templates = getDefaultTemplates();
       }
       return state;
     }
@@ -700,6 +896,29 @@
         elements.reviewTasksList.appendChild(taskEl);
       });
     }
+    function renderLowEnergyPanel(state, todayTasks, isSosView) {
+      var _a, _b;
+      const isLowEnergyDay = ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === getLocalDateString() && ((_b = state.currentDayMeta) == null ? void 0 : _b.lowEnergyDayApplied);
+      elements.lowEnergyDayPanel.classList.toggle("hidden", !isLowEnergyDay || isSosView);
+      if (!isLowEnergyDay || isSosView) {
+        elements.lowEnergyKeptCard.classList.add("hidden");
+        elements.lowEnergyResourceCard.classList.add("hidden");
+        return;
+      }
+      const keptTask = state.currentDayMeta.lowEnergyKeptTaskId ? todayTasks.find((task) => task.id === state.currentDayMeta.lowEnergyKeptTaskId) || null : null;
+      const resourceTask = state.currentDayMeta.lowEnergyResourceTaskId ? todayTasks.find((task) => task.id === state.currentDayMeta.lowEnergyResourceTaskId) || null : null;
+      const swapCandidates = getLowEnergySwapCandidates(state);
+      elements.lowEnergyKeptCard.classList.toggle("hidden", !keptTask);
+      elements.lowEnergyResourceCard.classList.toggle("hidden", !resourceTask);
+      elements.openLowEnergySwapBtn.disabled = swapCandidates.length === 0;
+      elements.changeLowEnergyResourceBtn.disabled = !resourceTask;
+      if (keptTask) {
+        elements.lowEnergyKeptText.textContent = keptTask.text;
+      }
+      if (resourceTask) {
+        elements.lowEnergyResourceText.textContent = resourceTask.text;
+      }
+    }
     function renderMainScreen() {
       var _a;
       const state = store.getState();
@@ -723,6 +942,7 @@
       if (!isSosView && elements.selfCareList.children.length === 0) {
         elements.selfCareList.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px; text-align: center; padding: 8px;">Добавьте ресурс из «Моих радостей» ☕</div>';
       }
+      renderLowEnergyPanel(state, todayTasks, isSosView);
       elements.balanceSection.classList.toggle("hidden", isSosView);
       elements.addTaskForm.classList.toggle("hidden", isSosView);
       elements.openTemplatesBtn.classList.toggle("hidden", isSosView);
@@ -876,11 +1096,19 @@
       const { templates } = store.getState();
       elements.templatesContainer.innerHTML = "";
       templates.forEach((template) => {
+        const dailyStatus = template.autoAddDaily ? "Каждый день" : "Только вручную";
+        const toggleLabel = template.autoAddDaily ? "Выключить ежедневность" : "Включить каждый день";
         const block = document.createElement("div");
         block.className = "template-block";
         block.innerHTML = `
                 <div class="template-header">
-                    <h4>${escapeHtml(template.name)}</h4>
+                    <div class="template-title-group">
+                        <h4>${escapeHtml(template.name)}</h4>
+                        <div class="template-meta-row">
+                            <span class="template-status-pill ${template.autoAddDaily ? "is-active" : ""}">${dailyStatus}</span>
+                            <button class="text-btn template-toggle-btn" type="button" data-action="toggle-template-daily" data-template-id="${template.id}">${toggleLabel}</button>
+                        </div>
+                    </div>
                     <button class="add-template-all-btn" data-action="add-template-all" data-template-id="${template.id}">+ Всё</button>
                 </div>
                 <div class="template-task-list"></div>
@@ -899,6 +1127,24 @@
           taskList.appendChild(item);
         });
         elements.templatesContainer.appendChild(block);
+      });
+    }
+    function renderLowEnergySwapModal() {
+      const candidates = getLowEnergySwapCandidates(store.getState());
+      elements.lowEnergySwapList.innerHTML = "";
+      if (candidates.length === 0) {
+        elements.lowEnergySwapList.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px; text-align: center; padding: 16px;">Пока нет других лёгких задач, которые можно вернуть на сегодня.</div>';
+        return;
+      }
+      candidates.forEach((task) => {
+        const item = document.createElement("div");
+        item.className = "task-item";
+        item.innerHTML = `
+                <div class="task-desc">${escapeHtml(task.text)}</div>
+                <div class="task-weight">Вес: ${task.weight}</div>
+                <button class="postpone-btn" title="Оставить на сегодня" data-action="choose-low-energy-task" data-task-id="${task.id}">☀️</button>
+            `;
+        elements.lowEnergySwapList.appendChild(item);
       });
     }
     function renderVoiceModal() {
@@ -1006,6 +1252,7 @@
       renderWeeklyScreen,
       renderResources,
       renderTemplates,
+      renderLowEnergySwapModal,
       renderVoiceModal,
       maybeShowAllDone
     };
@@ -1026,6 +1273,10 @@
       elements.libraryModal.classList.add("hidden");
       elements.archiveModal.classList.add("hidden");
       elements.completedModal.classList.add("hidden");
+      elements.templatesModal.classList.add("hidden");
+      elements.templateAutoModal.classList.add("hidden");
+      elements.lowEnergyModal.classList.add("hidden");
+      elements.lowEnergySwapModal.classList.add("hidden");
       elements.voiceModal.classList.add("hidden");
     }
     function showOnboardingScreen() {
@@ -1288,6 +1539,68 @@
       isResource: true
     });
   }
+  function assignLowEnergyResource(store, { today = getLocalDateString(), cycle = false } = {}) {
+    const state = store.getState();
+    const currentDayMeta = state.currentDayMeta || {};
+    const activeTodayResources = getTodayTasks(state, today).filter((task) => task.isResource);
+    const currentResourceTaskId = currentDayMeta.lowEnergyResourceTaskId || null;
+    const currentResourceId = currentDayMeta.lowEnergyResourceId || null;
+    const currentResourceTask = currentResourceTaskId ? activeTodayResources.find((task) => task.id === currentResourceTaskId) || null : null;
+    const busyResourceTexts = new Set(
+      activeTodayResources.filter((task) => task.id !== currentResourceTaskId).map((task) => task.text)
+    );
+    const availableResources = state.resources.filter(
+      (resource) => !busyResourceTexts.has(resource.text)
+    );
+    if (availableResources.length === 0) {
+      return currentResourceTask || null;
+    }
+    let nextResource = null;
+    if (cycle && currentResourceId) {
+      const currentIndex = availableResources.findIndex((resource) => resource.id === currentResourceId);
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % availableResources.length;
+      nextResource = availableResources[nextIndex];
+    } else {
+      const pool = availableResources.filter((resource) => resource.id !== currentResourceId);
+      const selectionPool = pool.length > 0 ? pool : availableResources;
+      nextResource = selectionPool[Math.floor(Math.random() * selectionPool.length)];
+    }
+    if (!nextResource) {
+      return currentResourceTask || null;
+    }
+    let assignedTask = null;
+    store.updateState((nextState) => {
+      const currentTask = currentResourceTaskId ? nextState.tasks.find(
+        (task) => task.id === currentResourceTaskId && getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && task.isResource
+      ) || null : null;
+      if (currentTask) {
+        currentTask.text = nextResource.text;
+        assignedTask = currentTask;
+      } else {
+        assignedTask = {
+          id: `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+          text: nextResource.text,
+          weight: 0,
+          isResource: true,
+          completed: false,
+          completedAtDate: null,
+          storageStatus: TASK_STORAGE.ACTIVE,
+          isArchived: false,
+          targetDate: today
+        };
+        nextState.tasks.push(assignedTask);
+      }
+      nextState.currentDayMeta = {
+        ...nextState.currentDayMeta,
+        date: today,
+        lowEnergyDayApplied: true,
+        lowEnergyResourceId: nextResource.id,
+        lowEnergyResourceTaskId: (assignedTask == null ? void 0 : assignedTask.id) || null
+      };
+    }, { save: false });
+    store.saveState();
+    return assignedTask;
+  }
 
   // js/domain/templates.js
   function changeTemplateTaskWeight(store, { templateId, taskId, weight }) {
@@ -1306,25 +1619,65 @@
     if (!task) {
       return null;
     }
-    return addTask(store, {
+    return addTask2(store, {
       text: task.text,
       weight: task.weight,
       isResource: false
     });
   }
-  function addAllTemplateTasksToDay(store, templateId) {
+  function addAllTemplateTasksToDay(store, templateId, targetDate = getLocalDateString()) {
     const state = store.getState();
     const template = state.templates.find((item) => item.id === templateId);
     if (!template) {
-      return;
+      return { template: null, addedCount: 0 };
     }
+    let addedCount = 0;
     template.tasks.forEach((task) => {
-      addTask(store, {
+      addTask2(store, {
         text: task.text,
         weight: task.weight,
-        isResource: false
+        isResource: false,
+        targetDate
+      });
+      addedCount += 1;
+    });
+    return { template, addedCount };
+  }
+  function setTemplateDailyPreference(store, {
+    templateId,
+    autoAddDaily,
+    hasAskedAutoAdd = true,
+    lastAutoAddedDate = null
+  }) {
+    let updatedTemplate = null;
+    store.updateState((state) => {
+      const template = state.templates.find((item) => item.id === templateId);
+      if (!template) return;
+      template.autoAddDaily = autoAddDaily;
+      template.hasAskedAutoAdd = hasAskedAutoAdd;
+      template.lastAutoAddedDate = autoAddDaily ? lastAutoAddedDate : null;
+      updatedTemplate = { ...template };
+    });
+    return updatedTemplate;
+  }
+  function applyDailyTemplatesForDate(store, date = getLocalDateString()) {
+    const templatesToApply = store.getState().templates.filter(
+      (template) => template.autoAddDaily && template.lastAutoAddedDate !== date && Array.isArray(template.tasks) && template.tasks.length > 0
+    );
+    if (templatesToApply.length === 0) {
+      return [];
+    }
+    templatesToApply.forEach((template) => {
+      addAllTemplateTasksToDay(store, template.id, date);
+    });
+    store.updateState((state) => {
+      state.templates.forEach((template) => {
+        if (templatesToApply.some((item) => item.id === template.id)) {
+          template.lastAutoAddedDate = date;
+        }
       });
     });
+    return templatesToApply.map((template) => template.id);
   }
 
   // js/services/voice-input.js
@@ -1441,6 +1794,8 @@
   function bindAppEvents(app) {
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
+    const templateAutoPrompt = runtime.templateAutoPrompt;
+    const LOW_ENERGY_TEMPLATE_ID = "tpl_4";
     function closeVoiceModal({ resetDraft = true } = {}) {
       elements.voiceModal.classList.add("hidden");
       voiceState.modalMode = "hidden";
@@ -1469,6 +1824,57 @@
       app.renderers.renderMainScreen();
       app.renderers.renderVoiceModal();
       elements.voiceModal.classList.remove("hidden");
+    }
+    function closeTemplateAutoModal() {
+      templateAutoPrompt.templateId = null;
+      elements.templateAutoModal.classList.add("hidden");
+    }
+    function openTemplateAutoModal(templateId) {
+      const template = store.getState().templates.find((item) => item.id === templateId);
+      if (!template) return;
+      templateAutoPrompt.templateId = templateId;
+      elements.templateAutoTemplateName.textContent = template.name;
+      elements.templateAutoModal.classList.remove("hidden");
+    }
+    function shouldOfferLowEnergyDay2(energyBudget, state = store.getState()) {
+      var _a;
+      return energyBudget >= 10 && energyBudget <= 15 && ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === getLocalDateString() && !state.currentDayMeta.lowEnergyPromptHandled;
+    }
+    function closeLowEnergyModal() {
+      elements.lowEnergyModal.classList.add("hidden");
+    }
+    function openLowEnergyModal() {
+      const state = store.getState();
+      elements.lowEnergyAvatar.src = state.avatar;
+      elements.lowEnergyModal.classList.remove("hidden");
+    }
+    function finalizeLowEnergyDecline() {
+      store.updateState((state) => {
+        state.currentDayMeta = {
+          ...state.currentDayMeta,
+          date: getLocalDateString(),
+          lowEnergyPromptHandled: true,
+          lowEnergyDayApplied: false,
+          lowEnergyKeptTaskId: null,
+          lowEnergyResourceId: null,
+          lowEnergyResourceTaskId: null
+        };
+      });
+      closeLowEnergyModal();
+      app.screens.showMainScreen();
+    }
+    function finalizeLowEnergyAcceptance() {
+      const today = getLocalDateString();
+      applyLowEnergyDay(store, today);
+      addAllTemplateTasksToDay(store, LOW_ENERGY_TEMPLATE_ID, today);
+      assignLowEnergyResource(store, { today });
+      closeLowEnergyModal();
+      app.screens.showMainScreen();
+      app.renderers.renderArchive();
+      app.renderers.renderWeeklyScreen();
+    }
+    function closeLowEnergySwapModal() {
+      elements.lowEnergySwapModal.classList.add("hidden");
     }
     const voiceService = createVoiceInputService({
       locale: "ru-RU",
@@ -1517,6 +1923,9 @@
       elements.archiveModal,
       elements.completedModal,
       elements.templatesModal,
+      elements.templateAutoModal,
+      elements.lowEnergyModal,
+      elements.lowEnergySwapModal,
       elements.helperModal,
       elements.voiceModal,
       elements.sosModal,
@@ -1529,6 +1938,18 @@
           app.renderers.renderMainScreen();
           return;
         }
+        if (modal === elements.templateAutoModal) {
+          closeTemplateAutoModal();
+          return;
+        }
+        if (modal === elements.lowEnergyModal) {
+          finalizeLowEnergyDecline();
+          return;
+        }
+        if (modal === elements.lowEnergySwapModal) {
+          closeLowEnergySwapModal();
+          return;
+        }
         modal.classList.add("hidden");
       });
     });
@@ -1539,12 +1960,19 @@
       elements.energyDisplay.textContent = event.target.value;
     });
     elements.startDayBtn.addEventListener("click", () => {
+      const energyBudget = parseInt(elements.energyInput.value, 10);
       store.updateState((state) => {
-        state.energyBudget = parseInt(elements.energyInput.value, 10);
+        state.energyBudget = energyBudget;
         state.lastDate = getLocalDateString();
         state.currentDayMeta = createCurrentDayMeta(state.lastDate);
       });
+      applyDailyTemplatesForDate(store, getLocalDateString());
       runtime.sosView = null;
+      if (shouldOfferLowEnergyDay2(energyBudget)) {
+        app.screens.showMainScreen();
+        openLowEnergyModal();
+        return;
+      }
       app.screens.showMainScreen();
     });
     elements.addTaskForm.addEventListener("submit", (event) => {
@@ -1552,7 +1980,7 @@
       const text = elements.taskInput.value.trim();
       const weight = parseInt(elements.taskWeightSelect.value, 10);
       if (!text) return;
-      addTask(store, { text, weight, isResource: false });
+      addTask2(store, { text, weight, isResource: false });
       elements.taskInput.value = "";
       app.screens.showMainScreen();
       if (!elements.weeklyScreen.classList.contains("hidden")) {
@@ -1614,7 +2042,7 @@
     });
     elements.adviceAddBtn.addEventListener("click", () => {
       if (!runtime.currentAdvice) return;
-      addTask(store, { text: runtime.currentAdvice, weight: 0, isResource: true });
+      addTask2(store, { text: runtime.currentAdvice, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
       const originalText = elements.adviceAddBtn.textContent;
       elements.adviceAddBtn.textContent = "Добавлено ✓";
@@ -1671,6 +2099,7 @@
     elements.sosArchiveBtn.addEventListener("click", () => {
       store.updateState((state) => {
         state.currentDayMeta = {
+          ...state.currentDayMeta,
           date: getLocalDateString(),
           usedSos: true,
           sosDestination: "deferred"
@@ -1682,6 +2111,7 @@
     elements.sosTomorrowBtn.addEventListener("click", () => {
       store.updateState((state) => {
         state.currentDayMeta = {
+          ...state.currentDayMeta,
           date: getLocalDateString(),
           usedSos: true,
           sosDestination: "tomorrow"
@@ -1741,7 +2171,7 @@
         return;
       }
       draftsToAdd.forEach((draft) => {
-        addTask(store, {
+        addTask2(store, {
           text: draft.text,
           weight: draft.weight,
           isResource: false,
@@ -1766,7 +2196,7 @@
       const text = elements.weeklyTaskText.value.trim();
       const weight = parseInt(elements.weeklyTaskWeight.value, 10);
       if (!text || !runtime.currentWeeklyTaskDate) return;
-      addTask(store, {
+      addTask2(store, {
         text,
         weight,
         isResource: false,
@@ -1782,6 +2212,42 @@
     });
     elements.closeTemplatesBtn.addEventListener("click", () => {
       elements.templatesModal.classList.add("hidden");
+    });
+    elements.closeTemplateAutoBtn.addEventListener("click", closeTemplateAutoModal);
+    elements.templateAutoYesBtn.addEventListener("click", () => {
+      if (!templateAutoPrompt.templateId) return;
+      setTemplateDailyPreference(store, {
+        templateId: templateAutoPrompt.templateId,
+        autoAddDaily: true,
+        hasAskedAutoAdd: true,
+        lastAutoAddedDate: getLocalDateString()
+      });
+      closeTemplateAutoModal();
+      app.renderers.renderTemplates();
+      app.renderers.renderMainScreen();
+    });
+    elements.templateAutoNoBtn.addEventListener("click", () => {
+      if (!templateAutoPrompt.templateId) return;
+      setTemplateDailyPreference(store, {
+        templateId: templateAutoPrompt.templateId,
+        autoAddDaily: false,
+        hasAskedAutoAdd: true,
+        lastAutoAddedDate: null
+      });
+      closeTemplateAutoModal();
+      app.renderers.renderTemplates();
+    });
+    elements.closeLowEnergyBtn.addEventListener("click", finalizeLowEnergyDecline);
+    elements.lowEnergyDeclineBtn.addEventListener("click", finalizeLowEnergyDecline);
+    elements.lowEnergyAcceptBtn.addEventListener("click", finalizeLowEnergyAcceptance);
+    elements.openLowEnergySwapBtn.addEventListener("click", () => {
+      app.renderers.renderLowEnergySwapModal();
+      elements.lowEnergySwapModal.classList.remove("hidden");
+    });
+    elements.closeLowEnergySwapBtn.addEventListener("click", closeLowEnergySwapModal);
+    elements.changeLowEnergyResourceBtn.addEventListener("click", () => {
+      assignLowEnergyResource(store, { today: getLocalDateString(), cycle: true });
+      app.renderers.renderMainScreen();
     });
     elements.finishReviewBtn.addEventListener("click", () => {
       archiveRemainingOverdue(store);
@@ -1889,6 +2355,18 @@
       app.renderers.renderMainScreen();
       app.renderers.renderWeeklyScreen();
     });
+    elements.lowEnergySwapList.addEventListener("click", (event) => {
+      const target = closestActionTarget(event.target);
+      if (!target || target.dataset.action !== "choose-low-energy-task") return;
+      const taskId = target.dataset.taskId;
+      if (!taskId) return;
+      const swappedTask = swapLowEnergyKeptTask(store, { nextTaskId: taskId, today: getLocalDateString() });
+      if (!swappedTask) return;
+      closeLowEnergySwapModal();
+      app.renderers.renderMainScreen();
+      app.renderers.renderArchive();
+      app.renderers.renderWeeklyScreen();
+    });
     elements.completedList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
       if (!target) return;
@@ -1952,6 +2430,33 @@
       const target = closestActionTarget(event.target);
       if (!target) return;
       if (target.dataset.action === "add-template-all") {
+        event.stopImmediatePropagation();
+        const { template } = addAllTemplateTasksToDay(store, target.dataset.templateId);
+        elements.templatesModal.classList.add("hidden");
+        app.renderers.renderMainScreen();
+        app.renderers.renderWeeklyScreen();
+        if (template && !template.hasAskedAutoAdd) {
+          openTemplateAutoModal(template.id);
+        }
+        return;
+      }
+      if (target.dataset.action === "toggle-template-daily") {
+        event.stopImmediatePropagation();
+        const template = store.getState().templates.find((item) => item.id === target.dataset.templateId);
+        if (!template) return;
+        setTemplateDailyPreference(store, {
+          templateId: template.id,
+          autoAddDaily: !template.autoAddDaily,
+          hasAskedAutoAdd: true,
+          lastAutoAddedDate: !template.autoAddDaily ? getLocalDateString() : null
+        });
+        app.renderers.renderTemplates();
+      }
+    }, true);
+    elements.templatesContainer.addEventListener("click", (event) => {
+      const target = closestActionTarget(event.target);
+      if (!target) return;
+      if (target.dataset.action === "add-template-all") {
         addAllTemplateTasksToDay(store, target.dataset.templateId);
         elements.templatesModal.classList.add("hidden");
         app.renderers.renderMainScreen();
@@ -1989,7 +2494,7 @@
       const state = store.getState();
       const suggestions = [...runtime.builtinAdvices, ...state.resources.map((resource) => resource.text)];
       const suggestion = suggestions[Math.floor(Math.random() * suggestions.length)];
-      addTask(store, { text: suggestion, weight: 0, isResource: true });
+      addTask2(store, { text: suggestion, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
     });
     elements.weeklyContainer.addEventListener("click", (event) => {
@@ -2049,6 +2554,10 @@
     "Отложить телефон на 15 минут",
     "Заварить вкусный чай"
   ];
+  function shouldOfferLowEnergyDay(state, today = getLocalDateString()) {
+    var _a;
+    return state.lastDate === today && state.energyBudget !== null && state.energyBudget >= 10 && state.energyBudget <= 15 && ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === today && !state.currentDayMeta.lowEnergyPromptHandled;
+  }
   function initApp({ elements }) {
     const store = createStore();
     const app = {
@@ -2067,6 +2576,9 @@
           voiceDraft: [],
           voiceError: "",
           modalMode: "hidden"
+        },
+        templateAutoPrompt: {
+          templateId: null
         }
       }
     };
@@ -2133,7 +2645,12 @@
     if (state.energyBudget === null) {
       app.screens.showMorningScreen();
     } else {
+      applyDailyTemplatesForDate(store, today);
       app.screens.showMainScreen();
+      if (shouldOfferLowEnergyDay(store.getState(), today)) {
+        elements.lowEnergyAvatar.src = store.getState().avatar;
+        elements.lowEnergyModal.classList.remove("hidden");
+      }
     }
     return app;
   }

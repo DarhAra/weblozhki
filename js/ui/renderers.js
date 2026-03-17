@@ -1,6 +1,13 @@
 import { getLocalDateString } from '../utils/date.js';
 import { escapeHtml } from '../utils/dom.js';
-import { TASK_STORAGE, getDeferredTasks, getDoneTasks, getTaskStorageStatus, getTodayTasks } from '../domain/tasks.js';
+import {
+    TASK_STORAGE,
+    getDeferredTasks,
+    getDoneTasks,
+    getLowEnergySwapCandidates,
+    getTaskStorageStatus,
+    getTodayTasks,
+} from '../domain/tasks.js';
 import { getMoodHistoryInsights, normalizeMoodHistory } from '../domain/history.js';
 
 function genderText(state, male, female) {
@@ -174,6 +181,38 @@ export function createRenderers(app) {
         });
     }
 
+    function renderLowEnergyPanel(state, todayTasks, isSosView) {
+        const isLowEnergyDay = state.currentDayMeta?.date === getLocalDateString() && state.currentDayMeta?.lowEnergyDayApplied;
+        elements.lowEnergyDayPanel.classList.toggle('hidden', !isLowEnergyDay || isSosView);
+
+        if (!isLowEnergyDay || isSosView) {
+            elements.lowEnergyKeptCard.classList.add('hidden');
+            elements.lowEnergyResourceCard.classList.add('hidden');
+            return;
+        }
+
+        const keptTask = state.currentDayMeta.lowEnergyKeptTaskId
+            ? todayTasks.find(task => task.id === state.currentDayMeta.lowEnergyKeptTaskId) || null
+            : null;
+        const resourceTask = state.currentDayMeta.lowEnergyResourceTaskId
+            ? todayTasks.find(task => task.id === state.currentDayMeta.lowEnergyResourceTaskId) || null
+            : null;
+        const swapCandidates = getLowEnergySwapCandidates(state);
+
+        elements.lowEnergyKeptCard.classList.toggle('hidden', !keptTask);
+        elements.lowEnergyResourceCard.classList.toggle('hidden', !resourceTask);
+        elements.openLowEnergySwapBtn.disabled = swapCandidates.length === 0;
+        elements.changeLowEnergyResourceBtn.disabled = !resourceTask;
+
+        if (keptTask) {
+            elements.lowEnergyKeptText.textContent = keptTask.text;
+        }
+
+        if (resourceTask) {
+            elements.lowEnergyResourceText.textContent = resourceTask.text;
+        }
+    }
+
     function renderMainScreen() {
         const state = store.getState();
         const todayTasks = getTodayTasks(state);
@@ -202,6 +241,8 @@ export function createRenderers(app) {
         if (!isSosView && elements.selfCareList.children.length === 0) {
             elements.selfCareList.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px; text-align: center; padding: 8px;">Добавьте ресурс из «Моих радостей» ☕</div>';
         }
+
+        renderLowEnergyPanel(state, todayTasks, isSosView);
 
         elements.balanceSection.classList.toggle('hidden', isSosView);
         elements.addTaskForm.classList.toggle('hidden', isSosView);
@@ -384,11 +425,22 @@ export function createRenderers(app) {
         const { templates } = store.getState();
         elements.templatesContainer.innerHTML = '';
         templates.forEach(template => {
+            const dailyStatus = template.autoAddDaily ? 'Каждый день' : 'Только вручную';
+            const toggleLabel = template.autoAddDaily
+                ? 'Выключить ежедневность'
+                : 'Включить каждый день';
+
             const block = document.createElement('div');
             block.className = 'template-block';
             block.innerHTML = `
                 <div class="template-header">
-                    <h4>${escapeHtml(template.name)}</h4>
+                    <div class="template-title-group">
+                        <h4>${escapeHtml(template.name)}</h4>
+                        <div class="template-meta-row">
+                            <span class="template-status-pill ${template.autoAddDaily ? 'is-active' : ''}">${dailyStatus}</span>
+                            <button class="text-btn template-toggle-btn" type="button" data-action="toggle-template-daily" data-template-id="${template.id}">${toggleLabel}</button>
+                        </div>
+                    </div>
                     <button class="add-template-all-btn" data-action="add-template-all" data-template-id="${template.id}">+ Всё</button>
                 </div>
                 <div class="template-task-list"></div>
@@ -409,6 +461,27 @@ export function createRenderers(app) {
             });
 
             elements.templatesContainer.appendChild(block);
+        });
+    }
+
+    function renderLowEnergySwapModal() {
+        const candidates = getLowEnergySwapCandidates(store.getState());
+        elements.lowEnergySwapList.innerHTML = '';
+
+        if (candidates.length === 0) {
+            elements.lowEnergySwapList.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px; text-align: center; padding: 16px;">Пока нет других лёгких задач, которые можно вернуть на сегодня.</div>';
+            return;
+        }
+
+        candidates.forEach(task => {
+            const item = document.createElement('div');
+            item.className = 'task-item';
+            item.innerHTML = `
+                <div class="task-desc">${escapeHtml(task.text)}</div>
+                <div class="task-weight">Вес: ${task.weight}</div>
+                <button class="postpone-btn" title="Оставить на сегодня" data-action="choose-low-energy-task" data-task-id="${task.id}">☀️</button>
+            `;
+            elements.lowEnergySwapList.appendChild(item);
         });
     }
 
@@ -444,7 +517,10 @@ export function createRenderers(app) {
                     ${[5, 10, 20, 30, 50].map(weight => `<option value="${weight}" ${draft.suggestedWeight === weight ? 'selected' : ''}>${weight}</option>`).join('')}
                 </select>
                 <select class="voice-draft-select" data-action="voice-update-date" data-draft-id="${draft.id}">
-                    ${[draft.suggestedDate, ...dateOptions].filter((value, index, array) => array.indexOf(value) === index).map(date => `<option value="${date}" ${draft.suggestedDate === date ? 'selected' : ''}>${formatVoiceDateLabel(date)}</option>`).join('')}
+                    ${[draft.suggestedDate, ...dateOptions]
+                        .filter((value, index, array) => array.indexOf(value) === index)
+                        .map(date => `<option value="${date}" ${draft.suggestedDate === date ? 'selected' : ''}>${formatVoiceDateLabel(date)}</option>`)
+                        .join('')}
                 </select>
                 <button class="delete-btn" title="Удалить" data-action="voice-remove-draft" data-draft-id="${draft.id}">&times;</button>
             `;
@@ -530,6 +606,7 @@ export function createRenderers(app) {
         renderWeeklyScreen,
         renderResources,
         renderTemplates,
+        renderLowEnergySwapModal,
         renderVoiceModal,
         maybeShowAllDone,
     };

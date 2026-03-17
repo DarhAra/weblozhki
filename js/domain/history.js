@@ -7,6 +7,24 @@ export function createCurrentDayMeta(date = getLocalDateString()) {
         date,
         usedSos: false,
         sosDestination: null,
+        lowEnergyPromptHandled: false,
+        lowEnergyDayApplied: false,
+        lowEnergyKeptTaskId: null,
+        lowEnergyResourceId: null,
+        lowEnergyResourceTaskId: null,
+    };
+}
+
+export function normalizeCurrentDayMeta(currentDayMeta, date = getLocalDateString()) {
+    const base = createCurrentDayMeta(date);
+    if (!currentDayMeta || typeof currentDayMeta !== 'object') {
+        return base;
+    }
+
+    return {
+        ...base,
+        ...currentDayMeta,
+        date,
     };
 }
 
@@ -34,7 +52,9 @@ export function buildMoodHistoryEntry(state, date) {
     const regularTasks = dayTasks.filter(task => !task.isResource);
     const resourceTasks = dayTasks.filter(task => task.isResource);
     const completedRegularTasks = regularTasks.filter(task => task.completed || task.completedAtDate === date);
-    const currentDayMeta = state.currentDayMeta?.date === date ? state.currentDayMeta : createCurrentDayMeta(date);
+    const currentDayMeta = state.currentDayMeta?.date === date
+        ? normalizeCurrentDayMeta(state.currentDayMeta, date)
+        : createCurrentDayMeta(date);
 
     const plannedWeight = regularTasks.reduce((sum, task) => sum + (task.weight || 0), 0);
     const completedWeight = completedRegularTasks.reduce((sum, task) => sum + (task.weight || 0), 0);

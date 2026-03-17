@@ -7,6 +7,7 @@ import { bindAppEvents } from './ui/bindings.js';
 import { getLocalDateString } from './utils/date.js';
 import { getOverdueTasks } from './domain/tasks.js';
 import { buildMoodHistoryEntry, createCurrentDayMeta, upsertMoodHistoryEntry } from './domain/history.js';
+import { applyDailyTemplatesForDate } from './domain/templates.js';
 
 const builtinAdvices = [
     'Выпить стакан чистой воды',
@@ -17,6 +18,15 @@ const builtinAdvices = [
     'Отложить телефон на 15 минут',
     'Заварить вкусный чай',
 ];
+
+function shouldOfferLowEnergyDay(state, today = getLocalDateString()) {
+    return state.lastDate === today
+        && state.energyBudget !== null
+        && state.energyBudget >= 10
+        && state.energyBudget <= 15
+        && state.currentDayMeta?.date === today
+        && !state.currentDayMeta.lowEnergyPromptHandled;
+}
 
 export function initApp({ elements }) {
     const store = createStore();
@@ -36,6 +46,9 @@ export function initApp({ elements }) {
                 voiceDraft: [],
                 voiceError: '',
                 modalMode: 'hidden',
+            },
+            templateAutoPrompt: {
+                templateId: null,
             },
         },
     };
@@ -113,7 +126,12 @@ export function initApp({ elements }) {
     if (state.energyBudget === null) {
         app.screens.showMorningScreen();
     } else {
+        applyDailyTemplatesForDate(store, today);
         app.screens.showMainScreen();
+        if (shouldOfferLowEnergyDay(store.getState(), today)) {
+            elements.lowEnergyAvatar.src = store.getState().avatar;
+            elements.lowEnergyModal.classList.remove('hidden');
+        }
     }
 
     return app;
