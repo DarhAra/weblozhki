@@ -71,6 +71,23 @@ function formatMoodDate(date) {
     });
 }
 
+function formatVoiceDateLabel(date, today = getLocalDateString()) {
+    if (date === today) {
+        return 'Сегодня';
+    }
+
+    const tomorrow = new Date(`${today}T00:00:00`);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (date === getLocalDateString(tomorrow)) {
+        return 'Завтра';
+    }
+
+    return new Date(`${date}T00:00:00`).toLocaleDateString('ru-RU', {
+        day: 'numeric',
+        month: 'short',
+    });
+}
+
 function buildMoodNote(entry) {
     if (entry.usedSos) {
         return entry.sosDestination === 'tomorrow'
@@ -95,6 +112,53 @@ function buildMoodNote(entry) {
 
 export function createRenderers(app) {
     const { elements, store, runtime } = app;
+
+    function renderVoiceUi() {
+        const voice = runtime.voice;
+
+        elements.openVoiceBtn.classList.remove('listening', 'processing', 'unsupported');
+        elements.voiceStatus.classList.add('hidden');
+
+        if (elements.addTaskForm.classList.contains('hidden')) {
+            return;
+        }
+
+        if (!voice.isSupported) {
+            elements.openVoiceBtn.classList.add('unsupported');
+            elements.openVoiceBtn.title = 'Голосовой ввод недоступен';
+            elements.openVoiceBtn.textContent = '🎤';
+            if (voice.voiceError) {
+                elements.voiceStatus.textContent = voice.voiceError;
+                elements.voiceStatus.classList.remove('hidden');
+            }
+            return;
+        }
+
+        if (voice.isListening) {
+            elements.openVoiceBtn.classList.add('listening');
+            elements.openVoiceBtn.title = 'Остановить запись';
+            elements.openVoiceBtn.textContent = '🎙️';
+            elements.voiceStatus.textContent = 'Я слушаю. Можно говорить свободно.';
+            elements.voiceStatus.classList.remove('hidden');
+            return;
+        }
+
+        if (voice.isProcessing) {
+            elements.openVoiceBtn.classList.add('processing');
+            elements.openVoiceBtn.title = 'Обрабатываю голосовой черновик';
+            elements.openVoiceBtn.textContent = '⏳';
+            elements.voiceStatus.textContent = 'Собираю черновик задач...';
+            elements.voiceStatus.classList.remove('hidden');
+            return;
+        }
+
+        elements.openVoiceBtn.title = 'Добавить голосом';
+        elements.openVoiceBtn.textContent = '🎤';
+        if (voice.voiceError) {
+            elements.voiceStatus.textContent = voice.voiceError;
+            elements.voiceStatus.classList.remove('hidden');
+        }
+    }
 
     function renderReviewTasks(tasks) {
         elements.reviewTasksList.innerHTML = '';
@@ -158,6 +222,8 @@ export function createRenderers(app) {
                 existingBtn.remove();
             }
             elements.balanceMessageContainer.classList.add('hidden');
+            elements.voiceStatus.classList.add('hidden');
+            renderVoiceUi();
             return;
         }
 
@@ -190,6 +256,8 @@ export function createRenderers(app) {
                 existingBtn.remove();
             }
         }
+
+        renderVoiceUi();
     }
 
     function renderArchive() {
@@ -344,6 +412,46 @@ export function createRenderers(app) {
         });
     }
 
+    function renderVoiceModal() {
+        const state = store.getState();
+        const voice = runtime.voice;
+        const isDraftMode = voice.modalMode === 'draft' && voice.voiceDraft.length > 0;
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const dateOptions = [getLocalDateString(), getLocalDateString(tomorrow)];
+
+        elements.voiceHelperAvatar.src = state.avatar;
+        elements.voiceDraftList.innerHTML = '';
+        elements.voiceEmptyState.classList.toggle('hidden', isDraftMode);
+        elements.voiceConfirmBtn.classList.toggle('hidden', !isDraftMode);
+
+        if (!isDraftMode) {
+            elements.voiceModalTitle.textContent = 'Голосовой ввод';
+            elements.voiceModalSubtitle.textContent = voice.voiceError || 'Пока не получилось подготовить черновик.';
+            elements.voiceEmptyState.textContent = voice.voiceError || 'Можно попробовать ещё раз или добавить задачу текстом.';
+            return;
+        }
+
+        elements.voiceModalTitle.textContent = 'Проверим, что получилось?';
+        elements.voiceModalSubtitle.textContent = 'Вот что я записал. Можно спокойно поправить перед добавлением.';
+
+        voice.voiceDraft.forEach(draft => {
+            const row = document.createElement('div');
+            row.className = 'voice-draft-item';
+            row.innerHTML = `
+                <input class="voice-draft-input" type="text" value="${escapeHtml(draft.text)}" data-action="voice-update-text" data-draft-id="${draft.id}">
+                <select class="voice-draft-select" data-action="voice-update-weight" data-draft-id="${draft.id}">
+                    ${[5, 10, 20, 30, 50].map(weight => `<option value="${weight}" ${draft.suggestedWeight === weight ? 'selected' : ''}>${weight}</option>`).join('')}
+                </select>
+                <select class="voice-draft-select" data-action="voice-update-date" data-draft-id="${draft.id}">
+                    ${[draft.suggestedDate, ...dateOptions].filter((value, index, array) => array.indexOf(value) === index).map(date => `<option value="${date}" ${draft.suggestedDate === date ? 'selected' : ''}>${formatVoiceDateLabel(date)}</option>`).join('')}
+                </select>
+                <button class="delete-btn" title="Удалить" data-action="voice-remove-draft" data-draft-id="${draft.id}">&times;</button>
+            `;
+            elements.voiceDraftList.appendChild(row);
+        });
+    }
+
     function renderHistoryScreen() {
         const moodHistory = normalizeMoodHistory(store.getState().moodHistory);
         const insights = getMoodHistoryInsights(moodHistory);
@@ -422,6 +530,7 @@ export function createRenderers(app) {
         renderWeeklyScreen,
         renderResources,
         renderTemplates,
+        renderVoiceModal,
         maybeShowAllDone,
     };
 }

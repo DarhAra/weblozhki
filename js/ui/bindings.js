@@ -1,6 +1,7 @@
 import { getLocalDateString } from '../utils/date.js';
 import { closestActionTarget } from '../utils/dom.js';
 import { createCurrentDayMeta } from '../domain/history.js';
+import { parseVoiceTranscript } from '../domain/voice-parser.js';
 import {
     addTask,
     archiveRemainingOverdue,
@@ -23,6 +24,7 @@ import {
 } from '../domain/tasks.js';
 import { addResource, addResourceToDay, deleteResource } from '../domain/resources.js';
 import { addAllTemplateTasksToDay, addTemplateTaskToDay, changeTemplateTaskWeight } from '../domain/templates.js';
+import { createVoiceInputService } from '../services/voice-input.js';
 import { spawnHearts } from './renderers.js';
 
 function getDragAfterElement(container, y, selector, draggingClass) {
@@ -49,6 +51,87 @@ function bindSubmitOnEnter(input, form) {
 
 export function bindAppEvents(app) {
     const { elements, store, runtime } = app;
+    const voiceState = runtime.voice;
+
+    function closeVoiceModal({ resetDraft = true } = {}) {
+        elements.voiceModal.classList.add('hidden');
+        voiceState.modalMode = 'hidden';
+        if (resetDraft) {
+            voiceState.voiceDraft = [];
+            voiceState.lastTranscript = '';
+        }
+    }
+
+    function openVoiceMessage(message) {
+        voiceState.isListening = false;
+        voiceState.isProcessing = false;
+        voiceState.voiceDraft = [];
+        voiceState.voiceError = message;
+        voiceState.modalMode = 'message';
+        app.renderers.renderMainScreen();
+        app.renderers.renderVoiceModal();
+        elements.voiceModal.classList.remove('hidden');
+    }
+
+    function openVoiceDraftModal(drafts, transcript) {
+        voiceState.isListening = false;
+        voiceState.isProcessing = false;
+        voiceState.lastTranscript = transcript;
+        voiceState.voiceDraft = drafts;
+        voiceState.voiceError = '';
+        voiceState.modalMode = 'draft';
+        app.renderers.renderMainScreen();
+        app.renderers.renderVoiceModal();
+        elements.voiceModal.classList.remove('hidden');
+    }
+
+    const voiceService = createVoiceInputService({
+        locale: 'ru-RU',
+        onStart: () => {
+            voiceState.isListening = true;
+            voiceState.isProcessing = false;
+            voiceState.voiceError = '';
+            app.renderers.renderMainScreen();
+        },
+        onEnd: ({ transcript, hadError }) => {
+            voiceState.isListening = false;
+            if (hadError) {
+                app.renderers.renderMainScreen();
+                return;
+            }
+
+            if (!transcript) {
+                voiceState.voiceError = 'Я ничего не расслышал. Можно попробовать ещё раз.';
+                app.renderers.renderMainScreen();
+                return;
+            }
+
+            voiceState.isProcessing = true;
+            voiceState.lastTranscript = transcript;
+            app.renderers.renderMainScreen();
+
+            const drafts = parseVoiceTranscript(transcript, getLocalDateString());
+            voiceState.isProcessing = false;
+
+            if (drafts.length === 0) {
+                openVoiceMessage('Не получилось собрать понятный черновик. Можно попробовать ещё раз или добавить задачу текстом.');
+                return;
+            }
+
+            openVoiceDraftModal(drafts, transcript);
+        },
+        onError: message => {
+            voiceState.isListening = false;
+            voiceState.isProcessing = false;
+            if (message) {
+                openVoiceMessage(message);
+            } else {
+                app.renderers.renderMainScreen();
+            }
+        },
+    });
+
+    voiceState.isSupported = voiceService.isSupported();
 
     [
         elements.weeklyTaskModal,
@@ -57,11 +140,17 @@ export function bindAppEvents(app) {
         elements.completedModal,
         elements.templatesModal,
         elements.helperModal,
+        elements.voiceModal,
         elements.sosModal,
         elements.allDoneModal,
     ].forEach(modal => {
         modal.addEventListener('click', event => {
             if (event.target !== modal) return;
+            if (modal === elements.voiceModal) {
+                closeVoiceModal();
+                app.renderers.renderMainScreen();
+                return;
+            }
             modal.classList.add('hidden');
         });
     });
@@ -130,6 +219,16 @@ export function bindAppEvents(app) {
         elements.helperModal.classList.add('hidden');
     });
 
+    elements.closeVoiceBtn.addEventListener('click', () => {
+        closeVoiceModal();
+        app.renderers.renderMainScreen();
+    });
+
+    elements.voiceCancelBtn.addEventListener('click', () => {
+        closeVoiceModal();
+        app.renderers.renderMainScreen();
+    });
+
     function closeSosModal() {
         elements.sosModal.classList.add('hidden');
     }
@@ -168,6 +267,23 @@ export function bindAppEvents(app) {
             elements.adviceAddBtn.style.color = '';
             elements.helperModal.classList.add('hidden');
         }, 1000);
+    });
+
+    elements.openVoiceBtn.addEventListener('click', () => {
+        if (!voiceState.isSupported) {
+            openVoiceMessage('Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.');
+            return;
+        }
+
+        if (voiceState.isListening) {
+            voiceService.stopListening();
+            return;
+        }
+
+        voiceState.voiceError = '';
+        closeVoiceModal();
+        app.renderers.renderMainScreen();
+        voiceService.startListening();
     });
 
     elements.openLibraryBtn.addEventListener('click', () => {
@@ -277,6 +393,34 @@ export function bindAppEvents(app) {
 
         clearDoneTasks(store);
         app.renderers.renderCompleted();
+    });
+
+    elements.voiceConfirmBtn.addEventListener('click', () => {
+        const draftsToAdd = voiceState.voiceDraft
+            .map(draft => ({
+                text: draft.text.trim(),
+                weight: parseInt(draft.suggestedWeight, 10),
+                targetDate: draft.suggestedDate,
+            }))
+            .filter(draft => draft.text);
+
+        if (draftsToAdd.length === 0) {
+            openVoiceMessage('В черновике пока нет задач, которые можно добавить.');
+            return;
+        }
+
+        draftsToAdd.forEach(draft => {
+            addTask(store, {
+                text: draft.text,
+                weight: draft.weight,
+                isResource: false,
+                targetDate: draft.targetDate,
+            });
+        });
+
+        closeVoiceModal();
+        app.renderers.renderMainScreen();
+        app.renderers.renderWeeklyScreen();
     });
 
     elements.openWeeklyBtn.addEventListener('click', () => {
@@ -453,6 +597,45 @@ export function bindAppEvents(app) {
 
         deleteTask(store, taskId);
         app.renderers.renderCompleted();
+    });
+
+    elements.voiceDraftList.addEventListener('click', event => {
+        const target = closestActionTarget(event.target);
+        if (!target || target.dataset.action !== 'voice-remove-draft') return;
+
+        voiceState.voiceDraft = voiceState.voiceDraft.filter(draft => draft.id !== target.dataset.draftId);
+        if (voiceState.voiceDraft.length === 0) {
+            openVoiceMessage('Черновик опустел. Можно попробовать надиктовать задачи ещё раз.');
+            return;
+        }
+
+        app.renderers.renderVoiceModal();
+    });
+
+    elements.voiceDraftList.addEventListener('input', event => {
+        const target = event.target.closest('[data-action="voice-update-text"]');
+        if (!target) return;
+
+        const draft = voiceState.voiceDraft.find(item => item.id === target.dataset.draftId);
+        if (!draft) return;
+
+        draft.text = target.value;
+    });
+
+    elements.voiceDraftList.addEventListener('change', event => {
+        const target = event.target.closest('[data-action]');
+        if (!target) return;
+
+        const draft = voiceState.voiceDraft.find(item => item.id === target.dataset.draftId);
+        if (!draft) return;
+
+        if (target.dataset.action === 'voice-update-weight') {
+            draft.suggestedWeight = parseInt(target.value, 10);
+        }
+
+        if (target.dataset.action === 'voice-update-date') {
+            draft.suggestedDate = target.value;
+        }
     });
 
     elements.resourcesList.addEventListener('click', event => {

@@ -197,8 +197,10 @@
                             <option value="30">Большая (30)</option>
                             <option value="50">Глыба (50)</option>
                         </select>
+                        <button id="open-voice-btn" type="button" class="voice-btn" title="Добавить голосом">🎤</button>
                         <button type="submit" class="add-btn">+</button>
                     </form>
+                    <div id="voice-status" class="voice-status hidden"></div>
 
                     <div id="tasks-list" class="task-list"></div>
                 </div>
@@ -335,6 +337,27 @@
         </div>
 
         <!-- Модальное окно "SOS" -->
+        <div id="voice-modal" class="modal hidden">
+            <div class="modal-content voice-modal-card">
+                <div class="modal-header">
+                    <h3 id="voice-modal-title">Проверим, что получилось?</h3>
+                    <button id="close-voice-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="helper-message voice-helper-message">
+                        <img id="voice-helper-avatar" class="helper-avatar" alt="Аватар помощника">
+                        <p id="voice-modal-subtitle" class="helper-text dialog-bubble">Вот что я записал. Проверим?</p>
+                    </div>
+                    <div id="voice-draft-list" class="voice-draft-list"></div>
+                    <div id="voice-empty-state" class="voice-empty-state hidden"></div>
+                    <div class="voice-modal-actions">
+                        <button id="voice-confirm-btn" class="primary-btn advice-btn" type="button">Добавить всё</button>
+                        <button id="voice-cancel-btn" class="secondary-btn advice-btn" type="button">Отменить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="sos-modal" class="modal hidden">
             <div class="modal-content sos-modal-card">
                 <div class="modal-header">
@@ -365,7 +388,7 @@
         </div>
     </div>
 
-    <script src="js/app.bundle.js?v=20260317-enter-backdrop"></script>
+    <script src="js/app.bundle.js?v=20260317-voice-input"></script>
 </body>
 
 </html>

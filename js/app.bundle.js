@@ -15,6 +15,7 @@
       completedModal: doc.getElementById("completed-modal"),
       templatesModal: doc.getElementById("templates-modal"),
       helperModal: doc.getElementById("helper-modal"),
+      voiceModal: doc.getElementById("voice-modal"),
       sosModal: doc.getElementById("sos-modal"),
       allDoneModal: doc.getElementById("all-done-modal"),
       energyInput: doc.getElementById("energy-input"),
@@ -44,6 +45,8 @@
       addTaskForm: doc.getElementById("add-task-form"),
       taskInput: doc.getElementById("task-text"),
       taskWeightSelect: doc.getElementById("task-weight"),
+      openVoiceBtn: doc.getElementById("open-voice-btn"),
+      voiceStatus: doc.getElementById("voice-status"),
       openLibraryBtn: doc.getElementById("open-library-btn"),
       closeLibraryBtn: doc.getElementById("close-library-btn"),
       resourcesList: doc.getElementById("resources-list"),
@@ -74,6 +77,14 @@
       adviceText: doc.getElementById("advice-text"),
       adviceAddBtn: doc.getElementById("advice-add-btn"),
       adviceRefreshBtn: doc.getElementById("advice-refresh-btn"),
+      closeVoiceBtn: doc.getElementById("close-voice-btn"),
+      voiceHelperAvatar: doc.getElementById("voice-helper-avatar"),
+      voiceModalTitle: doc.getElementById("voice-modal-title"),
+      voiceModalSubtitle: doc.getElementById("voice-modal-subtitle"),
+      voiceDraftList: doc.getElementById("voice-draft-list"),
+      voiceEmptyState: doc.getElementById("voice-empty-state"),
+      voiceConfirmBtn: doc.getElementById("voice-confirm-btn"),
+      voiceCancelBtn: doc.getElementById("voice-cancel-btn"),
       closeSosBtn: doc.getElementById("close-sos-btn"),
       sosArchiveBtn: doc.getElementById("sos-archive-btn"),
       sosTomorrowBtn: doc.getElementById("sos-tomorrow-btn"),
@@ -605,6 +616,20 @@
       month: "long"
     });
   }
+  function formatVoiceDateLabel(date, today = getLocalDateString()) {
+    if (date === today) {
+      return "Сегодня";
+    }
+    const tomorrow = /* @__PURE__ */ new Date(`${today}T00:00:00`);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    if (date === getLocalDateString(tomorrow)) {
+      return "Завтра";
+    }
+    return (/* @__PURE__ */ new Date(`${date}T00:00:00`)).toLocaleDateString("ru-RU", {
+      day: "numeric",
+      month: "short"
+    });
+  }
   function buildMoodNote(entry) {
     if (entry.usedSos) {
       return entry.sosDestination === "tomorrow" ? "День пришлось облегчить, а оставшееся аккуратно перенесено на завтра." : "День пришлось мягко остановить, а оставшееся перенесено в раздел «На потом».";
@@ -622,6 +647,46 @@
   }
   function createRenderers(app) {
     const { elements, store, runtime } = app;
+    function renderVoiceUi() {
+      const voice = runtime.voice;
+      elements.openVoiceBtn.classList.remove("listening", "processing", "unsupported");
+      elements.voiceStatus.classList.add("hidden");
+      if (elements.addTaskForm.classList.contains("hidden")) {
+        return;
+      }
+      if (!voice.isSupported) {
+        elements.openVoiceBtn.classList.add("unsupported");
+        elements.openVoiceBtn.title = "Голосовой ввод недоступен";
+        elements.openVoiceBtn.textContent = "🎤";
+        if (voice.voiceError) {
+          elements.voiceStatus.textContent = voice.voiceError;
+          elements.voiceStatus.classList.remove("hidden");
+        }
+        return;
+      }
+      if (voice.isListening) {
+        elements.openVoiceBtn.classList.add("listening");
+        elements.openVoiceBtn.title = "Остановить запись";
+        elements.openVoiceBtn.textContent = "🎙️";
+        elements.voiceStatus.textContent = "Я слушаю. Можно говорить свободно.";
+        elements.voiceStatus.classList.remove("hidden");
+        return;
+      }
+      if (voice.isProcessing) {
+        elements.openVoiceBtn.classList.add("processing");
+        elements.openVoiceBtn.title = "Обрабатываю голосовой черновик";
+        elements.openVoiceBtn.textContent = "⏳";
+        elements.voiceStatus.textContent = "Собираю черновик задач...";
+        elements.voiceStatus.classList.remove("hidden");
+        return;
+      }
+      elements.openVoiceBtn.title = "Добавить голосом";
+      elements.openVoiceBtn.textContent = "🎤";
+      if (voice.voiceError) {
+        elements.voiceStatus.textContent = voice.voiceError;
+        elements.voiceStatus.classList.remove("hidden");
+      }
+    }
     function renderReviewTasks(tasks) {
       elements.reviewTasksList.innerHTML = "";
       tasks.forEach((task) => {
@@ -673,6 +738,8 @@
           existingBtn.remove();
         }
         elements.balanceMessageContainer.classList.add("hidden");
+        elements.voiceStatus.classList.add("hidden");
+        renderVoiceUi();
         return;
       }
       const total = state.energyBudget || 1;
@@ -702,6 +769,7 @@
           existingBtn.remove();
         }
       }
+      renderVoiceUi();
     }
     function renderArchive() {
       const deferredTasks = getDeferredTasks(store.getState());
@@ -833,6 +901,41 @@
         elements.templatesContainer.appendChild(block);
       });
     }
+    function renderVoiceModal() {
+      const state = store.getState();
+      const voice = runtime.voice;
+      const isDraftMode = voice.modalMode === "draft" && voice.voiceDraft.length > 0;
+      const tomorrow = /* @__PURE__ */ new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dateOptions = [getLocalDateString(), getLocalDateString(tomorrow)];
+      elements.voiceHelperAvatar.src = state.avatar;
+      elements.voiceDraftList.innerHTML = "";
+      elements.voiceEmptyState.classList.toggle("hidden", isDraftMode);
+      elements.voiceConfirmBtn.classList.toggle("hidden", !isDraftMode);
+      if (!isDraftMode) {
+        elements.voiceModalTitle.textContent = "Голосовой ввод";
+        elements.voiceModalSubtitle.textContent = voice.voiceError || "Пока не получилось подготовить черновик.";
+        elements.voiceEmptyState.textContent = voice.voiceError || "Можно попробовать ещё раз или добавить задачу текстом.";
+        return;
+      }
+      elements.voiceModalTitle.textContent = "Проверим, что получилось?";
+      elements.voiceModalSubtitle.textContent = "Вот что я записал. Можно спокойно поправить перед добавлением.";
+      voice.voiceDraft.forEach((draft) => {
+        const row = document.createElement("div");
+        row.className = "voice-draft-item";
+        row.innerHTML = `
+                <input class="voice-draft-input" type="text" value="${escapeHtml(draft.text)}" data-action="voice-update-text" data-draft-id="${draft.id}">
+                <select class="voice-draft-select" data-action="voice-update-weight" data-draft-id="${draft.id}">
+                    ${[5, 10, 20, 30, 50].map((weight) => `<option value="${weight}" ${draft.suggestedWeight === weight ? "selected" : ""}>${weight}</option>`).join("")}
+                </select>
+                <select class="voice-draft-select" data-action="voice-update-date" data-draft-id="${draft.id}">
+                    ${[draft.suggestedDate, ...dateOptions].filter((value, index, array) => array.indexOf(value) === index).map((date) => `<option value="${date}" ${draft.suggestedDate === date ? "selected" : ""}>${formatVoiceDateLabel(date)}</option>`).join("")}
+                </select>
+                <button class="delete-btn" title="Удалить" data-action="voice-remove-draft" data-draft-id="${draft.id}">&times;</button>
+            `;
+        elements.voiceDraftList.appendChild(row);
+      });
+    }
     function renderHistoryScreen() {
       const moodHistory = normalizeMoodHistory(store.getState().moodHistory);
       const insights = getMoodHistoryInsights(moodHistory);
@@ -903,6 +1006,7 @@
       renderWeeklyScreen,
       renderResources,
       renderTemplates,
+      renderVoiceModal,
       maybeShowAllDone
     };
   }
@@ -922,6 +1026,7 @@
       elements.libraryModal.classList.add("hidden");
       elements.archiveModal.classList.add("hidden");
       elements.completedModal.classList.add("hidden");
+      elements.voiceModal.classList.add("hidden");
     }
     function showOnboardingScreen() {
       hidePrimaryScreens();
@@ -1105,6 +1210,59 @@
     return { activate };
   }
 
+  // js/domain/voice-parser.js
+  function getTomorrowDate(today = getLocalDateString()) {
+    const tomorrow = parseLocalDate(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    return getLocalDateString(tomorrow);
+  }
+  function cleanupTaskText(text) {
+    return text.replace(/^\s*(и\s+)?(еще|ещё)\s+/i, "").replace(/^\s*(а\s+)?(еще|ещё)\s+/i, "").replace(/^\s*(нужно|надо|потом|затем)\s+/i, "").replace(/\s+/g, " ").trim().replace(/^[,.;:\-]+/, "").trim();
+  }
+  function splitTranscriptIntoParts(transcript) {
+    const prepared = transcript.replace(/\s+/g, " ").replace(/\s+(а еще|а ещё|и еще|и ещё|потом|затем)\s+/gi, " | ").replace(/[;\n]+/g, " | ").replace(/,\s+(?=(надо|нужно|завтра|купить|забрать|помыть|написать|ответить|позвонить|сходить|убраться|разобрать))/gi, " | ");
+    const parts = prepared.split("|").map((part) => cleanupTaskText(part)).filter(Boolean);
+    return parts.length > 0 ? parts : [cleanupTaskText(transcript)].filter(Boolean);
+  }
+  function suggestWeight(text) {
+    const normalized = text.toLowerCase();
+    if (/(глыба|сил нет|тяжело|тяжёло|разобрать документы|убраться|разобрать|документы)/.test(normalized)) {
+      return 50;
+    }
+    if (/(разобрать|убраться|оформить|договориться|договорится|съездить|сходить|забрать|купить|помыть)/.test(normalized)) {
+      return 20;
+    }
+    if (/(написать|ответить|позвонить|проверить|спросить|уточнить)/.test(normalized)) {
+      return 10;
+    }
+    return 20;
+  }
+  function suggestDate(text, today) {
+    if (/завтра/i.test(text)) {
+      return getTomorrowDate(today);
+    }
+    return today;
+  }
+  function parseVoiceTranscript(transcript, today = getLocalDateString()) {
+    const normalizedTranscript = String(transcript || "").replace(/\s+/g, " ").trim();
+    if (!normalizedTranscript) {
+      return [];
+    }
+    return splitTranscriptIntoParts(normalizedTranscript).map((part, index) => {
+      const text = cleanupTaskText(part);
+      if (!text) {
+        return null;
+      }
+      return {
+        id: `voice_draft_${Date.now()}_${index}_${Math.floor(Math.random() * 1e5)}`,
+        text,
+        suggestedWeight: suggestWeight(text),
+        suggestedDate: suggestDate(text, today),
+        isResource: false
+      };
+    }).filter(Boolean);
+  }
+
   // js/domain/resources.js
   function addResource(store, text) {
     const resource = { id: `res_${Date.now()}`, text };
@@ -1169,6 +1327,98 @@
     });
   }
 
+  // js/services/voice-input.js
+  function normalizeVoiceError(errorCode) {
+    switch (errorCode) {
+      case "not-allowed":
+      case "service-not-allowed":
+        return "Не получилось включить микрофон. Можно продолжить обычным вводом.";
+      case "audio-capture":
+        return "Микрофон сейчас недоступен. Попробуйте ещё раз чуть позже.";
+      case "network":
+        return "Голосовой ввод сейчас не смог обработать речь. Можно попробовать ещё раз.";
+      case "no-speech":
+        return "Я ничего не расслышал. Можно попробовать ещё раз в более тихой обстановке.";
+      case "aborted":
+        return "";
+      default:
+        return "Голосовой ввод сейчас недоступен. Можно добавить задачу текстом.";
+    }
+  }
+  function createVoiceInputService({ locale = "ru-RU", onStart, onEnd, onError } = {}) {
+    const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition || null;
+    let recognition = null;
+    let latestTranscript = "";
+    let isListening = false;
+    let hasError = false;
+    function isSupported() {
+      return Boolean(Recognition);
+    }
+    function ensureRecognition() {
+      if (!Recognition) {
+        return null;
+      }
+      if (recognition) {
+        return recognition;
+      }
+      recognition = new Recognition();
+      recognition.lang = locale;
+      recognition.continuous = false;
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+      recognition.onstart = () => {
+        latestTranscript = "";
+        hasError = false;
+        isListening = true;
+        onStart == null ? void 0 : onStart();
+      };
+      recognition.onresult = (event) => {
+        latestTranscript = Array.from(event.results).map((result) => {
+          var _a;
+          return ((_a = result[0]) == null ? void 0 : _a.transcript) || "";
+        }).join(" ").trim();
+      };
+      recognition.onerror = (event) => {
+        hasError = true;
+        isListening = false;
+        onError == null ? void 0 : onError(normalizeVoiceError(event.error), event.error);
+      };
+      recognition.onend = () => {
+        const transcript = latestTranscript.trim();
+        latestTranscript = "";
+        isListening = false;
+        onEnd == null ? void 0 : onEnd({ transcript, hadError: hasError });
+        hasError = false;
+      };
+      return recognition;
+    }
+    function startListening() {
+      const instance = ensureRecognition();
+      if (!instance || isListening) {
+        return false;
+      }
+      try {
+        instance.start();
+        return true;
+      } catch (error) {
+        onError == null ? void 0 : onError("Голосовой ввод пока не удалось запустить. Можно попробовать ещё раз.", "start-failed");
+        return false;
+      }
+    }
+    function stopListening() {
+      if (!recognition || !isListening) {
+        return false;
+      }
+      recognition.stop();
+      return true;
+    }
+    return {
+      isSupported,
+      startListening,
+      stopListening
+    };
+  }
+
   // js/ui/bindings.js
   function getDragAfterElement(container, y, selector, draggingClass) {
     const draggableElements = [...container.querySelectorAll(`${selector}:not(.${draggingClass})`)];
@@ -1190,6 +1440,77 @@
   }
   function bindAppEvents(app) {
     const { elements, store, runtime } = app;
+    const voiceState = runtime.voice;
+    function closeVoiceModal({ resetDraft = true } = {}) {
+      elements.voiceModal.classList.add("hidden");
+      voiceState.modalMode = "hidden";
+      if (resetDraft) {
+        voiceState.voiceDraft = [];
+        voiceState.lastTranscript = "";
+      }
+    }
+    function openVoiceMessage(message) {
+      voiceState.isListening = false;
+      voiceState.isProcessing = false;
+      voiceState.voiceDraft = [];
+      voiceState.voiceError = message;
+      voiceState.modalMode = "message";
+      app.renderers.renderMainScreen();
+      app.renderers.renderVoiceModal();
+      elements.voiceModal.classList.remove("hidden");
+    }
+    function openVoiceDraftModal(drafts, transcript) {
+      voiceState.isListening = false;
+      voiceState.isProcessing = false;
+      voiceState.lastTranscript = transcript;
+      voiceState.voiceDraft = drafts;
+      voiceState.voiceError = "";
+      voiceState.modalMode = "draft";
+      app.renderers.renderMainScreen();
+      app.renderers.renderVoiceModal();
+      elements.voiceModal.classList.remove("hidden");
+    }
+    const voiceService = createVoiceInputService({
+      locale: "ru-RU",
+      onStart: () => {
+        voiceState.isListening = true;
+        voiceState.isProcessing = false;
+        voiceState.voiceError = "";
+        app.renderers.renderMainScreen();
+      },
+      onEnd: ({ transcript, hadError }) => {
+        voiceState.isListening = false;
+        if (hadError) {
+          app.renderers.renderMainScreen();
+          return;
+        }
+        if (!transcript) {
+          voiceState.voiceError = "Я ничего не расслышал. Можно попробовать ещё раз.";
+          app.renderers.renderMainScreen();
+          return;
+        }
+        voiceState.isProcessing = true;
+        voiceState.lastTranscript = transcript;
+        app.renderers.renderMainScreen();
+        const drafts = parseVoiceTranscript(transcript, getLocalDateString());
+        voiceState.isProcessing = false;
+        if (drafts.length === 0) {
+          openVoiceMessage("Не получилось собрать понятный черновик. Можно попробовать ещё раз или добавить задачу текстом.");
+          return;
+        }
+        openVoiceDraftModal(drafts, transcript);
+      },
+      onError: (message) => {
+        voiceState.isListening = false;
+        voiceState.isProcessing = false;
+        if (message) {
+          openVoiceMessage(message);
+        } else {
+          app.renderers.renderMainScreen();
+        }
+      }
+    });
+    voiceState.isSupported = voiceService.isSupported();
     [
       elements.weeklyTaskModal,
       elements.libraryModal,
@@ -1197,11 +1518,17 @@
       elements.completedModal,
       elements.templatesModal,
       elements.helperModal,
+      elements.voiceModal,
       elements.sosModal,
       elements.allDoneModal
     ].forEach((modal) => {
       modal.addEventListener("click", (event) => {
         if (event.target !== modal) return;
+        if (modal === elements.voiceModal) {
+          closeVoiceModal();
+          app.renderers.renderMainScreen();
+          return;
+        }
         modal.classList.add("hidden");
       });
     });
@@ -1259,6 +1586,14 @@
     elements.closeHelperBtn.addEventListener("click", () => {
       elements.helperModal.classList.add("hidden");
     });
+    elements.closeVoiceBtn.addEventListener("click", () => {
+      closeVoiceModal();
+      app.renderers.renderMainScreen();
+    });
+    elements.voiceCancelBtn.addEventListener("click", () => {
+      closeVoiceModal();
+      app.renderers.renderMainScreen();
+    });
     function closeSosModal() {
       elements.sosModal.classList.add("hidden");
     }
@@ -1291,6 +1626,20 @@
         elements.adviceAddBtn.style.color = "";
         elements.helperModal.classList.add("hidden");
       }, 1e3);
+    });
+    elements.openVoiceBtn.addEventListener("click", () => {
+      if (!voiceState.isSupported) {
+        openVoiceMessage("Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.");
+        return;
+      }
+      if (voiceState.isListening) {
+        voiceService.stopListening();
+        return;
+      }
+      voiceState.voiceError = "";
+      closeVoiceModal();
+      app.renderers.renderMainScreen();
+      voiceService.startListening();
     });
     elements.openLibraryBtn.addEventListener("click", () => {
       app.renderers.renderResources();
@@ -1380,6 +1729,28 @@
       if (!shouldClear) return;
       clearDoneTasks(store);
       app.renderers.renderCompleted();
+    });
+    elements.voiceConfirmBtn.addEventListener("click", () => {
+      const draftsToAdd = voiceState.voiceDraft.map((draft) => ({
+        text: draft.text.trim(),
+        weight: parseInt(draft.suggestedWeight, 10),
+        targetDate: draft.suggestedDate
+      })).filter((draft) => draft.text);
+      if (draftsToAdd.length === 0) {
+        openVoiceMessage("В черновике пока нет задач, которые можно добавить.");
+        return;
+      }
+      draftsToAdd.forEach((draft) => {
+        addTask(store, {
+          text: draft.text,
+          weight: draft.weight,
+          isResource: false,
+          targetDate: draft.targetDate
+        });
+      });
+      closeVoiceModal();
+      app.renderers.renderMainScreen();
+      app.renderers.renderWeeklyScreen();
     });
     elements.openWeeklyBtn.addEventListener("click", () => {
       app.screens.showWeeklyScreen();
@@ -1526,6 +1897,35 @@
       deleteTask(store, taskId);
       app.renderers.renderCompleted();
     });
+    elements.voiceDraftList.addEventListener("click", (event) => {
+      const target = closestActionTarget(event.target);
+      if (!target || target.dataset.action !== "voice-remove-draft") return;
+      voiceState.voiceDraft = voiceState.voiceDraft.filter((draft) => draft.id !== target.dataset.draftId);
+      if (voiceState.voiceDraft.length === 0) {
+        openVoiceMessage("Черновик опустел. Можно попробовать надиктовать задачи ещё раз.");
+        return;
+      }
+      app.renderers.renderVoiceModal();
+    });
+    elements.voiceDraftList.addEventListener("input", (event) => {
+      const target = event.target.closest('[data-action="voice-update-text"]');
+      if (!target) return;
+      const draft = voiceState.voiceDraft.find((item) => item.id === target.dataset.draftId);
+      if (!draft) return;
+      draft.text = target.value;
+    });
+    elements.voiceDraftList.addEventListener("change", (event) => {
+      const target = event.target.closest("[data-action]");
+      if (!target) return;
+      const draft = voiceState.voiceDraft.find((item) => item.id === target.dataset.draftId);
+      if (!draft) return;
+      if (target.dataset.action === "voice-update-weight") {
+        draft.suggestedWeight = parseInt(target.value, 10);
+      }
+      if (target.dataset.action === "voice-update-date") {
+        draft.suggestedDate = target.value;
+      }
+    });
     elements.resourcesList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
       if (!target) return;
@@ -1658,7 +2058,16 @@
         builtinAdvices,
         currentAdvice: "",
         currentWeeklyTaskDate: null,
-        sosView: null
+        sosView: null,
+        voice: {
+          isSupported: false,
+          isListening: false,
+          isProcessing: false,
+          lastTranscript: "",
+          voiceDraft: [],
+          voiceError: "",
+          modalMode: "hidden"
+        }
       }
     };
     app.renderers = createRenderers(app);

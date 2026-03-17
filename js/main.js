@@ -28,6 +28,15 @@ export function initApp({ elements }) {
             currentAdvice: '',
             currentWeeklyTaskDate: null,
             sosView: null,
+            voice: {
+                isSupported: false,
+                isListening: false,
+                isProcessing: false,
+                lastTranscript: '',
+                voiceDraft: [],
+                voiceError: '',
+                modalMode: 'hidden',
+            },
         },
     };
 

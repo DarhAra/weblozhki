@@ -14,6 +14,7 @@ export function createScreens(app) {
         elements.libraryModal.classList.add('hidden');
         elements.archiveModal.classList.add('hidden');
         elements.completedModal.classList.add('hidden');
+        elements.voiceModal.classList.add('hidden');
     }
 
     function showOnboardingScreen() {
