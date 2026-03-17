@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ресурсный To-Do</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="app" class="app-container">
+
+        <!-- Экран Онбординга (Приветствие и настройка профиля) -->
+        <div id="onboarding-screen" class="screen hidden">
+            <div class="onboarding-card">
+                <!-- Шаг 1: Приветствие -->
+                <div id="onboarding-step-1" class="onboarding-step">
+                    <h2>Привет! 👋</h2>
+                    <p>Это твой Ресурсный To-Do — приложение, которое заботится о твоих силах, а не только о списке дел.</p>
+                    <p style="margin-bottom: 0;">Давай познакомимся?</p>
+                </div>
+
+                <!-- Шаг 2: Выбор аватара -->
+                <div id="onboarding-step-2" class="onboarding-step hidden">
+                    <h2>Выбери себе помощника</h2>
+                    <p>С кем тебе будет комфортнее?</p>
+
+                    <div class="avatar-selection-grid">
+                        <div class="avatar-option" data-avatar="assets/girl.png">
+                            <img src="assets/girl.png" alt="Девушка" class="avatar-icon-img">
+                            <span class="avatar-name">Девушка</span>
+                        </div>
+                        <div class="avatar-option" data-avatar="assets/boy.png">
+                            <img src="assets/boy.png" alt="Парень" class="avatar-icon-img">
+                            <span class="avatar-name">Парень</span>
+                        </div>
+                        <div class="avatar-option" data-avatar="assets/cat1.png">
+                            <img src="assets/cat1.png" alt="Кошечка" class="avatar-icon-img">
+                            <span class="avatar-name">Кошечка</span>
+                        </div>
+                        <div class="avatar-option" data-avatar="assets/cat2.png">
+                            <img src="assets/cat2.png" alt="Котик" class="avatar-icon-img">
+                            <span class="avatar-name">Котик</span>
+                        </div>
+                        <div class="avatar-option" data-avatar="assets/dog1.png">
+                            <img src="assets/dog1.png" alt="Собачка" class="avatar-icon-img">
+                            <span class="avatar-name">Собачка</span>
+                        </div>
+                        <div class="avatar-option" data-avatar="assets/dog2.png">
+                            <img src="assets/dog2.png" alt="Пёсик" class="avatar-icon-img">
+                            <span class="avatar-name">Пёсик</span>
+                        </div>
+                        <div class="avatar-option" data-avatar="assets/robot1.png">
+                            <img src="assets/robot1.png" alt="Робот Ева" class="avatar-icon-img">
+                            <span class="avatar-name">Робот Ева</span>
+                        </div>
+                        <div class="avatar-option" data-avatar="assets/robot2.png">
+                            <img src="assets/robot2.png" alt="Робот ВАЛЛ-И" class="avatar-icon-img">
+                            <span class="avatar-name">Робот ВАЛЛ-И</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Шаг 3: Имя + пол (помощник приветствует) -->
+                <div id="onboarding-step-3" class="onboarding-step hidden">
+                    <div class="helper-message">
+                        <img id="step-3-avatar" class="helper-avatar" alt="Аватар">
+                        <p class="helper-text dialog-bubble">Отличный выбор! Я с удовольствием буду тебе помогать.
+                            Подскажи, как мне к тебе обращаться?</p>
+                    </div>
+                    <input type="text" id="onboarding-name-input" class="onboarding-input"
+                        placeholder="Твоё имя или никнейм..." autocomplete="off">
+                    <div class="gender-selector">
+                        <button class="gender-option" data-gender="male" title="Мужской">♂</button>
+                        <button class="gender-option" data-gender="female" title="Женский">♀</button>
+                    </div>
+                </div>
+
+                <!-- Шаг 4: Что восстанавливает -->
+                <div id="onboarding-step-4" class="onboarding-step hidden">
+                    <div class="helper-message">
+                        <img id="step-4-avatar" class="helper-avatar" alt="Аватар">
+                        <p class="helper-text dialog-bubble">Очень приятно! А что именно ты считаешь отдыхом и
+                            восстановлением? (выбери или напиши своё)</p>
+                    </div>
+
+                    <div class="tags-container">
+                        <button class="resource-tag" data-tag="Читать книгу">Читать книгу</button>
+                        <button class="resource-tag" data-tag="Попить кофе в тишине">Попить кофе в тишине</button>
+                        <button class="resource-tag" data-tag="Погладить кота">Погладить кота</button>
+                        <button class="resource-tag" data-tag="10 минут соцсетей">10 минут соцсетей</button>
+                        <button class="resource-tag" data-tag="Короткая прогулка">Короткая прогулка</button>
+                        <button class="resource-tag" data-tag="Шоппинг">Шоппинг</button>
+                        <button class="resource-tag" data-tag="Послушать подкаст">Послушать подкаст</button>
+                        <button class="resource-tag" data-tag="Подышать свежим воздухом">Подышать свежим
+                            воздухом</button>
+                    </div>
+
+                    <input type="text" id="onboarding-custom-resource-input" class="onboarding-input"
+                        placeholder="Или напиши свой вариант..." autocomplete="off">
+                </div>
+
+                <div class="onboarding-navigation">
+                    <button id="onboarding-back-btn" class="secondary-btn hidden">Назад</button>
+                    <button id="onboarding-next-btn" class="primary-btn" disabled>Далее</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран "Утренняя энергия" -->
+        <div id="morning-screen" class="screen hidden">
+            <div class="morning-card">
+                <h1 id="morning-title">Доброе утро.</h1>
+                <p>На сколько ты себя чувствуешь сегодня?</p>
+
+                <div class="slider-container">
+                    <input type="range" id="energy-input" min="1" max="100" value="50">
+                    <div class="energy-value"><span id="energy-display">50</span>%</div>
+                </div>
+
+                <button id="start-day-btn" class="primary-btn">Начать день</button>
+            </div>
+        </div>
+
+        <!-- Экран "Обзор конца дня" -->
+        <div id="review-screen" class="screen hidden">
+            <div class="morning-card review-card">
+                <h1>Конец дня.</h1>
+                <p>Эти задачи остались неоконченными. Куда их направим?</p>
+                <div id="review-tasks-list" class="task-list review-list"></div>
+                <button id="finish-review-btn" class="primary-btn hidden" style="margin-top: 20px;">Продолжить</button>
+            </div>
+        </div>
+
+        <!-- Главный экран -->
+        <div id="main-screen" class="screen hidden">
+            <header>
+                <h2>Сегодня</h2>
+                <div class="header-actions">
+                    <img id="app-helper-avatar" class="app-helper-avatar cursor-pointer" title="Совет от помощника" alt="Аватар помощника">
+                    <button id="open-archive-btn" class="icon-btn" title="На потом">📦</button>
+                    <button id="open-completed-btn" class="icon-btn" title="Сделано">✅</button>
+                    <button id="open-history-btn" class="icon-btn" title="История самочувствия">📈</button>
+                    <button id="open-weekly-btn" class="icon-btn" title="План на неделю">📅</button>
+                    <button id="open-library-btn" class="icon-btn" title="Мои радости">☕</button>
+                </div>
+            </header>
+
+            <div id="balance-section" class="balance-section">
+                <div class="balance-header">
+                    <span class="balance-text">Энергия: <span id="used-energy">0</span> / <span
+                            id="total-energy">0</span></span>
+                    <button id="open-sos-btn" class="secondary-btn sos-trigger-btn" type="button">SOS / Я больше не могу</button>
+                </div>
+                <!-- Контейнер для сообщения вынесен над/под прогресс-баром для вместительности диалога помощника -->
+                <div id="balance-message-container" class="balance-message-container hidden">
+                    <img id="balance-message-avatar" class="balance-message-avatar" alt="Аватар баланса">
+                    <span id="balance-message" class="balance-message">Сегодня плотный график. Позаботься о себе.</span>
+                </div>
+                <div class="progress-bar-container">
+                    <div id="progress-bar" class="progress-bar"></div>
+                </div>
+            </div>
+
+            <div id="sos-view" class="sos-view hidden">
+                <div class="sos-view-card">
+                    <p id="sos-view-caption" class="sos-view-caption">Всё лишнее уже убрано.</p>
+                    <h3 class="sos-view-title">Всё в порядке. День остановлен. Иди отдыхать.</h3>
+                    <button id="exit-sos-view-btn" class="secondary-btn" type="button">Вернуться</button>
+                </div>
+            </div>
+
+            <div id="main-content-grid" class="main-content-grid">
+                <!-- Слот "Для себя" -->
+                <div id="self-care-slot" class="self-care-slot">
+                    <div class="slot-header">
+                        <span>Приоритет: для себя</span>
+                        <button id="add-self-care-btn" class="add-self-care-btn" title="Добавить ресурс">+</button>
+                    </div>
+                    <div id="self-care-list" class="task-list"></div>
+                </div>
+
+                <div id="tasks-section" class="tasks-section">
+                    <div class="tasks-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <h3 id="tasks-title" style="font-size: 16px; font-weight: 500;">Задачи</h3>
+                        <button id="open-templates-btn" class="text-btn" style="background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px;">📋 Выбрать из шаблона</button>
+                    </div>
+                    <!-- Форма добавления задачи -->
+                    <form id="add-task-form" class="add-task-form">
+                        <input type="text" id="task-text" placeholder="Новая задача..." required autocomplete="off">
+                        <select id="task-weight">
+                            <option value="5">Пустяк (5)</option>
+                            <option value="10">Мелкая (10)</option>
+                            <option value="20" selected>Средняя (20)</option>
+                            <option value="30">Большая (30)</option>
+                            <option value="50">Глыба (50)</option>
+                        </select>
+                        <button type="submit" class="add-btn">+</button>
+                    </form>
+
+                    <div id="tasks-list" class="task-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Экран "История самочувствия" -->
+        <div id="history-screen" class="screen hidden">
+            <header>
+                <h2>История самочувствия</h2>
+                <button id="close-history-btn" class="icon-btn" title="Назад к Сегодня">⬅️</button>
+            </header>
+            <div id="history-insights" class="history-insights"></div>
+            <div id="history-list" class="history-list"></div>
+        </div>
+
+        <!-- Экран "Неделя" -->
+        <div id="weekly-screen" class="screen hidden">
+            <header>
+                <h2>План на 7 дней</h2>
+                <button id="close-weekly-btn" class="icon-btn" title="Назад к Сегодня">⬅️</button>
+            </header>
+            <div class="weekly-container" id="weekly-container"></div>
+        </div>
+
+        <!-- Модальное окно "Добавить задачу на конкретный день" -->
+        <div id="weekly-task-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Новая задача</h3>
+                    <button id="close-weekly-task-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-weekly-task-form" class="add-task-form">
+                        <input type="text" id="weekly-task-text" placeholder="Новая задача..." required
+                            autocomplete="off">
+                        <select id="weekly-task-weight">
+                            <option value="5">Пустяк (5)</option>
+                            <option value="10">Мелкая (10)</option>
+                            <option value="20" selected>Средняя (20)</option>
+                            <option value="30">Большая (30)</option>
+                            <option value="50">Глыба (50)</option>
+                        </select>
+                        <button type="submit" class="add-btn">+</button>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно "На потом" -->
+        <div id="archive-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>На потом</h3>
+                    <div class="modal-header-actions">
+                        <button id="clear-archive-btn" class="text-btn" type="button">Очистить</button>
+                        <button id="close-archive-btn" class="close-btn">&times;</button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Задачи, которые пока не нужно держать на сегодня.</p>
+                    <div id="archive-list" class="task-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно "Сделано" -->
+        <div id="completed-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Сделано</h3>
+                    <div class="modal-header-actions">
+                        <button id="clear-completed-btn" class="text-btn" type="button">Очистить</button>
+                        <button id="close-completed-btn" class="close-btn">&times;</button>
+                    </div>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Завершённые задачи, к которым уже не нужно возвращаться сегодня.</p>
+                    <div id="completed-list" class="task-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно "Библиотека ресурсов" -->
+        <div id="library-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Мои радости (Ресурсные активности)</h3>
+                    <button id="close-library-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <form id="add-resource-form" class="add-task-form">
+                        <input type="text" id="resource-text"
+                            placeholder="Что тебя восстанавливает? (напр. попить кофе)" required autocomplete="off">
+                        <button type="submit" class="add-btn">+</button>
+                    </form>
+                    <p class="modal-subtitle">Нажми +, чтобы добавить в список "Для себя" на сегодня. Вес: 0.</p>
+                    <div id="resources-list" class="resources-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно "Шаблоны рутин" -->
+        <div id="templates-modal" class="modal hidden">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3>Шаблоны рутин</h3>
+                    <button id="close-templates-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Готовые списки задач для разных ситуаций.</p>
+                    <div id="templates-container"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно "Совет от помощника" -->
+        <div id="helper-modal" class="modal hidden">
+            <div class="modal-content helper-advice-card">
+                <div class="modal-header" style="justify-content: flex-end; margin-bottom: 0;">
+                    <button id="close-helper-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="helper-advice-body">
+                    <img id="advice-avatar" class="helper-avatar advice-avatar-large" alt="Аватар помощника">
+                    <h3 class="advice-title">Не знаешь, чем заняться?</h3>
+                    <p class="advice-text" id="advice-text">Загрузка совета...</p>
+                    
+                    <div class="advice-actions">
+                        <button id="advice-add-btn" class="primary-btn advice-btn">Добавить на сегодня</button>
+                        <button id="advice-refresh-btn" class="secondary-btn advice-btn" title="Другой вариант">🔄 Другое</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно "SOS" -->
+        <div id="sos-modal" class="modal hidden">
+            <div class="modal-content sos-modal-card">
+                <div class="modal-header">
+                    <h3>Мягкая остановка дня</h3>
+                    <button id="close-sos-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Если сил больше нет, мы можем быстро убрать с сегодняшнего дня все невыполненные обычные задачи. Выполненное и ресурсные дела останутся на месте.</p>
+                    <div class="sos-modal-actions">
+                        <button id="sos-archive-btn" class="primary-btn advice-btn" type="button">Перенести невыполненное в «На потом»</button>
+                        <button id="sos-tomorrow-btn" class="secondary-btn advice-btn" type="button">Перенести невыполненное на завтра</button>
+                        <button id="sos-cancel-btn" class="text-btn sos-cancel-btn" type="button">Пока не нужно</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно "Все дела выполнены!" -->
+        <div id="all-done-modal" class="modal hidden">
+            <div class="modal-content all-done-card">
+                <div class="all-done-body">
+                    <img id="all-done-avatar" class="helper-avatar all-done-avatar" alt="Аватар помощника">
+                    <h3 class="all-done-title">🎉 Все дела выполнены!</h3>
+                    <p class="all-done-text" id="all-done-text"></p>
+                    <button id="all-done-close-btn" class="primary-btn advice-btn">Спасибо! ❤️</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/app.bundle.js?v=20260317-enter-backdrop"></script>
+</body>
+
+</html>

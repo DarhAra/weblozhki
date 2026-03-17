@@ -1,0 +1,11 @@
+{
+  "name": "resource-todo",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "node scripts/build.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.27.0"
+  }
+}
