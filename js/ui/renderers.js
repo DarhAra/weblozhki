@@ -43,11 +43,37 @@ function formatDoneDate(date) {
     });
 }
 
-function renderTaskElement(task) {
+function renderInlineTaskEditor(task, editTaskState) {
+    const isResource = task.isResource || editTaskState.isResource;
+    const weightSelectHtml = isResource
+        ? '<div class="inline-edit-spacer"></div>'
+        : `
+            <select class="inline-edit-weight" data-action="edit-update-weight" data-task-id="${task.id}">
+                ${[5, 10, 20, 30, 50].map(weight => `<option value="${weight}" ${Number(editTaskState.weight) === weight ? 'selected' : ''}>${weight}</option>`).join('')}
+            </select>
+        `;
+
+    return `
+        <div class="task-main inline-edit-main">
+            <input class="inline-edit-input" type="text" value="${escapeHtml(editTaskState.text)}" data-action="edit-update-text" data-task-id="${task.id}">
+        </div>
+        ${weightSelectHtml}
+        <button class="task-breakdown-btn" type="button" data-action="edit-save-task" data-task-id="${task.id}">Сохранить</button>
+        <button class="text-btn inline-edit-cancel" type="button" data-action="edit-cancel-task" data-task-id="${task.id}">Отмена</button>
+    `;
+}
+
+function renderTaskElement(task, editTaskState = null) {
     const taskEl = document.createElement('div');
     taskEl.className = `task-item ${task.completed ? 'completed' : ''} ${task.isResource ? 'resource-item-drag' : ''}`;
-    taskEl.draggable = true;
+    taskEl.draggable = !editTaskState;
     taskEl.dataset.taskId = task.id;
+
+    if (editTaskState) {
+        taskEl.classList.add('editing');
+        taskEl.innerHTML = renderInlineTaskEditor(task, editTaskState);
+        return taskEl;
+    }
 
     const weightClass = task.isResource ? 'resource-weight' : '';
     const weightLabel = task.isResource ? 'Ресурс' : `Вес: ${task.weight}`;
@@ -238,7 +264,8 @@ export function createRenderers(app) {
 
         let usedEnergy = 0;
         visibleTodayTasks.forEach(task => {
-            const taskEl = renderTaskElement(task);
+            const editTaskState = runtime.editTask?.taskId === task.id ? runtime.editTask : null;
+            const taskEl = renderTaskElement(task, editTaskState);
             if (task.isResource) {
                 elements.selfCareList.appendChild(taskEl);
             } else {
@@ -323,8 +350,14 @@ export function createRenderers(app) {
         }
 
         deferredTasks.forEach(task => {
+            if (runtime.editTask?.taskId === task.id) {
+                elements.archiveList.appendChild(renderTaskElement(task, runtime.editTask));
+                return;
+            }
+
             const taskEl = document.createElement('div');
             taskEl.className = 'task-item';
+            taskEl.dataset.taskId = task.id;
             const weightClass = task.isResource ? 'resource-weight' : '';
             const weightLabel = task.isResource ? 'Ресурс' : `Вес: ${task.weight}`;
 
@@ -350,8 +383,14 @@ export function createRenderers(app) {
         doneTasks
             .sort((left, right) => (right.completedAtDate || '').localeCompare(left.completedAtDate || ''))
             .forEach(task => {
+                if (runtime.editTask?.taskId === task.id) {
+                    elements.completedList.appendChild(renderTaskElement(task, runtime.editTask));
+                    return;
+                }
+
                 const taskEl = document.createElement('div');
                 taskEl.className = 'task-item completed';
+                taskEl.dataset.taskId = task.id;
                 const weightLabel = task.isResource ? 'Ресурс' : `Вес: ${task.weight}`;
 
                 taskEl.innerHTML = `
@@ -403,6 +442,15 @@ export function createRenderers(app) {
 
             const tasksContainer = col.querySelector('[data-weekly-date]');
             dayTasks.forEach(task => {
+                if (runtime.editTask?.taskId === task.id) {
+                    const taskEl = document.createElement('div');
+                    taskEl.className = 'weekly-task editing';
+                    taskEl.dataset.taskId = task.id;
+                    taskEl.innerHTML = renderInlineTaskEditor(task, runtime.editTask);
+                    tasksContainer.appendChild(taskEl);
+                    return;
+                }
+
                 const taskEl = document.createElement('div');
                 taskEl.className = 'weekly-task';
                 taskEl.draggable = true;

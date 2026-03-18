@@ -726,6 +726,45 @@ header h2 {
     background: var(--primary-light);
 }
 
+.task-item.editing,
+.weekly-task.editing {
+    cursor: default;
+}
+
+.inline-edit-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.inline-edit-input,
+.inline-edit-weight {
+    width: 100%;
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    padding: 10px 12px;
+    font: inherit;
+    color: var(--text-primary);
+    background: white;
+}
+
+.inline-edit-input:focus,
+.inline-edit-weight:focus {
+    outline: none;
+    border-color: var(--primary-color);
+}
+
+.inline-edit-weight {
+    width: 92px;
+}
+
+.inline-edit-cancel {
+    white-space: nowrap;
+}
+
+.inline-edit-spacer {
+    width: 92px;
+}
+
 /* Модальное окно */
 .modal {
     position: absolute;

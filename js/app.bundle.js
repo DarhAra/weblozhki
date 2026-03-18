@@ -547,6 +547,19 @@
       }
     });
   }
+  function updateTask(store, { taskId, text, weight }) {
+    let updatedTask = null;
+    store.updateState((state) => {
+      const task = state.tasks.find((item) => item.id === taskId);
+      if (!task) return;
+      task.text = text;
+      if (!task.isResource && typeof weight === "number" && !Number.isNaN(weight)) {
+        task.weight = weight;
+      }
+      updatedTask = task;
+    });
+    return updatedTask;
+  }
   function clearDeferredTasks(store) {
     let removedCount = 0;
     store.updateState((state) => {
@@ -993,12 +1006,33 @@
       month: "long"
     });
   }
-  function renderTaskElement(task) {
+  function renderInlineTaskEditor(task, editTaskState) {
+    const isResource = task.isResource || editTaskState.isResource;
+    const weightSelectHtml = isResource ? '<div class="inline-edit-spacer"></div>' : `
+            <select class="inline-edit-weight" data-action="edit-update-weight" data-task-id="${task.id}">
+                ${[5, 10, 20, 30, 50].map((weight) => `<option value="${weight}" ${Number(editTaskState.weight) === weight ? "selected" : ""}>${weight}</option>`).join("")}
+            </select>
+        `;
+    return `
+        <div class="task-main inline-edit-main">
+            <input class="inline-edit-input" type="text" value="${escapeHtml(editTaskState.text)}" data-action="edit-update-text" data-task-id="${task.id}">
+        </div>
+        ${weightSelectHtml}
+        <button class="task-breakdown-btn" type="button" data-action="edit-save-task" data-task-id="${task.id}">Сохранить</button>
+        <button class="text-btn inline-edit-cancel" type="button" data-action="edit-cancel-task" data-task-id="${task.id}">Отмена</button>
+    `;
+  }
+  function renderTaskElement(task, editTaskState = null) {
     var _a;
     const taskEl = document.createElement("div");
     taskEl.className = `task-item ${task.completed ? "completed" : ""} ${task.isResource ? "resource-item-drag" : ""}`;
-    taskEl.draggable = true;
+    taskEl.draggable = !editTaskState;
     taskEl.dataset.taskId = task.id;
+    if (editTaskState) {
+      taskEl.classList.add("editing");
+      taskEl.innerHTML = renderInlineTaskEditor(task, editTaskState);
+      return taskEl;
+    }
     const weightClass = task.isResource ? "resource-weight" : "";
     const weightLabel = task.isResource ? "Ресурс" : `Вес: ${task.weight}`;
     const controlsHtml = !task.isResource && !task.completed ? `
@@ -1147,7 +1181,9 @@
       elements.selfCareList.innerHTML = "";
       let usedEnergy = 0;
       visibleTodayTasks.forEach((task) => {
-        const taskEl = renderTaskElement(task);
+        var _a2;
+        const editTaskState = ((_a2 = runtime.editTask) == null ? void 0 : _a2.taskId) === task.id ? runtime.editTask : null;
+        const taskEl = renderTaskElement(task, editTaskState);
         if (task.isResource) {
           elements.selfCareList.appendChild(taskEl);
         } else {
@@ -1217,8 +1253,14 @@
         return;
       }
       deferredTasks.forEach((task) => {
+        var _a;
+        if (((_a = runtime.editTask) == null ? void 0 : _a.taskId) === task.id) {
+          elements.archiveList.appendChild(renderTaskElement(task, runtime.editTask));
+          return;
+        }
         const taskEl = document.createElement("div");
         taskEl.className = "task-item";
+        taskEl.dataset.taskId = task.id;
         const weightClass = task.isResource ? "resource-weight" : "";
         const weightLabel = task.isResource ? "Ресурс" : `Вес: ${task.weight}`;
         taskEl.innerHTML = `
@@ -1238,8 +1280,14 @@
         return;
       }
       doneTasks.sort((left, right) => (right.completedAtDate || "").localeCompare(left.completedAtDate || "")).forEach((task) => {
+        var _a;
+        if (((_a = runtime.editTask) == null ? void 0 : _a.taskId) === task.id) {
+          elements.completedList.appendChild(renderTaskElement(task, runtime.editTask));
+          return;
+        }
         const taskEl = document.createElement("div");
         taskEl.className = "task-item completed";
+        taskEl.dataset.taskId = task.id;
         const weightLabel = task.isResource ? "Ресурс" : `Вес: ${task.weight}`;
         taskEl.innerHTML = `
                     <div class="task-desc">
@@ -1283,6 +1331,15 @@
             `;
         const tasksContainer = col.querySelector("[data-weekly-date]");
         dayTasks.forEach((task) => {
+          var _a;
+          if (((_a = runtime.editTask) == null ? void 0 : _a.taskId) === task.id) {
+            const taskEl2 = document.createElement("div");
+            taskEl2.className = "weekly-task editing";
+            taskEl2.dataset.taskId = task.id;
+            taskEl2.innerHTML = renderInlineTaskEditor(task, runtime.editTask);
+            tasksContainer.appendChild(taskEl2);
+            return;
+          }
           const taskEl = document.createElement("div");
           taskEl.className = "weekly-task";
           taskEl.draggable = true;
@@ -2096,6 +2153,7 @@
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
     const breakdownState = runtime.breakdown;
+    const editTaskState = runtime.editTask;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = "tpl_4";
     function closeVoiceModal({ resetDraft = true } = {}) {
@@ -2147,6 +2205,20 @@
         breakdownState.drafts = [];
         elements.breakdownRememberChoice.checked = false;
       }
+    }
+    function stopInlineEdit() {
+      editTaskState.taskId = null;
+      editTaskState.text = "";
+      editTaskState.weight = 20;
+      editTaskState.isResource = false;
+    }
+    function startInlineEdit(taskId) {
+      const task = store.getState().tasks.find((item) => item.id === taskId);
+      if (!task) return;
+      editTaskState.taskId = taskId;
+      editTaskState.text = task.text;
+      editTaskState.weight = task.weight || 5;
+      editTaskState.isResource = Boolean(task.isResource);
     }
     function applyBreakdownPreferenceIfNeeded() {
       if (!elements.breakdownRememberChoice.checked) {
@@ -2390,6 +2462,39 @@
       app.renderers.renderArchive();
       app.renderers.renderCompleted();
       app.renderers.renderWeeklyScreen();
+    }
+    function renderAllTaskViews() {
+      app.renderers.renderMainScreen();
+      app.renderers.renderArchive();
+      app.renderers.renderCompleted();
+      app.renderers.renderWeeklyScreen();
+    }
+    function saveInlineEdit() {
+      if (!editTaskState.taskId) return;
+      const text = editTaskState.text.trim();
+      if (!text) return;
+      updateTask(store, {
+        taskId: editTaskState.taskId,
+        text,
+        weight: parseInt(editTaskState.weight, 10)
+      });
+      stopInlineEdit();
+      renderAllTaskViews();
+    }
+    function focusInlineEditor(taskId) {
+      setTimeout(() => {
+        const input = document.querySelector(`[data-action="edit-update-text"][data-task-id="${taskId}"]`);
+        if (!input) return;
+        input.focus();
+        input.select();
+      }, 0);
+    }
+    function handleInlineEditEnter(event) {
+      const input = event.target.closest('[data-action="edit-update-text"]');
+      if (!input || event.key !== "Enter" || event.shiftKey) return;
+      event.preventDefault();
+      if (editTaskState.taskId !== input.dataset.taskId) return;
+      saveInlineEdit();
     }
     elements.adviceRefreshBtn.addEventListener("click", () => {
       elements.adviceText.style.opacity = 0;
@@ -2646,7 +2751,12 @@
         if (!target) return;
         const taskId = target.dataset.taskId;
         if (!taskId) return;
-        if (target.dataset.action === "toggle-task") {
+        if (target.dataset.action === "edit-save-task") {
+          saveInlineEdit();
+        } else if (target.dataset.action === "edit-cancel-task") {
+          stopInlineEdit();
+          renderAllTaskViews();
+        } else if (target.dataset.action === "toggle-task") {
           const updatedTask = toggleTask(store, taskId);
           if (updatedTask == null ? void 0 : updatedTask.completed) {
             advanceBreakdownAfterCompletion(store, taskId);
@@ -2709,6 +2819,26 @@
         });
         app.renderers.renderMainScreen();
       });
+      container.addEventListener("dblclick", (event) => {
+        const task = event.target.closest(".task-item");
+        if (!(task == null ? void 0 : task.dataset.taskId)) return;
+        startInlineEdit(task.dataset.taskId);
+        renderAllTaskViews();
+        focusInlineEditor(task.dataset.taskId);
+      });
+      container.addEventListener("input", (event) => {
+        const target = event.target.closest('[data-action="edit-update-text"]');
+        if (!(target == null ? void 0 : target.dataset.taskId)) return;
+        if (editTaskState.taskId !== target.dataset.taskId) return;
+        editTaskState.text = target.value;
+      });
+      container.addEventListener("change", (event) => {
+        const target = event.target.closest('[data-action="edit-update-weight"]');
+        if (!(target == null ? void 0 : target.dataset.taskId)) return;
+        if (editTaskState.taskId !== target.dataset.taskId) return;
+        editTaskState.weight = parseInt(target.value, 10);
+      });
+      container.addEventListener("keydown", handleInlineEditEnter);
     });
     elements.reviewTasksList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
@@ -2735,6 +2865,15 @@
       if (!target) return;
       const taskId = target.dataset.taskId;
       if (!taskId) return;
+      if (target.dataset.action === "edit-save-task") {
+        saveInlineEdit();
+        return;
+      }
+      if (target.dataset.action === "edit-cancel-task") {
+        stopInlineEdit();
+        renderAllTaskViews();
+        return;
+      }
       if (target.dataset.action === "deferred-move-today") {
         moveToToday(store, taskId);
       } else if (target.dataset.action === "deferred-delete-task") {
@@ -2746,6 +2885,24 @@
       app.renderers.renderMainScreen();
       app.renderers.renderWeeklyScreen();
     });
+    elements.archiveList.addEventListener("dblclick", (event) => {
+      const task = event.target.closest(".task-item");
+      if (!(task == null ? void 0 : task.dataset.taskId)) return;
+      startInlineEdit(task.dataset.taskId);
+      renderAllTaskViews();
+      focusInlineEditor(task.dataset.taskId);
+    });
+    elements.archiveList.addEventListener("input", (event) => {
+      const target = event.target.closest('[data-action="edit-update-text"]');
+      if (!(target == null ? void 0 : target.dataset.taskId) || editTaskState.taskId !== target.dataset.taskId) return;
+      editTaskState.text = target.value;
+    });
+    elements.archiveList.addEventListener("change", (event) => {
+      const target = event.target.closest('[data-action="edit-update-weight"]');
+      if (!(target == null ? void 0 : target.dataset.taskId) || editTaskState.taskId !== target.dataset.taskId) return;
+      editTaskState.weight = parseInt(target.value, 10);
+    });
+    elements.archiveList.addEventListener("keydown", handleInlineEditEnter);
     elements.lowEnergySwapList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
       if (!target || target.dataset.action !== "choose-low-energy-task") return;
@@ -2762,10 +2919,38 @@
       const target = closestActionTarget(event.target);
       if (!target) return;
       const taskId = target.dataset.taskId;
-      if (!taskId || target.dataset.action !== "done-delete-task") return;
+      if (!taskId) return;
+      if (target.dataset.action === "edit-save-task") {
+        saveInlineEdit();
+        return;
+      }
+      if (target.dataset.action === "edit-cancel-task") {
+        stopInlineEdit();
+        renderAllTaskViews();
+        return;
+      }
+      if (target.dataset.action !== "done-delete-task") return;
       deleteTask(store, taskId);
       app.renderers.renderCompleted();
     });
+    elements.completedList.addEventListener("dblclick", (event) => {
+      const task = event.target.closest(".task-item");
+      if (!(task == null ? void 0 : task.dataset.taskId)) return;
+      startInlineEdit(task.dataset.taskId);
+      renderAllTaskViews();
+      focusInlineEditor(task.dataset.taskId);
+    });
+    elements.completedList.addEventListener("input", (event) => {
+      const target = event.target.closest('[data-action="edit-update-text"]');
+      if (!(target == null ? void 0 : target.dataset.taskId) || editTaskState.taskId !== target.dataset.taskId) return;
+      editTaskState.text = target.value;
+    });
+    elements.completedList.addEventListener("change", (event) => {
+      const target = event.target.closest('[data-action="edit-update-weight"]');
+      if (!(target == null ? void 0 : target.dataset.taskId) || editTaskState.taskId !== target.dataset.taskId) return;
+      editTaskState.weight = parseInt(target.value, 10);
+    });
+    elements.completedList.addEventListener("keydown", handleInlineEditEnter);
     elements.voiceDraftList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
       if (!target || target.dataset.action !== "voice-remove-draft") return;
@@ -2910,6 +3095,36 @@
       elements.weeklyTaskModal.classList.remove("hidden");
       elements.weeklyTaskText.focus();
     });
+    elements.weeklyContainer.addEventListener("dblclick", (event) => {
+      const task = event.target.closest(".weekly-task");
+      if (!(task == null ? void 0 : task.dataset.taskId)) return;
+      startInlineEdit(task.dataset.taskId);
+      renderAllTaskViews();
+      focusInlineEditor(task.dataset.taskId);
+    });
+    elements.weeklyContainer.addEventListener("click", (event) => {
+      const target = closestActionTarget(event.target);
+      if (!(target == null ? void 0 : target.dataset.taskId)) return;
+      if (target.dataset.action === "edit-save-task") {
+        saveInlineEdit();
+        return;
+      }
+      if (target.dataset.action === "edit-cancel-task") {
+        stopInlineEdit();
+        renderAllTaskViews();
+      }
+    });
+    elements.weeklyContainer.addEventListener("input", (event) => {
+      const target = event.target.closest('[data-action="edit-update-text"]');
+      if (!(target == null ? void 0 : target.dataset.taskId) || editTaskState.taskId !== target.dataset.taskId) return;
+      editTaskState.text = target.value;
+    });
+    elements.weeklyContainer.addEventListener("change", (event) => {
+      const target = event.target.closest('[data-action="edit-update-weight"]');
+      if (!(target == null ? void 0 : target.dataset.taskId) || editTaskState.taskId !== target.dataset.taskId) return;
+      editTaskState.weight = parseInt(target.value, 10);
+    });
+    elements.weeklyContainer.addEventListener("keydown", handleInlineEditEnter);
     elements.weeklyContainer.addEventListener("dragstart", (event) => {
       var _a;
       const task = event.target.closest(".weekly-task");
@@ -2987,6 +3202,12 @@
           taskId: null,
           mode: "intro",
           drafts: []
+        },
+        editTask: {
+          taskId: null,
+          text: "",
+          weight: 20,
+          isResource: false
         },
         templateAutoPrompt: {
           templateId: null

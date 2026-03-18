@@ -25,6 +25,7 @@ import {
     reorderWeeklyTasks,
     swapLowEnergyKeptTask,
     toggleTask,
+    updateTask,
 } from '../domain/tasks.js';
 import { addResource, addResourceToDay, assignLowEnergyResource, deleteResource } from '../domain/resources.js';
 import {
@@ -122,6 +123,7 @@ export function bindAppEvents(app) {
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
     const breakdownState = runtime.breakdown;
+    const editTaskState = runtime.editTask;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = 'tpl_4';
 
@@ -179,6 +181,23 @@ export function bindAppEvents(app) {
             breakdownState.drafts = [];
             elements.breakdownRememberChoice.checked = false;
         }
+    }
+
+    function stopInlineEdit() {
+        editTaskState.taskId = null;
+        editTaskState.text = '';
+        editTaskState.weight = 20;
+        editTaskState.isResource = false;
+    }
+
+    function startInlineEdit(taskId) {
+        const task = store.getState().tasks.find(item => item.id === taskId);
+        if (!task) return;
+
+        editTaskState.taskId = taskId;
+        editTaskState.text = task.text;
+        editTaskState.weight = task.weight || 5;
+        editTaskState.isResource = Boolean(task.isResource);
     }
 
     function applyBreakdownPreferenceIfNeeded() {
@@ -468,6 +487,48 @@ export function bindAppEvents(app) {
         app.renderers.renderWeeklyScreen();
     }
 
+    function renderAllTaskViews() {
+        app.renderers.renderMainScreen();
+        app.renderers.renderArchive();
+        app.renderers.renderCompleted();
+        app.renderers.renderWeeklyScreen();
+    }
+
+    function saveInlineEdit() {
+        if (!editTaskState.taskId) return;
+
+        const text = editTaskState.text.trim();
+        if (!text) return;
+
+        updateTask(store, {
+            taskId: editTaskState.taskId,
+            text,
+            weight: parseInt(editTaskState.weight, 10),
+        });
+
+        stopInlineEdit();
+        renderAllTaskViews();
+    }
+
+    function focusInlineEditor(taskId) {
+        setTimeout(() => {
+            const input = document.querySelector(`[data-action="edit-update-text"][data-task-id="${taskId}"]`);
+            if (!input) return;
+
+            input.focus();
+            input.select();
+        }, 0);
+    }
+
+    function handleInlineEditEnter(event) {
+        const input = event.target.closest('[data-action="edit-update-text"]');
+        if (!input || event.key !== 'Enter' || event.shiftKey) return;
+
+        event.preventDefault();
+        if (editTaskState.taskId !== input.dataset.taskId) return;
+        saveInlineEdit();
+    }
+
     elements.adviceRefreshBtn.addEventListener('click', () => {
         elements.adviceText.style.opacity = 0;
         setTimeout(() => {
@@ -663,6 +724,7 @@ export function bindAppEvents(app) {
         elements.weeklyTaskModal.classList.add('hidden');
     });
 
+
     elements.addWeeklyTaskForm.addEventListener('submit', event => {
         event.preventDefault();
         const text = elements.weeklyTaskText.value.trim();
@@ -783,7 +845,12 @@ export function bindAppEvents(app) {
             const taskId = target.dataset.taskId;
             if (!taskId) return;
 
-            if (target.dataset.action === 'toggle-task') {
+            if (target.dataset.action === 'edit-save-task') {
+                saveInlineEdit();
+            } else if (target.dataset.action === 'edit-cancel-task') {
+                stopInlineEdit();
+                renderAllTaskViews();
+            } else if (target.dataset.action === 'toggle-task') {
                 const updatedTask = toggleTask(store, taskId);
                 if (updatedTask?.completed) {
                     advanceBreakdownAfterCompletion(store, taskId);
@@ -854,6 +921,33 @@ export function bindAppEvents(app) {
             });
             app.renderers.renderMainScreen();
         });
+
+        container.addEventListener('dblclick', event => {
+            const task = event.target.closest('.task-item');
+            if (!task?.dataset.taskId) return;
+
+            startInlineEdit(task.dataset.taskId);
+            renderAllTaskViews();
+            focusInlineEditor(task.dataset.taskId);
+        });
+
+        container.addEventListener('input', event => {
+            const target = event.target.closest('[data-action="edit-update-text"]');
+            if (!target?.dataset.taskId) return;
+
+            if (editTaskState.taskId !== target.dataset.taskId) return;
+            editTaskState.text = target.value;
+        });
+
+        container.addEventListener('change', event => {
+            const target = event.target.closest('[data-action="edit-update-weight"]');
+            if (!target?.dataset.taskId) return;
+
+            if (editTaskState.taskId !== target.dataset.taskId) return;
+            editTaskState.weight = parseInt(target.value, 10);
+        });
+
+        container.addEventListener('keydown', handleInlineEditEnter);
     });
 
     elements.reviewTasksList.addEventListener('click', event => {
@@ -887,6 +981,17 @@ export function bindAppEvents(app) {
         const taskId = target.dataset.taskId;
         if (!taskId) return;
 
+        if (target.dataset.action === 'edit-save-task') {
+            saveInlineEdit();
+            return;
+        }
+
+        if (target.dataset.action === 'edit-cancel-task') {
+            stopInlineEdit();
+            renderAllTaskViews();
+            return;
+        }
+
         if (target.dataset.action === 'deferred-move-today') {
             moveToToday(store, taskId);
         } else if (target.dataset.action === 'deferred-delete-task') {
@@ -899,6 +1004,31 @@ export function bindAppEvents(app) {
         app.renderers.renderMainScreen();
         app.renderers.renderWeeklyScreen();
     });
+
+    elements.archiveList.addEventListener('dblclick', event => {
+        const task = event.target.closest('.task-item');
+        if (!task?.dataset.taskId) return;
+
+        startInlineEdit(task.dataset.taskId);
+        renderAllTaskViews();
+        focusInlineEditor(task.dataset.taskId);
+    });
+
+    elements.archiveList.addEventListener('input', event => {
+        const target = event.target.closest('[data-action="edit-update-text"]');
+        if (!target?.dataset.taskId || editTaskState.taskId !== target.dataset.taskId) return;
+
+        editTaskState.text = target.value;
+    });
+
+    elements.archiveList.addEventListener('change', event => {
+        const target = event.target.closest('[data-action="edit-update-weight"]');
+        if (!target?.dataset.taskId || editTaskState.taskId !== target.dataset.taskId) return;
+
+        editTaskState.weight = parseInt(target.value, 10);
+    });
+
+    elements.archiveList.addEventListener('keydown', handleInlineEditEnter);
 
     elements.lowEnergySwapList.addEventListener('click', event => {
         const target = closestActionTarget(event.target);
@@ -921,11 +1051,49 @@ export function bindAppEvents(app) {
         if (!target) return;
 
         const taskId = target.dataset.taskId;
-        if (!taskId || target.dataset.action !== 'done-delete-task') return;
+        if (!taskId) return;
+
+        if (target.dataset.action === 'edit-save-task') {
+            saveInlineEdit();
+            return;
+        }
+
+        if (target.dataset.action === 'edit-cancel-task') {
+            stopInlineEdit();
+            renderAllTaskViews();
+            return;
+        }
+
+        if (target.dataset.action !== 'done-delete-task') return;
 
         deleteTask(store, taskId);
         app.renderers.renderCompleted();
     });
+
+    elements.completedList.addEventListener('dblclick', event => {
+        const task = event.target.closest('.task-item');
+        if (!task?.dataset.taskId) return;
+
+        startInlineEdit(task.dataset.taskId);
+        renderAllTaskViews();
+        focusInlineEditor(task.dataset.taskId);
+    });
+
+    elements.completedList.addEventListener('input', event => {
+        const target = event.target.closest('[data-action="edit-update-text"]');
+        if (!target?.dataset.taskId || editTaskState.taskId !== target.dataset.taskId) return;
+
+        editTaskState.text = target.value;
+    });
+
+    elements.completedList.addEventListener('change', event => {
+        const target = event.target.closest('[data-action="edit-update-weight"]');
+        if (!target?.dataset.taskId || editTaskState.taskId !== target.dataset.taskId) return;
+
+        editTaskState.weight = parseInt(target.value, 10);
+    });
+
+    elements.completedList.addEventListener('keydown', handleInlineEditEnter);
 
     elements.voiceDraftList.addEventListener('click', event => {
         const target = closestActionTarget(event.target);
@@ -1107,6 +1275,46 @@ export function bindAppEvents(app) {
         elements.weeklyTaskModal.classList.remove('hidden');
         elements.weeklyTaskText.focus();
     });
+
+    elements.weeklyContainer.addEventListener('dblclick', event => {
+        const task = event.target.closest('.weekly-task');
+        if (!task?.dataset.taskId) return;
+
+        startInlineEdit(task.dataset.taskId);
+        renderAllTaskViews();
+        focusInlineEditor(task.dataset.taskId);
+    });
+
+    elements.weeklyContainer.addEventListener('click', event => {
+        const target = closestActionTarget(event.target);
+        if (!target?.dataset.taskId) return;
+
+        if (target.dataset.action === 'edit-save-task') {
+            saveInlineEdit();
+            return;
+        }
+
+        if (target.dataset.action === 'edit-cancel-task') {
+            stopInlineEdit();
+            renderAllTaskViews();
+        }
+    });
+
+    elements.weeklyContainer.addEventListener('input', event => {
+        const target = event.target.closest('[data-action="edit-update-text"]');
+        if (!target?.dataset.taskId || editTaskState.taskId !== target.dataset.taskId) return;
+
+        editTaskState.text = target.value;
+    });
+
+    elements.weeklyContainer.addEventListener('change', event => {
+        const target = event.target.closest('[data-action="edit-update-weight"]');
+        if (!target?.dataset.taskId || editTaskState.taskId !== target.dataset.taskId) return;
+
+        editTaskState.weight = parseInt(target.value, 10);
+    });
+
+    elements.weeklyContainer.addEventListener('keydown', handleInlineEditEnter);
 
     elements.weeklyContainer.addEventListener('dragstart', event => {
         const task = event.target.closest('.weekly-task');

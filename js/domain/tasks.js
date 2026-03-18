@@ -414,6 +414,23 @@ export function deleteTask(store, taskId) {
     });
 }
 
+export function updateTask(store, { taskId, text, weight }) {
+    let updatedTask = null;
+
+    store.updateState(state => {
+        const task = state.tasks.find(item => item.id === taskId);
+        if (!task) return;
+
+        task.text = text;
+        if (!task.isResource && typeof weight === 'number' && !Number.isNaN(weight)) {
+            task.weight = weight;
+        }
+        updatedTask = task;
+    });
+
+    return updatedTask;
+}
+
 export function clearDeferredTasks(store) {
     let removedCount = 0;
     store.updateState(state => {

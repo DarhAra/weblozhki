@@ -52,6 +52,12 @@ export function initApp({ elements }) {
                 mode: 'intro',
                 drafts: [],
             },
+            editTask: {
+                taskId: null,
+                text: '',
+                weight: 20,
+                isResource: false,
+            },
             templateAutoPrompt: {
                 templateId: null,
             },
