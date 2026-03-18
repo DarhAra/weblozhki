@@ -47,6 +47,11 @@ export function initApp({ elements }) {
                 voiceError: '',
                 modalMode: 'hidden',
             },
+            breakdown: {
+                taskId: null,
+                mode: 'intro',
+                drafts: [],
+            },
             templateAutoPrompt: {
                 templateId: null,
             },

@@ -28,12 +28,56 @@ function setTaskStorageStatus(task, status) {
     task.isArchived = status === TASK_STORAGE.DEFERRED;
 }
 
+function isBreakdownParentHidden(task) {
+    return Boolean(task?.isBreakdownParent && task?.isHiddenFromMainList);
+}
+
+function isVisibleBreakdownStep(task, state) {
+    if (!task?.isBreakdownStep) {
+        return true;
+    }
+
+    if (!task.showOnlyCurrentStep) {
+        return true;
+    }
+
+    const parentTask = task.breakdownParentId
+        ? state.tasks.find(item => item.id === task.breakdownParentId)
+        : null;
+
+    if (!parentTask) {
+        return task.isCurrentBreakdownStep !== false;
+    }
+
+    return parentTask.breakdownChildIds
+        .map(id => state.tasks.find(item => item.id === id))
+        .filter(Boolean)
+        .find(step => !step.completed)?.id === task.id;
+}
+
+function isTaskVisibleOnMainList(task, state) {
+    if (isBreakdownParentHidden(task)) {
+        return false;
+    }
+
+    return isVisibleBreakdownStep(task, state);
+}
+
 export function getOverdueTasks(state, today = getLocalDateString()) {
-    return state.tasks.filter(task => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate && task.targetDate < today);
+    return state.tasks.filter(task =>
+        getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE
+        && task.targetDate
+        && task.targetDate < today
+        && !isBreakdownParentHidden(task)
+    );
 }
 
 export function getTodayTasks(state, today = getLocalDateString()) {
-    return state.tasks.filter(task => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today);
+    return state.tasks.filter(task =>
+        getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE
+        && task.targetDate === today
+        && isTaskVisibleOnMainList(task, state)
+    );
 }
 
 export function moveCompletedTodayTasksToDone(store, today = getLocalDateString()) {
@@ -59,6 +103,7 @@ export function getOpenRegularTodayTasks(state, today = getLocalDateString()) {
         && task.targetDate === today
         && !task.completed
         && !task.isResource
+        && !isBreakdownParentHidden(task)
     );
 }
 
@@ -71,6 +116,7 @@ function getLightTaskToKeep(state, today = getLocalDateString()) {
             && task.targetDate === today
             && !task.completed
             && !task.isResource
+            && !isBreakdownParentHidden(task)
             && (task.weight || 0) <= 10;
 
         if (!isLightCandidate) {
@@ -108,6 +154,7 @@ export function applyLowEnergyDay(store, today = getLocalDateString()) {
                 && task.targetDate === today
                 && !task.completed
                 && !task.isResource
+                && !isBreakdownParentHidden(task)
                 && task.id !== keptTaskId;
 
             if (!shouldMoveToDeferred) {
@@ -192,6 +239,14 @@ export function addTask(store, { text, weight, isResource, targetDate = null }) 
         storageStatus: TASK_STORAGE.ACTIVE,
         isArchived: false,
         targetDate: targetDate || getLocalDateString(),
+        breakdownParentId: null,
+        breakdownChildIds: [],
+        breakdownIndex: null,
+        isBreakdownParent: false,
+        isBreakdownStep: false,
+        isHiddenFromMainList: false,
+        showOnlyCurrentStep: false,
+        isCurrentBreakdownStep: false,
     };
 
     store.updateState(state => {
@@ -201,6 +256,133 @@ export function addTask(store, { text, weight, isResource, targetDate = null }) 
     return newTask;
 }
 
+function refreshBreakdownGroup(parentTask, state) {
+    if (!parentTask?.isBreakdownParent || !Array.isArray(parentTask.breakdownChildIds)) {
+        return;
+    }
+
+    let currentVisibleStepId = null;
+    parentTask.breakdownChildIds.forEach(childId => {
+        const childTask = state.tasks.find(task => task.id === childId);
+        if (!childTask) return;
+
+        const isEligibleCurrentStep =
+            !childTask.completed
+            && getTaskStorageStatus(childTask) === TASK_STORAGE.ACTIVE;
+
+        if (!isEligibleCurrentStep || currentVisibleStepId) {
+            childTask.isCurrentBreakdownStep = false;
+            return;
+        }
+
+        childTask.isCurrentBreakdownStep = true;
+        currentVisibleStepId = childTask.id;
+    });
+}
+
+function refreshAllBreakdownGroups(state) {
+    state.tasks
+        .filter(task => task.isBreakdownParent)
+        .forEach(parentTask => refreshBreakdownGroup(parentTask, state));
+}
+
+export function getTaskBreakdownParent(state, task) {
+    if (!task?.breakdownParentId) {
+        return null;
+    }
+
+    return state.tasks.find(item => item.id === task.breakdownParentId) || null;
+}
+
+export function shouldShowBreakdownAction(task) {
+    return getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE
+        && !task.completed
+        && !task.isResource
+        && !task.isBreakdownParent
+        && !task.isBreakdownStep
+        && !task.isHiddenFromMainList
+        && (task.weight || 0) >= 20;
+}
+
+export function createTaskBreakdown(store, { taskId, steps }) {
+    let parentTask = null;
+
+    store.updateState(state => {
+        const task = state.tasks.find(item => item.id === taskId);
+        if (!task || !shouldShowBreakdownAction(task) || !Array.isArray(steps) || steps.length !== 3) {
+            return;
+        }
+
+        const sanitizedSteps = steps.map((step, index) => ({
+            id: `task_${Date.now()}_${index}_${Math.floor(Math.random() * 1000000)}`,
+            text: String(step.text || '').trim(),
+            weight: step.weight === 10 ? 10 : 5,
+        }));
+
+        if (sanitizedSteps.some(step => !step.text)) {
+            return;
+        }
+
+        task.isBreakdownParent = true;
+        task.isHiddenFromMainList = true;
+        task.showOnlyCurrentStep = true;
+        task.breakdownChildIds = sanitizedSteps.map(step => step.id);
+
+        sanitizedSteps.forEach((step, index) => {
+            state.tasks.push({
+                id: step.id,
+                text: step.text,
+                weight: step.weight,
+                isResource: false,
+                completed: false,
+                completedAtDate: null,
+                storageStatus: TASK_STORAGE.ACTIVE,
+                isArchived: false,
+                targetDate: task.targetDate,
+                breakdownParentId: task.id,
+                breakdownChildIds: [],
+                breakdownIndex: index,
+                isBreakdownParent: false,
+                isBreakdownStep: true,
+                isHiddenFromMainList: false,
+                showOnlyCurrentStep: true,
+                isCurrentBreakdownStep: index === 0,
+            });
+        });
+
+        refreshBreakdownGroup(task, state);
+        parentTask = task;
+    });
+
+    return parentTask;
+}
+
+export function advanceBreakdownAfterCompletion(store, taskId) {
+    let nextStepId = null;
+
+    store.updateState(state => {
+        const completedTask = state.tasks.find(task => task.id === taskId);
+        if (!completedTask?.isBreakdownStep || !completedTask.breakdownParentId) {
+            return;
+        }
+
+        const parentTask = state.tasks.find(task => task.id === completedTask.breakdownParentId);
+        if (!parentTask) {
+            return;
+        }
+
+        refreshBreakdownGroup(parentTask, state);
+        const nextVisibleStep = parentTask.breakdownChildIds
+            .map(id => state.tasks.find(task => task.id === id))
+            .filter(Boolean)
+            .find(step => !step.completed && getTaskStorageStatus(step) === TASK_STORAGE.ACTIVE);
+
+        nextStepId = nextVisibleStep?.id || null;
+    });
+
+    return nextStepId;
+}
+
 export function toggleTask(store, taskId) {
     let updatedTask = null;
     store.updateState(state => {
@@ -208,6 +390,10 @@ export function toggleTask(store, taskId) {
         if (updatedTask && getTaskStorageStatus(updatedTask) === TASK_STORAGE.ACTIVE) {
             updatedTask.completed = !updatedTask.completed;
             updatedTask.completedAtDate = updatedTask.completed ? getLocalDateString() : null;
+            if (updatedTask.isBreakdownStep && updatedTask.breakdownParentId) {
+                const parentTask = state.tasks.find(task => task.id === updatedTask.breakdownParentId);
+                refreshBreakdownGroup(parentTask, state);
+            }
         }
     });
     return updatedTask;
@@ -215,7 +401,16 @@ export function toggleTask(store, taskId) {
 
 export function deleteTask(store, taskId) {
     store.updateState(state => {
+        const taskToDelete = state.tasks.find(task => task.id === taskId);
         state.tasks = state.tasks.filter(task => task.id !== taskId);
+
+        if (taskToDelete?.isBreakdownStep && taskToDelete.breakdownParentId) {
+            const parentTask = state.tasks.find(task => task.id === taskToDelete.breakdownParentId);
+            if (parentTask) {
+                parentTask.breakdownChildIds = parentTask.breakdownChildIds.filter(id => id !== taskId);
+                refreshBreakdownGroup(parentTask, state);
+            }
+        }
     });
 }
 
@@ -255,6 +450,10 @@ export function postponeTask(store, taskId) {
         const currentDate = parseLocalDate(task.targetDate || getLocalDateString());
         currentDate.setDate(currentDate.getDate() + 1);
         task.targetDate = getLocalDateString(currentDate);
+        if (task.isBreakdownStep && task.breakdownParentId) {
+            const parentTask = state.tasks.find(item => item.id === task.breakdownParentId);
+            refreshBreakdownGroup(parentTask, state);
+        }
     });
 }
 
@@ -264,6 +463,10 @@ export function moveToToday(store, taskId) {
         if (task) {
             task.targetDate = getLocalDateString();
             setTaskStorageStatus(task, TASK_STORAGE.ACTIVE);
+            if (task.isBreakdownStep && task.breakdownParentId) {
+                const parentTask = state.tasks.find(item => item.id === task.breakdownParentId);
+                refreshBreakdownGroup(parentTask, state);
+            }
         }
     });
 }
@@ -276,6 +479,10 @@ export function moveToDeferred(store, taskId) {
             task.targetDate = null;
             task.completed = false;
             setTaskStorageStatus(task, TASK_STORAGE.DEFERRED);
+            if (task.isBreakdownStep && task.breakdownParentId) {
+                const parentTask = state.tasks.find(item => item.id === task.breakdownParentId);
+                refreshBreakdownGroup(parentTask, state);
+            }
         }
     });
 }
@@ -297,6 +504,9 @@ export function archiveOpenRegularTodayTasks(store, today = getLocalDateString()
     store.updateState(state => {
         state.tasks.forEach(task => {
             if (getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource) {
+                if (isBreakdownParentHidden(task)) {
+                    return;
+                }
                 task.archivedFromDate = today;
                 task.targetDate = null;
                 setTaskStorageStatus(task, TASK_STORAGE.DEFERRED);
@@ -316,11 +526,16 @@ export function moveOpenRegularTodayTasksToTomorrow(store, today = getLocalDateS
     store.updateState(state => {
         state.tasks.forEach(task => {
             if (getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource) {
+                if (isBreakdownParentHidden(task)) {
+                    return;
+                }
                 task.targetDate = tomorrow;
                 setTaskStorageStatus(task, TASK_STORAGE.ACTIVE);
                 movedCount += 1;
             }
         });
+
+        refreshAllBreakdownGroups(state);
     });
 
     return movedCount;
@@ -341,6 +556,7 @@ export function reorderTodayTasks(store, { isResource, newOrderIds, today = getL
             getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE
             && task.targetDate === today
             && task.isResource === isResource
+            && !isBreakdownParentHidden(task)
         );
         currentTasks.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
 
@@ -359,6 +575,10 @@ export function moveTaskToDate(store, { taskId, dateStr }) {
         if (task) {
             task.targetDate = dateStr;
             setTaskStorageStatus(task, TASK_STORAGE.ACTIVE);
+            if (task.isBreakdownStep && task.breakdownParentId) {
+                const parentTask = state.tasks.find(item => item.id === task.breakdownParentId);
+                refreshBreakdownGroup(parentTask, state);
+            }
         }
     });
 }
@@ -369,6 +589,7 @@ export function reorderWeeklyTasks(store, { dateStr, newOrderIds }) {
             getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE
             && task.targetDate === dateStr
             && !task.completed
+            && !isBreakdownParentHidden(task)
         );
         dayTasks.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
 

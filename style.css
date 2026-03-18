@@ -659,6 +659,17 @@ header h2 {
     word-break: break-word;
 }
 
+.task-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.task-meta {
+    margin-top: 4px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
 .task-weight {
     font-size: 12px;
     color: var(--text-secondary);
@@ -697,6 +708,22 @@ header h2 {
 
 .postpone-btn:hover {
     color: var(--primary-color);
+}
+
+.task-breakdown-btn {
+    border: 1px solid var(--border-color);
+    background: #f8fcf9;
+    color: var(--primary-color);
+    border-radius: 999px;
+    padding: 6px 10px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.task-breakdown-btn:hover {
+    border-color: var(--primary-color);
+    background: var(--primary-light);
 }
 
 /* Модальное окно */
@@ -821,6 +848,25 @@ header h2 {
     border: 1px solid #edf1ee;
     border-radius: 14px;
     padding: 16px;
+}
+
+.breakdown-remember-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.breakdown-draft-note {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.breakdown-draft-spacer {
+    width: 100%;
 }
 
 .voice-modal-actions {

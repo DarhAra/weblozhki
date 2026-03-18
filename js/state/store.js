@@ -74,6 +74,9 @@ function getDefaultState() {
         currentDayMeta: createCurrentDayMeta(null),
         moodHistory: [],
         tasks: [],
+        preferences: {
+            breakDownLargeTasksPromptMode: 'ask-first-time',
+        },
         resources: [
             { id: 'res_1', text: '\u041f\u043e\u043f\u0438\u0442\u044c \u043a\u043e\u0444\u0435' },
             { id: 'res_2', text: '10 \u043c\u0438\u043d\u0443\u0442 \u0441\u043e\u0446\u0441\u0435\u0442\u0435\u0439' },
@@ -81,6 +84,16 @@ function getDefaultState() {
         ],
         templates: [],
     };
+}
+
+function ensurePreferenceDefaults(state) {
+    if (!state.preferences || typeof state.preferences !== 'object') {
+        state.preferences = {};
+    }
+
+    if (typeof state.preferences.breakDownLargeTasksPromptMode !== 'string') {
+        state.preferences.breakDownLargeTasksPromptMode = 'ask-first-time';
+    }
 }
 
 function ensureTemplateDefaults(template) {
@@ -179,6 +192,7 @@ export function createStore() {
             if (!Array.isArray(state.tasks)) state.tasks = [];
             if (!Array.isArray(state.resources)) state.resources = [];
             state.moodHistory = normalizeMoodHistory(state.moodHistory);
+            ensurePreferenceDefaults(state);
 
             if (!Array.isArray(state.templates) || state.templates.length === 0) {
                 state.templates = getDefaultTemplates();
@@ -209,6 +223,38 @@ export function createStore() {
 
                 if (typeof task.completedAtDate !== 'string') {
                     task.completedAtDate = null;
+                }
+
+                if (typeof task.breakdownParentId !== 'string') {
+                    task.breakdownParentId = null;
+                }
+
+                if (!Array.isArray(task.breakdownChildIds)) {
+                    task.breakdownChildIds = [];
+                }
+
+                if (typeof task.breakdownIndex !== 'number') {
+                    task.breakdownIndex = null;
+                }
+
+                if (typeof task.isBreakdownParent !== 'boolean') {
+                    task.isBreakdownParent = false;
+                }
+
+                if (typeof task.isBreakdownStep !== 'boolean') {
+                    task.isBreakdownStep = false;
+                }
+
+                if (typeof task.isHiddenFromMainList !== 'boolean') {
+                    task.isHiddenFromMainList = false;
+                }
+
+                if (typeof task.showOnlyCurrentStep !== 'boolean') {
+                    task.showOnlyCurrentStep = false;
+                }
+
+                if (typeof task.isCurrentBreakdownStep !== 'boolean') {
+                    task.isCurrentBreakdownStep = false;
                 }
 
                 task.storageStatus = getTaskStorageStatus(task);

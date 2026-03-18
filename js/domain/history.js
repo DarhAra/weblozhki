@@ -49,7 +49,7 @@ export function buildMoodHistoryEntry(state, date) {
         || task.archivedFromDate === date
         || task.completedAtDate === date
     );
-    const regularTasks = dayTasks.filter(task => !task.isResource);
+    const regularTasks = dayTasks.filter(task => !task.isResource && !task.isBreakdownParent);
     const resourceTasks = dayTasks.filter(task => task.isResource);
     const completedRegularTasks = regularTasks.filter(task => task.completed || task.completedAtDate === date);
     const currentDayMeta = state.currentDayMeta?.date === date

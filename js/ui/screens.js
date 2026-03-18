@@ -16,6 +16,8 @@ export function createScreens(app) {
         elements.completedModal.classList.add('hidden');
         elements.templatesModal.classList.add('hidden');
         elements.templateAutoModal.classList.add('hidden');
+        elements.breakdownIntroModal.classList.add('hidden');
+        elements.breakdownEditorModal.classList.add('hidden');
         elements.lowEnergyModal.classList.add('hidden');
         elements.lowEnergySwapModal.classList.add('hidden');
         elements.voiceModal.classList.add('hidden');

@@ -358,6 +358,43 @@
             </div>
         </div>
 
+        <div id="breakdown-intro-modal" class="modal hidden">
+            <div class="modal-content template-auto-modal-card">
+                <div class="modal-header">
+                    <h3>Разбить на маленькие шаги?</h3>
+                    <button id="close-breakdown-intro-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="breakdown-intro-text" class="modal-subtitle">Иногда большую задачу проще пройти маленькими шагами. Давай сделаем её менее тяжёлой.</p>
+                    <label id="breakdown-remember-row" class="breakdown-remember-row">
+                        <input id="breakdown-remember-choice" type="checkbox">
+                        <span>В следующий раз сразу предлагать выбор шагов</span>
+                    </label>
+                    <div class="template-auto-actions">
+                        <button id="breakdown-manual-btn" class="secondary-btn advice-btn" type="button">Я сам(а) напишу шаги</button>
+                        <button id="breakdown-suggested-btn" class="primary-btn advice-btn" type="button">Помоги набросать</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="breakdown-editor-modal" class="modal hidden">
+            <div class="modal-content voice-modal-card">
+                <div class="modal-header">
+                    <h3 id="breakdown-editor-title">Маленькие шаги</h3>
+                    <button id="close-breakdown-editor-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="breakdown-editor-subtitle" class="modal-subtitle">Оставим только три спокойных шага по 5 или 10.</p>
+                    <div id="breakdown-draft-list" class="voice-draft-list"></div>
+                    <div class="voice-modal-actions">
+                        <button id="breakdown-confirm-btn" class="primary-btn advice-btn" type="button">Сохранить шаги</button>
+                        <button id="breakdown-cancel-btn" class="secondary-btn advice-btn" type="button">Отменить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="low-energy-modal" class="modal hidden">
             <div class="modal-content sos-day-modal-card">
                 <div class="modal-header">
@@ -460,7 +497,7 @@
         </div>
     </div>
 
-    <script src="js/app.bundle.js?v=20260317-low-energy-day"></script>
+    <script src="js/app.bundle.js?v=20260318-breakdown-steps"></script>
 </body>
 
 </html>

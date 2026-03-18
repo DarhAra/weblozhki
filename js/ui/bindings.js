@@ -4,12 +4,14 @@ import { createCurrentDayMeta } from '../domain/history.js';
 import { parseVoiceTranscript } from '../domain/voice-parser.js';
 import {
     addTask,
+    advanceBreakdownAfterCompletion,
     applyLowEnergyDay,
     archiveRemainingOverdue,
     archiveOpenRegularTodayTasks,
     clearDeferredTasks,
     clearDoneTasks,
     completePendingReview,
+    createTaskBreakdown,
     deleteTask,
     getOverdueTasks,
     getOpenRegularTodayTasks,
@@ -57,9 +59,69 @@ function bindSubmitOnEnter(input, form) {
     });
 }
 
+function createBreakdownDraft(text = '', weight = 5, index = 0) {
+    return {
+        id: `breakdown_draft_${Date.now()}_${index}_${Math.floor(Math.random() * 100000)}`,
+        text,
+        weight: weight === 10 ? 10 : 5,
+        index,
+    };
+}
+
+function buildManualBreakdownDrafts() {
+    return [0, 1, 2].map(index => createBreakdownDraft('', 5, index));
+}
+
+function buildSuggestedBreakdownDrafts(taskText) {
+    const normalized = String(taskText || '').trim();
+    const lower = normalized.toLowerCase();
+    let suggestions;
+
+    if (lower.includes('документ')) {
+        suggestions = [
+            'Открыть список нужных документов',
+            'Подготовить или заполнить первую часть',
+            'Проверить и отправить документы',
+        ];
+    } else if (lower.includes('уборк') || lower.includes('прибрат')) {
+        suggestions = [
+            'Выбрать один маленький участок для уборки',
+            'Убрать только этот участок 10 минут',
+            'Вынести мусор или убрать вещи на место',
+        ];
+    } else if (lower.includes('звон') || lower.includes('позвон')) {
+        suggestions = [
+            'Открыть номер и подготовить пару фраз',
+            'Сделать короткий звонок',
+            'Записать итог звонка или следующий шаг',
+        ];
+    } else if (lower.includes('куп') || lower.includes('магаз')) {
+        suggestions = [
+            'Составить короткий список покупок',
+            'Сходить или открыть доставку',
+            'Разложить покупки по местам',
+        ];
+    } else if (lower.includes('врач') || lower.includes('поликлиник')) {
+        suggestions = [
+            'Найти контакты или запись к врачу',
+            'Сделать один короткий звонок или заявку',
+            'Записать дату, время или следующий шаг',
+        ];
+    } else {
+        suggestions = [
+            `Подготовить всё нужное для: ${normalized}`,
+            `Сделать маленькую основную часть: ${normalized}`,
+            `Проверить и закрыть шаг по задаче: ${normalized}`,
+        ];
+    }
+
+    return suggestions.map((text, index) => createBreakdownDraft(text, index === 1 ? 10 : 5, index));
+}
+
 export function bindAppEvents(app) {
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
+    const breakdownState = runtime.breakdown;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = 'tpl_4';
 
@@ -98,6 +160,65 @@ export function bindAppEvents(app) {
     function closeTemplateAutoModal() {
         templateAutoPrompt.templateId = null;
         elements.templateAutoModal.classList.add('hidden');
+    }
+
+    function closeBreakdownIntroModal({ preserveTask = false } = {}) {
+        elements.breakdownIntroModal.classList.add('hidden');
+        if (!preserveTask) {
+            breakdownState.taskId = null;
+        }
+        elements.breakdownRememberChoice.checked = false;
+        elements.breakdownRememberRow.classList.remove('hidden');
+    }
+
+    function closeBreakdownEditorModal({ reset = true } = {}) {
+        elements.breakdownEditorModal.classList.add('hidden');
+        if (reset) {
+            breakdownState.taskId = null;
+            breakdownState.mode = 'intro';
+            breakdownState.drafts = [];
+            elements.breakdownRememberChoice.checked = false;
+        }
+    }
+
+    function applyBreakdownPreferenceIfNeeded() {
+        if (!elements.breakdownRememberChoice.checked) {
+            return;
+        }
+
+        store.updateState(state => {
+            state.preferences.breakDownLargeTasksPromptMode = 'skip-intro-ask';
+        });
+    }
+
+    function openBreakdownEditor(taskId, mode) {
+        const task = store.getState().tasks.find(item => item.id === taskId);
+        if (!task) return;
+
+        breakdownState.taskId = taskId;
+        breakdownState.mode = mode;
+        breakdownState.drafts = mode === 'suggested'
+            ? buildSuggestedBreakdownDrafts(task.text)
+            : buildManualBreakdownDrafts();
+
+        closeBreakdownIntroModal({ preserveTask: true });
+        app.renderers.renderBreakdownEditorModal();
+        elements.breakdownEditorModal.classList.remove('hidden');
+    }
+
+    function openBreakdownFlow(taskId) {
+        const task = store.getState().tasks.find(item => item.id === taskId);
+        if (!task) return;
+
+        breakdownState.taskId = taskId;
+        const shouldSkipIntro = store.getState().preferences?.breakDownLargeTasksPromptMode === 'skip-intro-ask';
+        elements.breakdownIntroText.textContent = shouldSkipIntro
+            ? `Как тебе будет легче разложить задачу «${task.text}»?`
+            : `Задача «${task.text}» выглядит тяжёлой. Давай превратим её в три маленьких шага?`;
+        elements.breakdownRememberRow.classList.toggle('hidden', shouldSkipIntro);
+
+        elements.breakdownRememberChoice.checked = false;
+        elements.breakdownIntroModal.classList.remove('hidden');
     }
 
     function openTemplateAutoModal(templateId) {
@@ -212,6 +333,8 @@ export function bindAppEvents(app) {
         elements.completedModal,
         elements.templatesModal,
         elements.templateAutoModal,
+        elements.breakdownIntroModal,
+        elements.breakdownEditorModal,
         elements.lowEnergyModal,
         elements.lowEnergySwapModal,
         elements.helperModal,
@@ -228,6 +351,14 @@ export function bindAppEvents(app) {
             }
             if (modal === elements.templateAutoModal) {
                 closeTemplateAutoModal();
+                return;
+            }
+            if (modal === elements.breakdownIntroModal) {
+                closeBreakdownIntroModal();
+                return;
+            }
+            if (modal === elements.breakdownEditorModal) {
+                closeBreakdownEditorModal();
                 return;
             }
             if (modal === elements.lowEnergyModal) {
@@ -588,6 +719,43 @@ export function bindAppEvents(app) {
         app.renderers.renderTemplates();
     });
 
+    elements.closeBreakdownIntroBtn.addEventListener('click', closeBreakdownIntroModal);
+    elements.closeBreakdownEditorBtn.addEventListener('click', () => closeBreakdownEditorModal());
+    elements.breakdownCancelBtn.addEventListener('click', () => closeBreakdownEditorModal());
+
+    elements.breakdownManualBtn.addEventListener('click', () => {
+        applyBreakdownPreferenceIfNeeded();
+        if (!breakdownState.taskId) return;
+
+        openBreakdownEditor(breakdownState.taskId, 'manual');
+    });
+
+    elements.breakdownSuggestedBtn.addEventListener('click', () => {
+        applyBreakdownPreferenceIfNeeded();
+        if (!breakdownState.taskId) return;
+
+        openBreakdownEditor(breakdownState.taskId, 'suggested');
+    });
+
+    elements.breakdownConfirmBtn.addEventListener('click', () => {
+        if (!breakdownState.taskId) return;
+
+        const created = createTaskBreakdown(store, {
+            taskId: breakdownState.taskId,
+            steps: breakdownState.drafts.map(draft => ({
+                text: draft.text.trim(),
+                weight: draft.weight,
+            })),
+        });
+
+        if (!created) return;
+
+        closeBreakdownEditorModal();
+        app.renderers.renderMainScreen();
+        app.renderers.renderArchive();
+        app.renderers.renderWeeklyScreen();
+    });
+
     elements.closeLowEnergyBtn.addEventListener('click', finalizeLowEnergyDecline);
     elements.lowEnergyDeclineBtn.addEventListener('click', finalizeLowEnergyDecline);
     elements.lowEnergyAcceptBtn.addEventListener('click', finalizeLowEnergyAcceptance);
@@ -617,6 +785,9 @@ export function bindAppEvents(app) {
 
             if (target.dataset.action === 'toggle-task') {
                 const updatedTask = toggleTask(store, taskId);
+                if (updatedTask?.completed) {
+                    advanceBreakdownAfterCompletion(store, taskId);
+                }
                 app.renderers.renderMainScreen();
                 app.renderers.renderWeeklyScreen();
 
@@ -631,6 +802,8 @@ export function bindAppEvents(app) {
                 deleteTask(store, taskId);
                 app.renderers.renderMainScreen();
                 app.renderers.renderWeeklyScreen();
+            } else if (target.dataset.action === 'open-breakdown') {
+                openBreakdownFlow(taskId);
             } else if (target.dataset.action === 'move-to-deferred') {
                 moveToDeferred(store, taskId);
                 app.renderers.renderMainScreen();
@@ -791,6 +964,27 @@ export function bindAppEvents(app) {
         if (target.dataset.action === 'voice-update-date') {
             draft.suggestedDate = target.value;
         }
+    });
+
+    elements.breakdownDraftList.addEventListener('input', event => {
+        const target = event.target.closest('[data-action="breakdown-update-text"]');
+        if (!target) return;
+
+        const draft = breakdownState.drafts.find(item => item.id === target.dataset.draftId);
+        if (!draft) return;
+
+        draft.text = target.value;
+        elements.breakdownConfirmBtn.disabled = breakdownState.drafts.some(item => !item.text.trim());
+    });
+
+    elements.breakdownDraftList.addEventListener('change', event => {
+        const target = event.target.closest('[data-action="breakdown-update-weight"]');
+        if (!target) return;
+
+        const draft = breakdownState.drafts.find(item => item.id === target.dataset.draftId);
+        if (!draft) return;
+
+        draft.weight = parseInt(target.value, 10) === 10 ? 10 : 5;
     });
 
     elements.resourcesList.addEventListener('click', event => {

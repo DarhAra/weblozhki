@@ -5,8 +5,10 @@ import {
     getDeferredTasks,
     getDoneTasks,
     getLowEnergySwapCandidates,
+    getTaskBreakdownParent,
     getTaskStorageStatus,
     getTodayTasks,
+    shouldShowBreakdownAction,
 } from '../domain/tasks.js';
 import { getMoodHistoryInsights, normalizeMoodHistory } from '../domain/history.js';
 
@@ -55,13 +57,23 @@ function renderTaskElement(task) {
             <button class="postpone-btn" title="На завтра" data-action="postpone-task" data-task-id="${task.id}">➡️</button>
         `
         : '';
+    const breakdownButtonHtml = shouldShowBreakdownAction(task)
+        ? `<button class="task-breakdown-btn" type="button" title="Разбить на шаги" data-action="open-breakdown" data-task-id="${task.id}">Разбить</button>`
+        : '';
+    const taskMetaHtml = task.isBreakdownStep
+        ? `<div class="task-meta">Шаг ${(task.breakdownIndex ?? 0) + 1} из 3</div>`
+        : '';
 
     taskEl.innerHTML = `
         <div class="task-checkbox-container" data-action="toggle-task" data-task-id="${task.id}">
             <div class="custom-checkbox"></div>
         </div>
-        <div class="task-desc">${escapeHtml(task.text)}</div>
+        <div class="task-main">
+            <div class="task-desc">${escapeHtml(task.text)}</div>
+            ${taskMetaHtml}
+        </div>
         <div class="task-weight ${weightClass}">${weightLabel}</div>
+        ${breakdownButtonHtml}
         ${controlsHtml}
         <button class="delete-btn" title="Удалить" data-action="delete-task" data-task-id="${task.id}">&times;</button>
     `;
@@ -528,6 +540,39 @@ export function createRenderers(app) {
         });
     }
 
+    function renderBreakdownEditorModal() {
+        const { breakdown } = runtime;
+        const state = store.getState();
+        const task = breakdown.taskId
+            ? state.tasks.find(item => item.id === breakdown.taskId)
+            : null;
+        const parentTask = task?.isBreakdownStep ? getTaskBreakdownParent(state, task) : null;
+        const sourceTask = parentTask || task;
+        const isSuggested = breakdown.mode === 'suggested';
+
+        elements.breakdownDraftList.innerHTML = '';
+        elements.breakdownEditorTitle.textContent = isSuggested ? 'Проверим маленькие шаги?' : 'Соберём три маленьких шага';
+        elements.breakdownEditorSubtitle.textContent = sourceTask
+            ? `Для задачи «${sourceTask.text}» оставим только три посильных шага по 5 или 10.`
+            : 'Оставим только три посильных шага по 5 или 10.';
+
+        breakdown.drafts.forEach(draft => {
+            const row = document.createElement('div');
+            row.className = 'voice-draft-item';
+            row.innerHTML = `
+                <input class="voice-draft-input" type="text" value="${escapeHtml(draft.text)}" data-action="breakdown-update-text" data-draft-id="${draft.id}">
+                <select class="voice-draft-select" data-action="breakdown-update-weight" data-draft-id="${draft.id}">
+                    ${[5, 10].map(weight => `<option value="${weight}" ${draft.weight === weight ? 'selected' : ''}>${weight}</option>`).join('')}
+                </select>
+                <div class="breakdown-draft-note">Шаг ${(draft.index ?? 0) + 1} из 3</div>
+                <div class="breakdown-draft-spacer"></div>
+            `;
+            elements.breakdownDraftList.appendChild(row);
+        });
+
+        elements.breakdownConfirmBtn.disabled = breakdown.drafts.some(draft => !draft.text.trim());
+    }
+
     function renderHistoryScreen() {
         const moodHistory = normalizeMoodHistory(store.getState().moodHistory);
         const insights = getMoodHistoryInsights(moodHistory);
@@ -607,6 +652,7 @@ export function createRenderers(app) {
         renderResources,
         renderTemplates,
         renderLowEnergySwapModal,
+        renderBreakdownEditorModal,
         renderVoiceModal,
         maybeShowAllDone,
     };

@@ -15,6 +15,8 @@
       completedModal: doc.getElementById("completed-modal"),
       templatesModal: doc.getElementById("templates-modal"),
       templateAutoModal: doc.getElementById("template-auto-modal"),
+      breakdownIntroModal: doc.getElementById("breakdown-intro-modal"),
+      breakdownEditorModal: doc.getElementById("breakdown-editor-modal"),
       lowEnergyModal: doc.getElementById("low-energy-modal"),
       lowEnergySwapModal: doc.getElementById("low-energy-swap-modal"),
       helperModal: doc.getElementById("helper-modal"),
@@ -109,6 +111,18 @@
       templateAutoTemplateName: doc.getElementById("template-auto-template-name"),
       templateAutoYesBtn: doc.getElementById("template-auto-yes-btn"),
       templateAutoNoBtn: doc.getElementById("template-auto-no-btn"),
+      closeBreakdownIntroBtn: doc.getElementById("close-breakdown-intro-btn"),
+      breakdownIntroText: doc.getElementById("breakdown-intro-text"),
+      breakdownRememberRow: doc.getElementById("breakdown-remember-row"),
+      breakdownRememberChoice: doc.getElementById("breakdown-remember-choice"),
+      breakdownManualBtn: doc.getElementById("breakdown-manual-btn"),
+      breakdownSuggestedBtn: doc.getElementById("breakdown-suggested-btn"),
+      closeBreakdownEditorBtn: doc.getElementById("close-breakdown-editor-btn"),
+      breakdownEditorTitle: doc.getElementById("breakdown-editor-title"),
+      breakdownEditorSubtitle: doc.getElementById("breakdown-editor-subtitle"),
+      breakdownDraftList: doc.getElementById("breakdown-draft-list"),
+      breakdownConfirmBtn: doc.getElementById("breakdown-confirm-btn"),
+      breakdownCancelBtn: doc.getElementById("breakdown-cancel-btn"),
       closeLowEnergyBtn: doc.getElementById("close-low-energy-btn"),
       lowEnergyAvatar: doc.getElementById("low-energy-avatar"),
       lowEnergyText: doc.getElementById("low-energy-text"),
@@ -186,7 +200,7 @@
     const dayTasks = state.tasks.filter(
       (task) => task.targetDate === date || task.archivedFromDate === date || task.completedAtDate === date
     );
-    const regularTasks = dayTasks.filter((task) => !task.isResource);
+    const regularTasks = dayTasks.filter((task) => !task.isResource && !task.isBreakdownParent);
     const resourceTasks = dayTasks.filter((task) => task.isResource);
     const completedRegularTasks = regularTasks.filter((task) => task.completed || task.completedAtDate === date);
     const currentDayMeta = ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === date ? normalizeCurrentDayMeta(state.currentDayMeta, date) : createCurrentDayMeta(date);
@@ -259,11 +273,38 @@
     task.storageStatus = status;
     task.isArchived = status === TASK_STORAGE.DEFERRED;
   }
+  function isBreakdownParentHidden(task) {
+    return Boolean((task == null ? void 0 : task.isBreakdownParent) && (task == null ? void 0 : task.isHiddenFromMainList));
+  }
+  function isVisibleBreakdownStep(task, state) {
+    var _a;
+    if (!(task == null ? void 0 : task.isBreakdownStep)) {
+      return true;
+    }
+    if (!task.showOnlyCurrentStep) {
+      return true;
+    }
+    const parentTask = task.breakdownParentId ? state.tasks.find((item) => item.id === task.breakdownParentId) : null;
+    if (!parentTask) {
+      return task.isCurrentBreakdownStep !== false;
+    }
+    return ((_a = parentTask.breakdownChildIds.map((id) => state.tasks.find((item) => item.id === id)).filter(Boolean).find((step) => !step.completed)) == null ? void 0 : _a.id) === task.id;
+  }
+  function isTaskVisibleOnMainList(task, state) {
+    if (isBreakdownParentHidden(task)) {
+      return false;
+    }
+    return isVisibleBreakdownStep(task, state);
+  }
   function getOverdueTasks(state, today = getLocalDateString()) {
-    return state.tasks.filter((task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate && task.targetDate < today);
+    return state.tasks.filter(
+      (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate && task.targetDate < today && !isBreakdownParentHidden(task)
+    );
   }
   function getTodayTasks(state, today = getLocalDateString()) {
-    return state.tasks.filter((task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today);
+    return state.tasks.filter(
+      (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && isTaskVisibleOnMainList(task, state)
+    );
   }
   function moveCompletedTodayTasksToDone(store, today = getLocalDateString()) {
     let movedCount = 0;
@@ -283,13 +324,13 @@
   }
   function getOpenRegularTodayTasks(state, today = getLocalDateString()) {
     return state.tasks.filter(
-      (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource
+      (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && !isBreakdownParentHidden(task)
     );
   }
   function getLightTaskToKeep(state, today = getLocalDateString()) {
     let selectedTask = null;
     state.tasks.forEach((task) => {
-      const isLightCandidate = getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && (task.weight || 0) <= 10;
+      const isLightCandidate = getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && !isBreakdownParentHidden(task) && (task.weight || 0) <= 10;
       if (!isLightCandidate) {
         return;
       }
@@ -310,7 +351,7 @@
       const taskToKeep = getLightTaskToKeep(state, today);
       keptTaskId = (taskToKeep == null ? void 0 : taskToKeep.id) || null;
       state.tasks.forEach((task) => {
-        const shouldMoveToDeferred = getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && task.id !== keptTaskId;
+        const shouldMoveToDeferred = getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && !isBreakdownParentHidden(task) && task.id !== keptTaskId;
         if (!shouldMoveToDeferred) {
           return;
         }
@@ -372,12 +413,111 @@
       completedAtDate: null,
       storageStatus: TASK_STORAGE.ACTIVE,
       isArchived: false,
-      targetDate: targetDate || getLocalDateString()
+      targetDate: targetDate || getLocalDateString(),
+      breakdownParentId: null,
+      breakdownChildIds: [],
+      breakdownIndex: null,
+      isBreakdownParent: false,
+      isBreakdownStep: false,
+      isHiddenFromMainList: false,
+      showOnlyCurrentStep: false,
+      isCurrentBreakdownStep: false
     };
     store.updateState((state) => {
       state.tasks.push(newTask);
     });
     return newTask;
+  }
+  function refreshBreakdownGroup(parentTask, state) {
+    if (!(parentTask == null ? void 0 : parentTask.isBreakdownParent) || !Array.isArray(parentTask.breakdownChildIds)) {
+      return;
+    }
+    let currentVisibleStepId = null;
+    parentTask.breakdownChildIds.forEach((childId) => {
+      const childTask = state.tasks.find((task) => task.id === childId);
+      if (!childTask) return;
+      const isEligibleCurrentStep = !childTask.completed && getTaskStorageStatus(childTask) === TASK_STORAGE.ACTIVE;
+      if (!isEligibleCurrentStep || currentVisibleStepId) {
+        childTask.isCurrentBreakdownStep = false;
+        return;
+      }
+      childTask.isCurrentBreakdownStep = true;
+      currentVisibleStepId = childTask.id;
+    });
+  }
+  function refreshAllBreakdownGroups(state) {
+    state.tasks.filter((task) => task.isBreakdownParent).forEach((parentTask) => refreshBreakdownGroup(parentTask, state));
+  }
+  function getTaskBreakdownParent(state, task) {
+    if (!(task == null ? void 0 : task.breakdownParentId)) {
+      return null;
+    }
+    return state.tasks.find((item) => item.id === task.breakdownParentId) || null;
+  }
+  function shouldShowBreakdownAction(task) {
+    return getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && !task.completed && !task.isResource && !task.isBreakdownParent && !task.isBreakdownStep && !task.isHiddenFromMainList && (task.weight || 0) >= 20;
+  }
+  function createTaskBreakdown(store, { taskId, steps }) {
+    let parentTask = null;
+    store.updateState((state) => {
+      const task = state.tasks.find((item) => item.id === taskId);
+      if (!task || !shouldShowBreakdownAction(task) || !Array.isArray(steps) || steps.length !== 3) {
+        return;
+      }
+      const sanitizedSteps = steps.map((step, index) => ({
+        id: `task_${Date.now()}_${index}_${Math.floor(Math.random() * 1e6)}`,
+        text: String(step.text || "").trim(),
+        weight: step.weight === 10 ? 10 : 5
+      }));
+      if (sanitizedSteps.some((step) => !step.text)) {
+        return;
+      }
+      task.isBreakdownParent = true;
+      task.isHiddenFromMainList = true;
+      task.showOnlyCurrentStep = true;
+      task.breakdownChildIds = sanitizedSteps.map((step) => step.id);
+      sanitizedSteps.forEach((step, index) => {
+        state.tasks.push({
+          id: step.id,
+          text: step.text,
+          weight: step.weight,
+          isResource: false,
+          completed: false,
+          completedAtDate: null,
+          storageStatus: TASK_STORAGE.ACTIVE,
+          isArchived: false,
+          targetDate: task.targetDate,
+          breakdownParentId: task.id,
+          breakdownChildIds: [],
+          breakdownIndex: index,
+          isBreakdownParent: false,
+          isBreakdownStep: true,
+          isHiddenFromMainList: false,
+          showOnlyCurrentStep: true,
+          isCurrentBreakdownStep: index === 0
+        });
+      });
+      refreshBreakdownGroup(task, state);
+      parentTask = task;
+    });
+    return parentTask;
+  }
+  function advanceBreakdownAfterCompletion(store, taskId) {
+    let nextStepId = null;
+    store.updateState((state) => {
+      const completedTask = state.tasks.find((task) => task.id === taskId);
+      if (!(completedTask == null ? void 0 : completedTask.isBreakdownStep) || !completedTask.breakdownParentId) {
+        return;
+      }
+      const parentTask = state.tasks.find((task) => task.id === completedTask.breakdownParentId);
+      if (!parentTask) {
+        return;
+      }
+      refreshBreakdownGroup(parentTask, state);
+      const nextVisibleStep = parentTask.breakdownChildIds.map((id) => state.tasks.find((task) => task.id === id)).filter(Boolean).find((step) => !step.completed && getTaskStorageStatus(step) === TASK_STORAGE.ACTIVE);
+      nextStepId = (nextVisibleStep == null ? void 0 : nextVisibleStep.id) || null;
+    });
+    return nextStepId;
   }
   function toggleTask(store, taskId) {
     let updatedTask = null;
@@ -386,13 +526,25 @@
       if (updatedTask && getTaskStorageStatus(updatedTask) === TASK_STORAGE.ACTIVE) {
         updatedTask.completed = !updatedTask.completed;
         updatedTask.completedAtDate = updatedTask.completed ? getLocalDateString() : null;
+        if (updatedTask.isBreakdownStep && updatedTask.breakdownParentId) {
+          const parentTask = state.tasks.find((task) => task.id === updatedTask.breakdownParentId);
+          refreshBreakdownGroup(parentTask, state);
+        }
       }
     });
     return updatedTask;
   }
   function deleteTask(store, taskId) {
     store.updateState((state) => {
+      const taskToDelete = state.tasks.find((task) => task.id === taskId);
       state.tasks = state.tasks.filter((task) => task.id !== taskId);
+      if ((taskToDelete == null ? void 0 : taskToDelete.isBreakdownStep) && taskToDelete.breakdownParentId) {
+        const parentTask = state.tasks.find((task) => task.id === taskToDelete.breakdownParentId);
+        if (parentTask) {
+          parentTask.breakdownChildIds = parentTask.breakdownChildIds.filter((id) => id !== taskId);
+          refreshBreakdownGroup(parentTask, state);
+        }
+      }
     });
   }
   function clearDeferredTasks(store) {
@@ -428,6 +580,10 @@
       const currentDate = parseLocalDate(task.targetDate || getLocalDateString());
       currentDate.setDate(currentDate.getDate() + 1);
       task.targetDate = getLocalDateString(currentDate);
+      if (task.isBreakdownStep && task.breakdownParentId) {
+        const parentTask = state.tasks.find((item) => item.id === task.breakdownParentId);
+        refreshBreakdownGroup(parentTask, state);
+      }
     });
   }
   function moveToToday(store, taskId) {
@@ -436,6 +592,10 @@
       if (task) {
         task.targetDate = getLocalDateString();
         setTaskStorageStatus(task, TASK_STORAGE.ACTIVE);
+        if (task.isBreakdownStep && task.breakdownParentId) {
+          const parentTask = state.tasks.find((item) => item.id === task.breakdownParentId);
+          refreshBreakdownGroup(parentTask, state);
+        }
       }
     });
   }
@@ -447,6 +607,10 @@
         task.targetDate = null;
         task.completed = false;
         setTaskStorageStatus(task, TASK_STORAGE.DEFERRED);
+        if (task.isBreakdownStep && task.breakdownParentId) {
+          const parentTask = state.tasks.find((item) => item.id === task.breakdownParentId);
+          refreshBreakdownGroup(parentTask, state);
+        }
       }
     });
   }
@@ -466,6 +630,9 @@
     store.updateState((state) => {
       state.tasks.forEach((task) => {
         if (getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource) {
+          if (isBreakdownParentHidden(task)) {
+            return;
+          }
           task.archivedFromDate = today;
           task.targetDate = null;
           setTaskStorageStatus(task, TASK_STORAGE.DEFERRED);
@@ -483,11 +650,15 @@
     store.updateState((state) => {
       state.tasks.forEach((task) => {
         if (getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource) {
+          if (isBreakdownParentHidden(task)) {
+            return;
+          }
           task.targetDate = tomorrow;
           setTaskStorageStatus(task, TASK_STORAGE.ACTIVE);
           movedCount += 1;
         }
       });
+      refreshAllBreakdownGroups(state);
     });
     return movedCount;
   }
@@ -502,7 +673,7 @@
   function reorderTodayTasks(store, { isResource, newOrderIds, today = getLocalDateString() }) {
     store.updateState((state) => {
       const currentTasks = state.tasks.filter(
-        (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && task.isResource === isResource
+        (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && task.isResource === isResource && !isBreakdownParentHidden(task)
       );
       currentTasks.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
       const otherTasks = state.tasks.filter(
@@ -517,13 +688,17 @@
       if (task) {
         task.targetDate = dateStr;
         setTaskStorageStatus(task, TASK_STORAGE.ACTIVE);
+        if (task.isBreakdownStep && task.breakdownParentId) {
+          const parentTask = state.tasks.find((item) => item.id === task.breakdownParentId);
+          refreshBreakdownGroup(parentTask, state);
+        }
       }
     });
   }
   function reorderWeeklyTasks(store, { dateStr, newOrderIds }) {
     store.updateState((state) => {
       const dayTasks = state.tasks.filter(
-        (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === dateStr && !task.completed
+        (task) => getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === dateStr && !task.completed && !isBreakdownParentHidden(task)
       );
       dayTasks.sort((a, b) => newOrderIds.indexOf(a.id) - newOrderIds.indexOf(b.id));
       const otherTasks = state.tasks.filter(
@@ -604,6 +779,9 @@
       currentDayMeta: createCurrentDayMeta(null),
       moodHistory: [],
       tasks: [],
+      preferences: {
+        breakDownLargeTasksPromptMode: "ask-first-time"
+      },
       resources: [
         { id: "res_1", text: "Попить кофе" },
         { id: "res_2", text: "10 минут соцсетей" },
@@ -611,6 +789,14 @@
       ],
       templates: []
     };
+  }
+  function ensurePreferenceDefaults(state) {
+    if (!state.preferences || typeof state.preferences !== "object") {
+      state.preferences = {};
+    }
+    if (typeof state.preferences.breakDownLargeTasksPromptMode !== "string") {
+      state.preferences.breakDownLargeTasksPromptMode = "ask-first-time";
+    }
   }
   function ensureTemplateDefaults(template) {
     if (typeof template.autoAddDaily !== "boolean") {
@@ -690,6 +876,7 @@
         if (!Array.isArray(state.tasks)) state.tasks = [];
         if (!Array.isArray(state.resources)) state.resources = [];
         state.moodHistory = normalizeMoodHistory(state.moodHistory);
+        ensurePreferenceDefaults(state);
         if (!Array.isArray(state.templates) || state.templates.length === 0) {
           state.templates = getDefaultTemplates();
         } else {
@@ -714,6 +901,30 @@
           seenIds.add(task.id);
           if (typeof task.completedAtDate !== "string") {
             task.completedAtDate = null;
+          }
+          if (typeof task.breakdownParentId !== "string") {
+            task.breakdownParentId = null;
+          }
+          if (!Array.isArray(task.breakdownChildIds)) {
+            task.breakdownChildIds = [];
+          }
+          if (typeof task.breakdownIndex !== "number") {
+            task.breakdownIndex = null;
+          }
+          if (typeof task.isBreakdownParent !== "boolean") {
+            task.isBreakdownParent = false;
+          }
+          if (typeof task.isBreakdownStep !== "boolean") {
+            task.isBreakdownStep = false;
+          }
+          if (typeof task.isHiddenFromMainList !== "boolean") {
+            task.isHiddenFromMainList = false;
+          }
+          if (typeof task.showOnlyCurrentStep !== "boolean") {
+            task.showOnlyCurrentStep = false;
+          }
+          if (typeof task.isCurrentBreakdownStep !== "boolean") {
+            task.isCurrentBreakdownStep = false;
           }
           task.storageStatus = getTaskStorageStatus(task);
           task.isArchived = task.storageStatus === TASK_STORAGE.DEFERRED;
@@ -783,6 +994,7 @@
     });
   }
   function renderTaskElement(task) {
+    var _a;
     const taskEl = document.createElement("div");
     taskEl.className = `task-item ${task.completed ? "completed" : ""} ${task.isResource ? "resource-item-drag" : ""}`;
     taskEl.draggable = true;
@@ -793,12 +1005,18 @@
             <button class="postpone-btn" title="На потом" data-action="move-to-deferred" data-task-id="${task.id}">📦</button>
             <button class="postpone-btn" title="На завтра" data-action="postpone-task" data-task-id="${task.id}">➡️</button>
         ` : "";
+    const breakdownButtonHtml = shouldShowBreakdownAction(task) ? `<button class="task-breakdown-btn" type="button" title="Разбить на шаги" data-action="open-breakdown" data-task-id="${task.id}">Разбить</button>` : "";
+    const taskMetaHtml = task.isBreakdownStep ? `<div class="task-meta">Шаг ${((_a = task.breakdownIndex) != null ? _a : 0) + 1} из 3</div>` : "";
     taskEl.innerHTML = `
         <div class="task-checkbox-container" data-action="toggle-task" data-task-id="${task.id}">
             <div class="custom-checkbox"></div>
         </div>
-        <div class="task-desc">${escapeHtml(task.text)}</div>
+        <div class="task-main">
+            <div class="task-desc">${escapeHtml(task.text)}</div>
+            ${taskMetaHtml}
+        </div>
         <div class="task-weight ${weightClass}">${weightLabel}</div>
+        ${breakdownButtonHtml}
         ${controlsHtml}
         <button class="delete-btn" title="Удалить" data-action="delete-task" data-task-id="${task.id}">&times;</button>
     `;
@@ -1182,6 +1400,32 @@
         elements.voiceDraftList.appendChild(row);
       });
     }
+    function renderBreakdownEditorModal() {
+      const { breakdown } = runtime;
+      const state = store.getState();
+      const task = breakdown.taskId ? state.tasks.find((item) => item.id === breakdown.taskId) : null;
+      const parentTask = (task == null ? void 0 : task.isBreakdownStep) ? getTaskBreakdownParent(state, task) : null;
+      const sourceTask = parentTask || task;
+      const isSuggested = breakdown.mode === "suggested";
+      elements.breakdownDraftList.innerHTML = "";
+      elements.breakdownEditorTitle.textContent = isSuggested ? "Проверим маленькие шаги?" : "Соберём три маленьких шага";
+      elements.breakdownEditorSubtitle.textContent = sourceTask ? `Для задачи «${sourceTask.text}» оставим только три посильных шага по 5 или 10.` : "Оставим только три посильных шага по 5 или 10.";
+      breakdown.drafts.forEach((draft) => {
+        var _a;
+        const row = document.createElement("div");
+        row.className = "voice-draft-item";
+        row.innerHTML = `
+                <input class="voice-draft-input" type="text" value="${escapeHtml(draft.text)}" data-action="breakdown-update-text" data-draft-id="${draft.id}">
+                <select class="voice-draft-select" data-action="breakdown-update-weight" data-draft-id="${draft.id}">
+                    ${[5, 10].map((weight) => `<option value="${weight}" ${draft.weight === weight ? "selected" : ""}>${weight}</option>`).join("")}
+                </select>
+                <div class="breakdown-draft-note">Шаг ${((_a = draft.index) != null ? _a : 0) + 1} из 3</div>
+                <div class="breakdown-draft-spacer"></div>
+            `;
+        elements.breakdownDraftList.appendChild(row);
+      });
+      elements.breakdownConfirmBtn.disabled = breakdown.drafts.some((draft) => !draft.text.trim());
+    }
     function renderHistoryScreen() {
       const moodHistory = normalizeMoodHistory(store.getState().moodHistory);
       const insights = getMoodHistoryInsights(moodHistory);
@@ -1253,6 +1497,7 @@
       renderResources,
       renderTemplates,
       renderLowEnergySwapModal,
+      renderBreakdownEditorModal,
       renderVoiceModal,
       maybeShowAllDone
     };
@@ -1275,6 +1520,8 @@
       elements.completedModal.classList.add("hidden");
       elements.templatesModal.classList.add("hidden");
       elements.templateAutoModal.classList.add("hidden");
+      elements.breakdownIntroModal.classList.add("hidden");
+      elements.breakdownEditorModal.classList.add("hidden");
       elements.lowEnergyModal.classList.add("hidden");
       elements.lowEnergySwapModal.classList.add("hidden");
       elements.voiceModal.classList.add("hidden");
@@ -1791,9 +2038,64 @@
       form.requestSubmit();
     });
   }
+  function createBreakdownDraft(text = "", weight = 5, index = 0) {
+    return {
+      id: `breakdown_draft_${Date.now()}_${index}_${Math.floor(Math.random() * 1e5)}`,
+      text,
+      weight: weight === 10 ? 10 : 5,
+      index
+    };
+  }
+  function buildManualBreakdownDrafts() {
+    return [0, 1, 2].map((index) => createBreakdownDraft("", 5, index));
+  }
+  function buildSuggestedBreakdownDrafts(taskText) {
+    const normalized = String(taskText || "").trim();
+    const lower = normalized.toLowerCase();
+    let suggestions;
+    if (lower.includes("документ")) {
+      suggestions = [
+        "Открыть список нужных документов",
+        "Подготовить или заполнить первую часть",
+        "Проверить и отправить документы"
+      ];
+    } else if (lower.includes("уборк") || lower.includes("прибрат")) {
+      suggestions = [
+        "Выбрать один маленький участок для уборки",
+        "Убрать только этот участок 10 минут",
+        "Вынести мусор или убрать вещи на место"
+      ];
+    } else if (lower.includes("звон") || lower.includes("позвон")) {
+      suggestions = [
+        "Открыть номер и подготовить пару фраз",
+        "Сделать короткий звонок",
+        "Записать итог звонка или следующий шаг"
+      ];
+    } else if (lower.includes("куп") || lower.includes("магаз")) {
+      suggestions = [
+        "Составить короткий список покупок",
+        "Сходить или открыть доставку",
+        "Разложить покупки по местам"
+      ];
+    } else if (lower.includes("врач") || lower.includes("поликлиник")) {
+      suggestions = [
+        "Найти контакты или запись к врачу",
+        "Сделать один короткий звонок или заявку",
+        "Записать дату, время или следующий шаг"
+      ];
+    } else {
+      suggestions = [
+        `Подготовить всё нужное для: ${normalized}`,
+        `Сделать маленькую основную часть: ${normalized}`,
+        `Проверить и закрыть шаг по задаче: ${normalized}`
+      ];
+    }
+    return suggestions.map((text, index) => createBreakdownDraft(text, index === 1 ? 10 : 5, index));
+  }
   function bindAppEvents(app) {
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
+    const breakdownState = runtime.breakdown;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = "tpl_4";
     function closeVoiceModal({ resetDraft = true } = {}) {
@@ -1828,6 +2130,52 @@
     function closeTemplateAutoModal() {
       templateAutoPrompt.templateId = null;
       elements.templateAutoModal.classList.add("hidden");
+    }
+    function closeBreakdownIntroModal({ preserveTask = false } = {}) {
+      elements.breakdownIntroModal.classList.add("hidden");
+      if (!preserveTask) {
+        breakdownState.taskId = null;
+      }
+      elements.breakdownRememberChoice.checked = false;
+      elements.breakdownRememberRow.classList.remove("hidden");
+    }
+    function closeBreakdownEditorModal({ reset = true } = {}) {
+      elements.breakdownEditorModal.classList.add("hidden");
+      if (reset) {
+        breakdownState.taskId = null;
+        breakdownState.mode = "intro";
+        breakdownState.drafts = [];
+        elements.breakdownRememberChoice.checked = false;
+      }
+    }
+    function applyBreakdownPreferenceIfNeeded() {
+      if (!elements.breakdownRememberChoice.checked) {
+        return;
+      }
+      store.updateState((state) => {
+        state.preferences.breakDownLargeTasksPromptMode = "skip-intro-ask";
+      });
+    }
+    function openBreakdownEditor(taskId, mode) {
+      const task = store.getState().tasks.find((item) => item.id === taskId);
+      if (!task) return;
+      breakdownState.taskId = taskId;
+      breakdownState.mode = mode;
+      breakdownState.drafts = mode === "suggested" ? buildSuggestedBreakdownDrafts(task.text) : buildManualBreakdownDrafts();
+      closeBreakdownIntroModal({ preserveTask: true });
+      app.renderers.renderBreakdownEditorModal();
+      elements.breakdownEditorModal.classList.remove("hidden");
+    }
+    function openBreakdownFlow(taskId) {
+      var _a;
+      const task = store.getState().tasks.find((item) => item.id === taskId);
+      if (!task) return;
+      breakdownState.taskId = taskId;
+      const shouldSkipIntro = ((_a = store.getState().preferences) == null ? void 0 : _a.breakDownLargeTasksPromptMode) === "skip-intro-ask";
+      elements.breakdownIntroText.textContent = shouldSkipIntro ? `Как тебе будет легче разложить задачу «${task.text}»?` : `Задача «${task.text}» выглядит тяжёлой. Давай превратим её в три маленьких шага?`;
+      elements.breakdownRememberRow.classList.toggle("hidden", shouldSkipIntro);
+      elements.breakdownRememberChoice.checked = false;
+      elements.breakdownIntroModal.classList.remove("hidden");
     }
     function openTemplateAutoModal(templateId) {
       const template = store.getState().templates.find((item) => item.id === templateId);
@@ -1924,6 +2272,8 @@
       elements.completedModal,
       elements.templatesModal,
       elements.templateAutoModal,
+      elements.breakdownIntroModal,
+      elements.breakdownEditorModal,
       elements.lowEnergyModal,
       elements.lowEnergySwapModal,
       elements.helperModal,
@@ -1940,6 +2290,14 @@
         }
         if (modal === elements.templateAutoModal) {
           closeTemplateAutoModal();
+          return;
+        }
+        if (modal === elements.breakdownIntroModal) {
+          closeBreakdownIntroModal();
+          return;
+        }
+        if (modal === elements.breakdownEditorModal) {
+          closeBreakdownEditorModal();
           return;
         }
         if (modal === elements.lowEnergyModal) {
@@ -2237,6 +2595,34 @@
       closeTemplateAutoModal();
       app.renderers.renderTemplates();
     });
+    elements.closeBreakdownIntroBtn.addEventListener("click", closeBreakdownIntroModal);
+    elements.closeBreakdownEditorBtn.addEventListener("click", () => closeBreakdownEditorModal());
+    elements.breakdownCancelBtn.addEventListener("click", () => closeBreakdownEditorModal());
+    elements.breakdownManualBtn.addEventListener("click", () => {
+      applyBreakdownPreferenceIfNeeded();
+      if (!breakdownState.taskId) return;
+      openBreakdownEditor(breakdownState.taskId, "manual");
+    });
+    elements.breakdownSuggestedBtn.addEventListener("click", () => {
+      applyBreakdownPreferenceIfNeeded();
+      if (!breakdownState.taskId) return;
+      openBreakdownEditor(breakdownState.taskId, "suggested");
+    });
+    elements.breakdownConfirmBtn.addEventListener("click", () => {
+      if (!breakdownState.taskId) return;
+      const created = createTaskBreakdown(store, {
+        taskId: breakdownState.taskId,
+        steps: breakdownState.drafts.map((draft) => ({
+          text: draft.text.trim(),
+          weight: draft.weight
+        }))
+      });
+      if (!created) return;
+      closeBreakdownEditorModal();
+      app.renderers.renderMainScreen();
+      app.renderers.renderArchive();
+      app.renderers.renderWeeklyScreen();
+    });
     elements.closeLowEnergyBtn.addEventListener("click", finalizeLowEnergyDecline);
     elements.lowEnergyDeclineBtn.addEventListener("click", finalizeLowEnergyDecline);
     elements.lowEnergyAcceptBtn.addEventListener("click", finalizeLowEnergyAcceptance);
@@ -2262,6 +2648,9 @@
         if (!taskId) return;
         if (target.dataset.action === "toggle-task") {
           const updatedTask = toggleTask(store, taskId);
+          if (updatedTask == null ? void 0 : updatedTask.completed) {
+            advanceBreakdownAfterCompletion(store, taskId);
+          }
           app.renderers.renderMainScreen();
           app.renderers.renderWeeklyScreen();
           if ((updatedTask == null ? void 0 : updatedTask.completed) && updatedTask.isResource) {
@@ -2274,6 +2663,8 @@
           deleteTask(store, taskId);
           app.renderers.renderMainScreen();
           app.renderers.renderWeeklyScreen();
+        } else if (target.dataset.action === "open-breakdown") {
+          openBreakdownFlow(taskId);
         } else if (target.dataset.action === "move-to-deferred") {
           moveToDeferred(store, taskId);
           app.renderers.renderMainScreen();
@@ -2403,6 +2794,21 @@
       if (target.dataset.action === "voice-update-date") {
         draft.suggestedDate = target.value;
       }
+    });
+    elements.breakdownDraftList.addEventListener("input", (event) => {
+      const target = event.target.closest('[data-action="breakdown-update-text"]');
+      if (!target) return;
+      const draft = breakdownState.drafts.find((item) => item.id === target.dataset.draftId);
+      if (!draft) return;
+      draft.text = target.value;
+      elements.breakdownConfirmBtn.disabled = breakdownState.drafts.some((item) => !item.text.trim());
+    });
+    elements.breakdownDraftList.addEventListener("change", (event) => {
+      const target = event.target.closest('[data-action="breakdown-update-weight"]');
+      if (!target) return;
+      const draft = breakdownState.drafts.find((item) => item.id === target.dataset.draftId);
+      if (!draft) return;
+      draft.weight = parseInt(target.value, 10) === 10 ? 10 : 5;
     });
     elements.resourcesList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
@@ -2576,6 +2982,11 @@
           voiceDraft: [],
           voiceError: "",
           modalMode: "hidden"
+        },
+        breakdown: {
+          taskId: null,
+          mode: "intro",
+          drafts: []
         },
         templateAutoPrompt: {
           templateId: null
