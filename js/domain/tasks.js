@@ -309,7 +309,7 @@ export function createTaskBreakdown(store, { taskId, steps }) {
 
     store.updateState(state => {
         const task = state.tasks.find(item => item.id === taskId);
-        if (!task || !shouldShowBreakdownAction(task) || !Array.isArray(steps) || steps.length !== 3) {
+        if (!task || !shouldShowBreakdownAction(task) || !Array.isArray(steps) || steps.length < 2 || steps.length > 3) {
             return;
         }
 
@@ -327,6 +327,7 @@ export function createTaskBreakdown(store, { taskId, steps }) {
         task.isHiddenFromMainList = true;
         task.showOnlyCurrentStep = true;
         task.breakdownChildIds = sanitizedSteps.map(step => step.id);
+        task.breakdownTotalSteps = sanitizedSteps.length;
 
         sanitizedSteps.forEach((step, index) => {
             state.tasks.push({
@@ -342,6 +343,7 @@ export function createTaskBreakdown(store, { taskId, steps }) {
                 breakdownParentId: task.id,
                 breakdownChildIds: [],
                 breakdownIndex: index,
+                breakdownTotalSteps: sanitizedSteps.length,
                 isBreakdownParent: false,
                 isBreakdownStep: true,
                 isHiddenFromMainList: false,

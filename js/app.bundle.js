@@ -21,6 +21,8 @@
       lowEnergySwapModal: doc.getElementById("low-energy-swap-modal"),
       helperModal: doc.getElementById("helper-modal"),
       voiceModal: doc.getElementById("voice-modal"),
+      inboxVoiceModal: doc.getElementById("inbox-voice-modal"),
+      inboxSortModal: doc.getElementById("inbox-sort-modal"),
       sosModal: doc.getElementById("sos-modal"),
       allDoneModal: doc.getElementById("all-done-modal"),
       energyInput: doc.getElementById("energy-input"),
@@ -59,6 +61,14 @@
       taskWeightSelect: doc.getElementById("task-weight"),
       openVoiceBtn: doc.getElementById("open-voice-btn"),
       voiceStatus: doc.getElementById("voice-status"),
+      inboxSection: doc.getElementById("inbox-section"),
+      addInboxForm: doc.getElementById("add-inbox-form"),
+      inboxInput: doc.getElementById("inbox-text"),
+      openInboxVoiceBtn: doc.getElementById("open-inbox-voice-btn"),
+      inboxStatus: doc.getElementById("inbox-status"),
+      openInboxSortBtn: doc.getElementById("open-inbox-sort-btn"),
+      clearInboxBtn: doc.getElementById("clear-inbox-btn"),
+      inboxList: doc.getElementById("inbox-list"),
       openLibraryBtn: doc.getElementById("open-library-btn"),
       closeLibraryBtn: doc.getElementById("close-library-btn"),
       resourcesList: doc.getElementById("resources-list"),
@@ -97,6 +107,16 @@
       voiceEmptyState: doc.getElementById("voice-empty-state"),
       voiceConfirmBtn: doc.getElementById("voice-confirm-btn"),
       voiceCancelBtn: doc.getElementById("voice-cancel-btn"),
+      closeInboxVoiceBtn: doc.getElementById("close-inbox-voice-btn"),
+      inboxVoiceHelperAvatar: doc.getElementById("inbox-voice-helper-avatar"),
+      inboxVoiceModalTitle: doc.getElementById("inbox-voice-modal-title"),
+      inboxVoiceModalSubtitle: doc.getElementById("inbox-voice-modal-subtitle"),
+      inboxVoiceDraftList: doc.getElementById("inbox-voice-draft-list"),
+      inboxVoiceEmptyState: doc.getElementById("inbox-voice-empty-state"),
+      inboxVoiceConfirmBtn: doc.getElementById("inbox-voice-confirm-btn"),
+      inboxVoiceCancelBtn: doc.getElementById("inbox-voice-cancel-btn"),
+      closeInboxSortBtn: doc.getElementById("close-inbox-sort-btn"),
+      inboxSortCard: doc.getElementById("inbox-sort-card"),
       closeSosBtn: doc.getElementById("close-sos-btn"),
       sosArchiveBtn: doc.getElementById("sos-archive-btn"),
       sosTomorrowBtn: doc.getElementById("sos-tomorrow-btn"),
@@ -461,7 +481,7 @@
     let parentTask = null;
     store.updateState((state) => {
       const task = state.tasks.find((item) => item.id === taskId);
-      if (!task || !shouldShowBreakdownAction(task) || !Array.isArray(steps) || steps.length !== 3) {
+      if (!task || !shouldShowBreakdownAction(task) || !Array.isArray(steps) || steps.length < 2 || steps.length > 3) {
         return;
       }
       const sanitizedSteps = steps.map((step, index) => ({
@@ -476,6 +496,7 @@
       task.isHiddenFromMainList = true;
       task.showOnlyCurrentStep = true;
       task.breakdownChildIds = sanitizedSteps.map((step) => step.id);
+      task.breakdownTotalSteps = sanitizedSteps.length;
       sanitizedSteps.forEach((step, index) => {
         state.tasks.push({
           id: step.id,
@@ -490,6 +511,7 @@
           breakdownParentId: task.id,
           breakdownChildIds: [],
           breakdownIndex: index,
+          breakdownTotalSteps: sanitizedSteps.length,
           isBreakdownParent: false,
           isBreakdownStep: true,
           isHiddenFromMainList: false,
@@ -792,6 +814,7 @@
       currentDayMeta: createCurrentDayMeta(null),
       moodHistory: [],
       tasks: [],
+      inboxItems: [],
       preferences: {
         breakDownLargeTasksPromptMode: "ask-first-time"
       },
@@ -887,6 +910,7 @@
         const today = getLocalDateString();
         state = { ...state, ...JSON.parse(saved) };
         if (!Array.isArray(state.tasks)) state.tasks = [];
+        if (!Array.isArray(state.inboxItems)) state.inboxItems = [];
         if (!Array.isArray(state.resources)) state.resources = [];
         state.moodHistory = normalizeMoodHistory(state.moodHistory);
         ensurePreferenceDefaults(state);
@@ -948,6 +972,11 @@
             task.targetDate = null;
           }
         });
+        state.inboxItems = state.inboxItems.filter((item) => item && typeof item.text === "string").map((item) => ({
+          id: typeof item.id === "string" ? item.id : `inbox_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+          text: item.text.trim(),
+          createdAt: typeof item.createdAt === "string" ? item.createdAt : (/* @__PURE__ */ new Date()).toISOString()
+        })).filter((item) => item.text);
         if (state.avatar && !state.avatar.includes(".png")) {
           state.avatar = "assets/girl.png";
         }
@@ -977,6 +1006,198 @@
   }
   function closestActionTarget(target) {
     return target.closest("[data-action]");
+  }
+
+  // js/domain/resources.js
+  function addResource(store, text) {
+    const resource = { id: `res_${Date.now()}`, text };
+    store.updateState((state) => {
+      state.resources.push(resource);
+    });
+    return resource;
+  }
+  function deleteResource(store, resourceId) {
+    store.updateState((state) => {
+      state.resources = state.resources.filter((resource) => resource.id !== resourceId);
+    });
+  }
+  function addResourceToDay(store, resourceId) {
+    const state = store.getState();
+    const resource = state.resources.find((item) => item.id === resourceId);
+    if (!resource) {
+      return null;
+    }
+    return addTask(store, {
+      text: resource.text,
+      weight: 0,
+      isResource: true
+    });
+  }
+  function assignLowEnergyResource(store, { today = getLocalDateString(), cycle = false } = {}) {
+    const state = store.getState();
+    const currentDayMeta = state.currentDayMeta || {};
+    const activeTodayResources = getTodayTasks(state, today).filter((task) => task.isResource);
+    const currentResourceTaskId = currentDayMeta.lowEnergyResourceTaskId || null;
+    const currentResourceId = currentDayMeta.lowEnergyResourceId || null;
+    const currentResourceTask = currentResourceTaskId ? activeTodayResources.find((task) => task.id === currentResourceTaskId) || null : null;
+    const busyResourceTexts = new Set(
+      activeTodayResources.filter((task) => task.id !== currentResourceTaskId).map((task) => task.text)
+    );
+    const availableResources = state.resources.filter(
+      (resource) => !busyResourceTexts.has(resource.text)
+    );
+    if (availableResources.length === 0) {
+      return currentResourceTask || null;
+    }
+    let nextResource = null;
+    if (cycle && currentResourceId) {
+      const currentIndex = availableResources.findIndex((resource) => resource.id === currentResourceId);
+      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % availableResources.length;
+      nextResource = availableResources[nextIndex];
+    } else {
+      const pool = availableResources.filter((resource) => resource.id !== currentResourceId);
+      const selectionPool = pool.length > 0 ? pool : availableResources;
+      nextResource = selectionPool[Math.floor(Math.random() * selectionPool.length)];
+    }
+    if (!nextResource) {
+      return currentResourceTask || null;
+    }
+    let assignedTask = null;
+    store.updateState((nextState) => {
+      const currentTask = currentResourceTaskId ? nextState.tasks.find(
+        (task) => task.id === currentResourceTaskId && getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && task.isResource
+      ) || null : null;
+      if (currentTask) {
+        currentTask.text = nextResource.text;
+        assignedTask = currentTask;
+      } else {
+        assignedTask = {
+          id: `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+          text: nextResource.text,
+          weight: 0,
+          isResource: true,
+          completed: false,
+          completedAtDate: null,
+          storageStatus: TASK_STORAGE.ACTIVE,
+          isArchived: false,
+          targetDate: today
+        };
+        nextState.tasks.push(assignedTask);
+      }
+      nextState.currentDayMeta = {
+        ...nextState.currentDayMeta,
+        date: today,
+        lowEnergyDayApplied: true,
+        lowEnergyResourceId: nextResource.id,
+        lowEnergyResourceTaskId: (assignedTask == null ? void 0 : assignedTask.id) || null
+      };
+    }, { save: false });
+    store.saveState();
+    return assignedTask;
+  }
+
+  // js/domain/inbox.js
+  function createInboxId() {
+    return `inbox_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+  }
+  function splitInboxText(input) {
+    return String(input || "").split(/\r?\n+/).map((line) => line.trim()).filter(Boolean);
+  }
+  function getInboxItems(state) {
+    return [...state.inboxItems || []].sort((left, right) => (left.createdAt || "").localeCompare(right.createdAt || ""));
+  }
+  function addInboxItems(store, items) {
+    const normalizedItems = (Array.isArray(items) ? items : []).map((item) => typeof item === "string" ? { text: item } : item).map((item) => ({
+      id: item.id || createInboxId(),
+      text: String(item.text || "").trim(),
+      createdAt: item.createdAt || (/* @__PURE__ */ new Date()).toISOString()
+    })).filter((item) => item.text);
+    if (normalizedItems.length === 0) {
+      return [];
+    }
+    store.updateState((state) => {
+      state.inboxItems.push(...normalizedItems);
+    });
+    return normalizedItems;
+  }
+  function deleteInboxItem(store, itemId) {
+    let deletedItem = null;
+    store.updateState((state) => {
+      deletedItem = state.inboxItems.find((item) => item.id === itemId) || null;
+      state.inboxItems = state.inboxItems.filter((item) => item.id !== itemId);
+    });
+    return deletedItem;
+  }
+  function clearInboxItems(store) {
+    let removedCount = 0;
+    store.updateState((state) => {
+      removedCount = state.inboxItems.length;
+      state.inboxItems = [];
+    });
+    return removedCount;
+  }
+  function convertInboxItemToToday(store, { itemId, weight = 20 }) {
+    const state = store.getState();
+    const item = state.inboxItems.find((entry) => entry.id === itemId);
+    if (!item) {
+      return null;
+    }
+    const task = addTask2(store, {
+      text: item.text,
+      weight,
+      isResource: false,
+      targetDate: getLocalDateString()
+    });
+    deleteInboxItem(store, itemId);
+    return task;
+  }
+  function convertInboxItemToDate(store, { itemId, dateStr, weight = 20 }) {
+    const state = store.getState();
+    const item = state.inboxItems.find((entry) => entry.id === itemId);
+    if (!item) {
+      return null;
+    }
+    const task = addTask2(store, {
+      text: item.text,
+      weight,
+      isResource: false,
+      targetDate: dateStr
+    });
+    deleteInboxItem(store, itemId);
+    return task;
+  }
+  function convertInboxItemToDeferred(store, itemId) {
+    const state = store.getState();
+    const item = state.inboxItems.find((entry) => entry.id === itemId);
+    if (!item) {
+      return null;
+    }
+    const task = addTask2(store, {
+      text: item.text,
+      weight: 20,
+      isResource: false,
+      targetDate: getLocalDateString()
+    });
+    moveToDeferred(store, task.id);
+    deleteInboxItem(store, itemId);
+    return task;
+  }
+  function convertInboxItemToResource(store, itemId) {
+    const state = store.getState();
+    const item = state.inboxItems.find((entry) => entry.id === itemId);
+    if (!item) {
+      return null;
+    }
+    const resource = addResource(store, item.text);
+    deleteInboxItem(store, itemId);
+    return resource;
+  }
+  function getInboxSortDates(today = getLocalDateString()) {
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = parseLocalDate(today);
+      date.setDate(date.getDate() + index);
+      return getLocalDateString(date);
+    });
   }
 
   // js/ui/renderers.js
@@ -1040,7 +1261,7 @@
             <button class="postpone-btn" title="На завтра" data-action="postpone-task" data-task-id="${task.id}">➡️</button>
         ` : "";
     const breakdownButtonHtml = shouldShowBreakdownAction(task) ? `<button class="task-breakdown-btn" type="button" title="Разбить на шаги" data-action="open-breakdown" data-task-id="${task.id}">Разбить</button>` : "";
-    const taskMetaHtml = task.isBreakdownStep ? `<div class="task-meta">Шаг ${((_a = task.breakdownIndex) != null ? _a : 0) + 1} из 3</div>` : "";
+    const taskMetaHtml = task.isBreakdownStep ? `<div class="task-meta">Шаг ${((_a = task.breakdownIndex) != null ? _a : 0) + 1} из ${task.breakdownTotalSteps || 3}</div>` : "";
     taskEl.innerHTML = `
         <div class="task-checkbox-container" data-action="toggle-task" data-task-id="${task.id}">
             <div class="custom-checkbox"></div>
@@ -1135,6 +1356,154 @@
         elements.voiceStatus.classList.remove("hidden");
       }
     }
+    function renderInboxUi() {
+      const inbox = runtime.inbox;
+      const inboxItems = getInboxItems(store.getState());
+      elements.inboxList.innerHTML = "";
+      elements.inboxStatus.classList.add("hidden");
+      elements.openInboxVoiceBtn.classList.remove("listening", "processing", "unsupported");
+      if (!inbox.isSupported) {
+        elements.openInboxVoiceBtn.classList.add("unsupported");
+        elements.openInboxVoiceBtn.title = "Голосовой ввод в Облако недоступен";
+      } else if (inbox.isListening) {
+        elements.openInboxVoiceBtn.classList.add("listening");
+        elements.openInboxVoiceBtn.title = "Остановить запись";
+        elements.openInboxVoiceBtn.textContent = "🎙️";
+        elements.inboxStatus.textContent = "Я слушаю. Можно просто выгрузить поток мыслей.";
+        elements.inboxStatus.classList.remove("hidden");
+      } else if (inbox.isProcessing) {
+        elements.openInboxVoiceBtn.classList.add("processing");
+        elements.openInboxVoiceBtn.title = "Собираю мысли в Облако";
+        elements.openInboxVoiceBtn.textContent = "⏳";
+        elements.inboxStatus.textContent = "Собираю черновик мыслей...";
+        elements.inboxStatus.classList.remove("hidden");
+      } else {
+        elements.openInboxVoiceBtn.textContent = "🎤";
+        elements.openInboxVoiceBtn.title = "Надиктовать в Облако";
+        if (inbox.error) {
+          elements.inboxStatus.textContent = inbox.error;
+          elements.inboxStatus.classList.remove("hidden");
+        }
+      }
+      elements.openInboxSortBtn.disabled = inboxItems.length === 0;
+      elements.clearInboxBtn.disabled = inboxItems.length === 0;
+      if (inboxItems.length === 0) {
+        elements.inboxList.innerHTML = '<div class="inbox-empty-state">Сюда можно быстро выгрузить всё, что крутится в голове. Разобрать можно потом.</div>';
+        return;
+      }
+      inboxItems.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "inbox-item";
+        const isPendingToday = inbox.pendingAction.itemId === item.id && inbox.pendingAction.mode === "today";
+        const isPendingWeek = inbox.pendingAction.itemId === item.id && inbox.pendingAction.mode === "week";
+        const todayActionHtml = isPendingToday ? `
+                    <div class="inbox-action-config">
+                        <select data-action="inbox-update-weight" data-inbox-id="${item.id}">
+                            ${[5, 10, 20, 30, 50].map((weight) => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? "selected" : ""}>${weight}</option>`).join("")}
+                        </select>
+                        <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-today" data-inbox-id="${item.id}">Добавить</button>
+                        <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${item.id}">Отмена</button>
+                    </div>
+                ` : "";
+        const weekActionHtml = isPendingWeek ? `
+                    <div class="inbox-action-config">
+                        <select data-action="inbox-update-date" data-inbox-id="${item.id}">
+                            ${getInboxSortDates().map((date) => `<option value="${date}" ${inbox.pendingAction.date === date ? "selected" : ""}>${formatVoiceDateLabel(date)}</option>`).join("")}
+                        </select>
+                        <select data-action="inbox-update-weight" data-inbox-id="${item.id}">
+                            ${[5, 10, 20, 30, 50].map((weight) => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? "selected" : ""}>${weight}</option>`).join("")}
+                        </select>
+                        <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-week" data-inbox-id="${item.id}">Добавить</button>
+                        <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${item.id}">Отмена</button>
+                    </div>
+                ` : "";
+        card.innerHTML = `
+                <div class="inbox-item-text">${escapeHtml(item.text)}</div>
+                <div class="inbox-item-actions">
+                    <button class="text-btn" type="button" data-action="inbox-open-today" data-inbox-id="${item.id}">На сегодня</button>
+                    <button class="text-btn" type="button" data-action="inbox-open-week" data-inbox-id="${item.id}">В план</button>
+                    <button class="text-btn" type="button" data-action="inbox-move-deferred" data-inbox-id="${item.id}">На потом</button>
+                    <button class="text-btn" type="button" data-action="inbox-to-resource" data-inbox-id="${item.id}">В ресурсы</button>
+                    <button class="text-btn" type="button" data-action="inbox-breakdown" data-inbox-id="${item.id}">Разбить</button>
+                    <button class="delete-btn" title="Удалить" data-action="inbox-delete" data-inbox-id="${item.id}">&times;</button>
+                </div>
+                ${todayActionHtml}
+                ${weekActionHtml}
+            `;
+        elements.inboxList.appendChild(card);
+      });
+    }
+    function renderInboxVoiceModal() {
+      const state = store.getState();
+      const inbox = runtime.inbox;
+      const isDraftMode = inbox.modalMode === "draft" && inbox.drafts.length > 0;
+      elements.inboxVoiceHelperAvatar.src = state.avatar;
+      elements.inboxVoiceDraftList.innerHTML = "";
+      elements.inboxVoiceEmptyState.classList.toggle("hidden", isDraftMode);
+      elements.inboxVoiceConfirmBtn.classList.toggle("hidden", !isDraftMode);
+      if (!isDraftMode) {
+        elements.inboxVoiceModalTitle.textContent = "Голос в Облако";
+        elements.inboxVoiceModalSubtitle.textContent = inbox.error || "Пока не получилось подготовить черновик мыслей.";
+        elements.inboxVoiceEmptyState.textContent = inbox.error || "Можно попробовать ещё раз или записать мысль текстом.";
+        return;
+      }
+      elements.inboxVoiceModalTitle.textContent = "Сохраняем в Облако?";
+      elements.inboxVoiceModalSubtitle.textContent = "Вот что я услышал. Можно спокойно поправить перед сохранением.";
+      inbox.drafts.forEach((draft) => {
+        const row = document.createElement("div");
+        row.className = "voice-draft-item";
+        row.innerHTML = `
+                <input class="voice-draft-input" type="text" value="${escapeHtml(draft.text)}" data-action="inbox-voice-update-text" data-draft-id="${draft.id}">
+                <div class="breakdown-draft-note">Мысль</div>
+                <div class="breakdown-draft-spacer"></div>
+                <button class="delete-btn" title="Удалить" data-action="inbox-voice-remove-draft" data-draft-id="${draft.id}">&times;</button>
+            `;
+        elements.inboxVoiceDraftList.appendChild(row);
+      });
+    }
+    function renderInboxSortModal() {
+      const inboxItems = getInboxItems(store.getState());
+      const currentItem = inboxItems[0] || null;
+      const inbox = runtime.inbox;
+      if (!currentItem) {
+        elements.inboxSortCard.innerHTML = '<div class="inbox-empty-state">Сейчас Облако пустое. Можно просто закрыть окно и вернуться позже.</div>';
+        return;
+      }
+      const isPendingToday = inbox.pendingAction.itemId === currentItem.id && inbox.pendingAction.mode === "today";
+      const isPendingWeek = inbox.pendingAction.itemId === currentItem.id && inbox.pendingAction.mode === "week";
+      elements.inboxSortCard.innerHTML = `
+            <div class="inbox-sort-text">${escapeHtml(currentItem.text)}</div>
+            <div class="inbox-item-actions inbox-sort-actions">
+                <button class="text-btn" type="button" data-action="inbox-open-today" data-inbox-id="${currentItem.id}">На сегодня</button>
+                <button class="text-btn" type="button" data-action="inbox-open-week" data-inbox-id="${currentItem.id}">В план</button>
+                <button class="text-btn" type="button" data-action="inbox-move-deferred" data-inbox-id="${currentItem.id}">На потом</button>
+                <button class="text-btn" type="button" data-action="inbox-to-resource" data-inbox-id="${currentItem.id}">В ресурсы</button>
+                <button class="text-btn" type="button" data-action="inbox-breakdown" data-inbox-id="${currentItem.id}">Разбить</button>
+                <button class="delete-btn" title="Удалить" data-action="inbox-delete" data-inbox-id="${currentItem.id}">&times;</button>
+            </div>
+            ${isPendingToday ? `
+                <div class="inbox-action-config">
+                    <select data-action="inbox-update-weight" data-inbox-id="${currentItem.id}">
+                        ${[5, 10, 20, 30, 50].map((weight) => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? "selected" : ""}>${weight}</option>`).join("")}
+                    </select>
+                    <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-today" data-inbox-id="${currentItem.id}">Добавить</button>
+                    <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${currentItem.id}">Отмена</button>
+                </div>
+            ` : ""}
+            ${isPendingWeek ? `
+                <div class="inbox-action-config">
+                    <select data-action="inbox-update-date" data-inbox-id="${currentItem.id}">
+                        ${getInboxSortDates().map((date) => `<option value="${date}" ${inbox.pendingAction.date === date ? "selected" : ""}>${formatVoiceDateLabel(date)}</option>`).join("")}
+                    </select>
+                    <select data-action="inbox-update-weight" data-inbox-id="${currentItem.id}">
+                        ${[5, 10, 20, 30, 50].map((weight) => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? "selected" : ""}>${weight}</option>`).join("")}
+                    </select>
+                    <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-week" data-inbox-id="${currentItem.id}">Добавить</button>
+                    <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${currentItem.id}">Отмена</button>
+                </div>
+            ` : ""}
+        `;
+    }
     function renderReviewTasks(tasks) {
       elements.reviewTasksList.innerHTML = "";
       tasks.forEach((task) => {
@@ -1197,6 +1566,7 @@
         elements.selfCareList.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px; text-align: center; padding: 8px;">Добавьте ресурс из «Моих радостей» ☕</div>';
       }
       renderLowEnergyPanel(state, todayTasks, isSosView);
+      renderInboxUi();
       elements.balanceSection.classList.toggle("hidden", isSosView);
       elements.addTaskForm.classList.toggle("hidden", isSosView);
       elements.openTemplatesBtn.classList.toggle("hidden", isSosView);
@@ -1462,7 +1832,7 @@
       const state = store.getState();
       const task = breakdown.taskId ? state.tasks.find((item) => item.id === breakdown.taskId) : null;
       const parentTask = (task == null ? void 0 : task.isBreakdownStep) ? getTaskBreakdownParent(state, task) : null;
-      const sourceTask = parentTask || task;
+      const sourceTask = parentTask || task || (breakdown.sourceText ? { text: breakdown.sourceText } : null);
       const isSuggested = breakdown.mode === "suggested";
       elements.breakdownDraftList.innerHTML = "";
       elements.breakdownEditorTitle.textContent = isSuggested ? "Проверим маленькие шаги?" : "Соберём три маленьких шага";
@@ -1476,7 +1846,7 @@
                 <select class="voice-draft-select" data-action="breakdown-update-weight" data-draft-id="${draft.id}">
                     ${[5, 10].map((weight) => `<option value="${weight}" ${draft.weight === weight ? "selected" : ""}>${weight}</option>`).join("")}
                 </select>
-                <div class="breakdown-draft-note">Шаг ${((_a = draft.index) != null ? _a : 0) + 1} из 3</div>
+                <div class="breakdown-draft-note">Шаг ${((_a = draft.index) != null ? _a : 0) + 1} из ${breakdown.drafts.length || 3}</div>
                 <div class="breakdown-draft-spacer"></div>
             `;
         elements.breakdownDraftList.appendChild(row);
@@ -1547,6 +1917,9 @@
     return {
       renderReviewTasks,
       renderMainScreen,
+      renderInboxUi,
+      renderInboxVoiceModal,
+      renderInboxSortModal,
       renderArchive,
       renderCompleted,
       renderHistoryScreen,
@@ -1582,6 +1955,8 @@
       elements.lowEnergyModal.classList.add("hidden");
       elements.lowEnergySwapModal.classList.add("hidden");
       elements.voiceModal.classList.add("hidden");
+      elements.inboxVoiceModal.classList.add("hidden");
+      elements.inboxSortModal.classList.add("hidden");
     }
     function showOnboardingScreen() {
       hidePrimaryScreens();
@@ -1779,6 +2154,12 @@
     const parts = prepared.split("|").map((part) => cleanupTaskText(part)).filter(Boolean);
     return parts.length > 0 ? parts : [cleanupTaskText(transcript)].filter(Boolean);
   }
+  function createInboxDraft(text, index = 0) {
+    return {
+      id: `inbox_draft_${Date.now()}_${index}_${Math.floor(Math.random() * 1e5)}`,
+      text
+    };
+  }
   function suggestWeight(text) {
     const normalized = text.toLowerCase();
     if (/(глыба|сил нет|тяжело|тяжёло|разобрать документы|убраться|разобрать|документы)/.test(normalized)) {
@@ -1817,93 +2198,12 @@
       };
     }).filter(Boolean);
   }
-
-  // js/domain/resources.js
-  function addResource(store, text) {
-    const resource = { id: `res_${Date.now()}`, text };
-    store.updateState((state) => {
-      state.resources.push(resource);
-    });
-    return resource;
-  }
-  function deleteResource(store, resourceId) {
-    store.updateState((state) => {
-      state.resources = state.resources.filter((resource) => resource.id !== resourceId);
-    });
-  }
-  function addResourceToDay(store, resourceId) {
-    const state = store.getState();
-    const resource = state.resources.find((item) => item.id === resourceId);
-    if (!resource) {
-      return null;
+  function parseInboxTranscript(transcript) {
+    const normalizedTranscript = String(transcript || "").replace(/\s+/g, " ").trim();
+    if (!normalizedTranscript) {
+      return [];
     }
-    return addTask(store, {
-      text: resource.text,
-      weight: 0,
-      isResource: true
-    });
-  }
-  function assignLowEnergyResource(store, { today = getLocalDateString(), cycle = false } = {}) {
-    const state = store.getState();
-    const currentDayMeta = state.currentDayMeta || {};
-    const activeTodayResources = getTodayTasks(state, today).filter((task) => task.isResource);
-    const currentResourceTaskId = currentDayMeta.lowEnergyResourceTaskId || null;
-    const currentResourceId = currentDayMeta.lowEnergyResourceId || null;
-    const currentResourceTask = currentResourceTaskId ? activeTodayResources.find((task) => task.id === currentResourceTaskId) || null : null;
-    const busyResourceTexts = new Set(
-      activeTodayResources.filter((task) => task.id !== currentResourceTaskId).map((task) => task.text)
-    );
-    const availableResources = state.resources.filter(
-      (resource) => !busyResourceTexts.has(resource.text)
-    );
-    if (availableResources.length === 0) {
-      return currentResourceTask || null;
-    }
-    let nextResource = null;
-    if (cycle && currentResourceId) {
-      const currentIndex = availableResources.findIndex((resource) => resource.id === currentResourceId);
-      const nextIndex = currentIndex === -1 ? 0 : (currentIndex + 1) % availableResources.length;
-      nextResource = availableResources[nextIndex];
-    } else {
-      const pool = availableResources.filter((resource) => resource.id !== currentResourceId);
-      const selectionPool = pool.length > 0 ? pool : availableResources;
-      nextResource = selectionPool[Math.floor(Math.random() * selectionPool.length)];
-    }
-    if (!nextResource) {
-      return currentResourceTask || null;
-    }
-    let assignedTask = null;
-    store.updateState((nextState) => {
-      const currentTask = currentResourceTaskId ? nextState.tasks.find(
-        (task) => task.id === currentResourceTaskId && getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && task.isResource
-      ) || null : null;
-      if (currentTask) {
-        currentTask.text = nextResource.text;
-        assignedTask = currentTask;
-      } else {
-        assignedTask = {
-          id: `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
-          text: nextResource.text,
-          weight: 0,
-          isResource: true,
-          completed: false,
-          completedAtDate: null,
-          storageStatus: TASK_STORAGE.ACTIVE,
-          isArchived: false,
-          targetDate: today
-        };
-        nextState.tasks.push(assignedTask);
-      }
-      nextState.currentDayMeta = {
-        ...nextState.currentDayMeta,
-        date: today,
-        lowEnergyDayApplied: true,
-        lowEnergyResourceId: nextResource.id,
-        lowEnergyResourceTaskId: (assignedTask == null ? void 0 : assignedTask.id) || null
-      };
-    }, { save: false });
-    store.saveState();
-    return assignedTask;
+    return splitTranscriptIntoParts(normalizedTranscript).map((part, index) => cleanupTaskText(part)).filter(Boolean).map((text, index) => createInboxDraft(text, index));
   }
 
   // js/domain/templates.js
@@ -2106,56 +2406,105 @@
   function buildManualBreakdownDrafts() {
     return [0, 1, 2].map((index) => createBreakdownDraft("", 5, index));
   }
-  function buildSuggestedBreakdownDrafts(taskText) {
+  function capitalizeBreakdownStep(text) {
+    if (!text) return "";
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+  function looksLikeActionPhrase(text) {
+    const firstWord = String(text || "").trim().split(/\s+/)[0] || "";
+    return ["ть", "ти", "чь"].some((ending) => firstWord.toLowerCase().endsWith(ending));
+  }
+  function splitCompoundTaskText(taskText) {
+    const normalized = String(taskText || "").trim();
+    const directParts = normalized.split(/[\n,;]+/).map((part) => part.trim()).filter(Boolean);
+    if (directParts.length > 1) {
+      return directParts;
+    }
+    const andParts = normalized.split(/\s+?\s+/i).map((part) => part.trim()).filter(Boolean);
+    if (andParts.length > 1 && andParts.every(looksLikeActionPhrase)) {
+      return andParts;
+    }
+    return [normalized];
+  }
+  function buildCompactSuggestedBreakdownDrafts(taskText) {
     const normalized = String(taskText || "").trim();
     const lower = normalized.toLowerCase();
+    const compoundParts = splitCompoundTaskText(normalized);
     let suggestions;
-    if (lower.includes("документ")) {
+    if (compoundParts.length > 1) {
+      suggestions = compoundParts.slice(0, 3).map(capitalizeBreakdownStep);
+    } else if (lower.includes("варить") && lower.includes("картошк")) {
       suggestions = [
-        "Открыть список нужных документов",
-        "Подготовить или заполнить первую часть",
-        "Проверить и отправить документы"
+        "Подготовить картошку и воду",
+        "Поставить картошку вариться",
+        "Проверить готовность и слить воду"
+      ];
+    } else if (lower.includes("мыть пол") || lower.includes("полы")) {
+      suggestions = [
+        "Подготовить воду или швабру",
+        "Помыть одну зону",
+        "Домыть остальное и убрать инвентарь"
+      ];
+    } else if (lower.includes("пылесос")) {
+      suggestions = [
+        "Достать пылесос",
+        "Пропылесосить одну комнату",
+        "Убрать пылесос на место"
+      ];
+    } else if (lower.includes("документ")) {
+      suggestions = [
+        "Открыть нужные документы",
+        "Сделать первую часть",
+        "Проверить и отправить"
       ];
     } else if (lower.includes("уборк") || lower.includes("прибрат")) {
       suggestions = [
-        "Выбрать один маленький участок для уборки",
-        "Убрать только этот участок 10 минут",
-        "Вынести мусор или убрать вещи на место"
+        "Выбрать один участок",
+        "Убрать его 10 минут",
+        "Вернуть вещи по местам"
       ];
     } else if (lower.includes("звон") || lower.includes("позвон")) {
       suggestions = [
-        "Открыть номер и подготовить пару фраз",
+        "Открыть номер",
         "Сделать короткий звонок",
-        "Записать итог звонка или следующий шаг"
+        "Записать итог"
       ];
     } else if (lower.includes("куп") || lower.includes("магаз")) {
       suggestions = [
-        "Составить короткий список покупок",
+        "Составить короткий список",
         "Сходить или открыть доставку",
-        "Разложить покупки по местам"
+        "Разложить покупки"
       ];
     } else if (lower.includes("врач") || lower.includes("поликлиник")) {
       suggestions = [
-        "Найти контакты или запись к врачу",
-        "Сделать один короткий звонок или заявку",
-        "Записать дату, время или следующий шаг"
+        "Найти контакты",
+        "Сделать один звонок",
+        "Записать дату или шаг"
       ];
     } else {
       suggestions = [
-        `Подготовить всё нужное для: ${normalized}`,
-        `Сделать маленькую основную часть: ${normalized}`,
-        `Проверить и закрыть шаг по задаче: ${normalized}`
+        "Начать с одного маленького кусочка",
+        `Сделать часть: ${normalized}`,
+        "Закрыть и проверить"
       ];
     }
-    return suggestions.map((text, index) => createBreakdownDraft(text, index === 1 ? 10 : 5, index));
+    return suggestions.slice(0, 3).map((text, index) => createBreakdownDraft(text, index === 1 ? 10 : 5, index));
   }
   function bindAppEvents(app) {
+    var _a;
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
+    const inboxState = runtime.inbox;
     const breakdownState = runtime.breakdown;
     const editTaskState = runtime.editTask;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = "tpl_4";
+    const breakdownRememberLabel = (_a = elements.breakdownRememberRow) == null ? void 0 : _a.querySelector("span");
+    if (breakdownRememberLabel) {
+      breakdownRememberLabel.textContent = "Больше не показывать";
+    }
+    elements.breakdownManualBtn.textContent = "Не сейчас";
+    elements.breakdownSuggestedBtn.textContent = "Помоги разбить";
     function closeVoiceModal({ resetDraft = true } = {}) {
       elements.voiceModal.classList.add("hidden");
       voiceState.modalMode = "hidden";
@@ -2163,6 +2512,38 @@
         voiceState.voiceDraft = [];
         voiceState.lastTranscript = "";
       }
+    }
+    function closeInboxVoiceModal({ resetDraft = true } = {}) {
+      elements.inboxVoiceModal.classList.add("hidden");
+      inboxState.modalMode = "hidden";
+      if (resetDraft) {
+        inboxState.drafts = [];
+      }
+    }
+    function openInboxVoiceMessage(message) {
+      inboxState.isListening = false;
+      inboxState.isProcessing = false;
+      inboxState.drafts = [];
+      inboxState.error = message;
+      inboxState.modalMode = "message";
+      app.renderers.renderMainScreen();
+      app.renderers.renderInboxVoiceModal();
+      elements.inboxVoiceModal.classList.remove("hidden");
+    }
+    function openInboxDraftModal(drafts) {
+      inboxState.isListening = false;
+      inboxState.isProcessing = false;
+      inboxState.drafts = drafts;
+      inboxState.error = "";
+      inboxState.modalMode = "draft";
+      app.renderers.renderMainScreen();
+      app.renderers.renderInboxVoiceModal();
+      elements.inboxVoiceModal.classList.remove("hidden");
+    }
+    function closeInboxSortModal() {
+      elements.inboxSortModal.classList.add("hidden");
+      inboxState.sortMode = "idle";
+      inboxState.pendingAction = { itemId: null, mode: null, weight: 20, date: getLocalDateString() };
     }
     function openVoiceMessage(message) {
       voiceState.isListening = false;
@@ -2193,6 +2574,8 @@
       elements.breakdownIntroModal.classList.add("hidden");
       if (!preserveTask) {
         breakdownState.taskId = null;
+        breakdownState.sourceInboxId = null;
+        breakdownState.sourceText = "";
       }
       elements.breakdownRememberChoice.checked = false;
       elements.breakdownRememberRow.classList.remove("hidden");
@@ -2203,6 +2586,8 @@
         breakdownState.taskId = null;
         breakdownState.mode = "intro";
         breakdownState.drafts = [];
+        breakdownState.sourceInboxId = null;
+        breakdownState.sourceText = "";
         elements.breakdownRememberChoice.checked = false;
       }
     }
@@ -2232,20 +2617,48 @@
       const task = store.getState().tasks.find((item) => item.id === taskId);
       if (!task) return;
       breakdownState.taskId = taskId;
+      breakdownState.sourceInboxId = null;
+      breakdownState.sourceText = task.text;
       breakdownState.mode = mode;
-      breakdownState.drafts = mode === "suggested" ? buildSuggestedBreakdownDrafts(task.text) : buildManualBreakdownDrafts();
+      breakdownState.drafts = mode === "suggested" ? buildCompactSuggestedBreakdownDrafts(task.text) : buildManualBreakdownDrafts();
       closeBreakdownIntroModal({ preserveTask: true });
       app.renderers.renderBreakdownEditorModal();
       elements.breakdownEditorModal.classList.remove("hidden");
     }
     function openBreakdownFlow(taskId) {
-      var _a;
+      var _a2;
       const task = store.getState().tasks.find((item) => item.id === taskId);
       if (!task) return;
       breakdownState.taskId = taskId;
-      const shouldSkipIntro = ((_a = store.getState().preferences) == null ? void 0 : _a.breakDownLargeTasksPromptMode) === "skip-intro-ask";
-      elements.breakdownIntroText.textContent = shouldSkipIntro ? `Как тебе будет легче разложить задачу «${task.text}»?` : `Задача «${task.text}» выглядит тяжёлой. Давай превратим её в три маленьких шага?`;
-      elements.breakdownRememberRow.classList.toggle("hidden", shouldSkipIntro);
+      breakdownState.sourceInboxId = null;
+      breakdownState.sourceText = task.text;
+      const shouldSkipIntro = ((_a2 = store.getState().preferences) == null ? void 0 : _a2.breakDownLargeTasksPromptMode) === "skip-intro-ask";
+      if (shouldSkipIntro) {
+        openBreakdownEditor(taskId, "suggested");
+        return;
+      }
+      elements.breakdownIntroText.textContent = "Задача выглядит тяжеловато. Давай превратим ее в маленькие шаги?";
+      elements.breakdownRememberRow.classList.remove("hidden");
+      elements.breakdownRememberChoice.checked = false;
+      elements.breakdownIntroModal.classList.remove("hidden");
+    }
+    function openBreakdownFromInbox(itemId) {
+      var _a2;
+      const item = store.getState().inboxItems.find((entry) => entry.id === itemId);
+      if (!item) return;
+      breakdownState.taskId = null;
+      breakdownState.sourceInboxId = itemId;
+      breakdownState.sourceText = item.text;
+      const shouldSkipIntro = ((_a2 = store.getState().preferences) == null ? void 0 : _a2.breakDownLargeTasksPromptMode) === "skip-intro-ask";
+      if (shouldSkipIntro) {
+        breakdownState.mode = "suggested";
+        breakdownState.drafts = buildCompactSuggestedBreakdownDrafts(item.text);
+        app.renderers.renderBreakdownEditorModal();
+        elements.breakdownEditorModal.classList.remove("hidden");
+        return;
+      }
+      elements.breakdownIntroText.textContent = "Мысль выглядит большой. Давай превратим ее в маленькие шаги?";
+      elements.breakdownRememberRow.classList.remove("hidden");
       elements.breakdownRememberChoice.checked = false;
       elements.breakdownIntroModal.classList.remove("hidden");
     }
@@ -2257,8 +2670,8 @@
       elements.templateAutoModal.classList.remove("hidden");
     }
     function shouldOfferLowEnergyDay2(energyBudget, state = store.getState()) {
-      var _a;
-      return energyBudget >= 10 && energyBudget <= 15 && ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === getLocalDateString() && !state.currentDayMeta.lowEnergyPromptHandled;
+      var _a2;
+      return energyBudget >= 10 && energyBudget <= 15 && ((_a2 = state.currentDayMeta) == null ? void 0 : _a2.date) === getLocalDateString() && !state.currentDayMeta.lowEnergyPromptHandled;
     }
     function closeLowEnergyModal() {
       elements.lowEnergyModal.classList.add("hidden");
@@ -2337,6 +2750,46 @@
       }
     });
     voiceState.isSupported = voiceService.isSupported();
+    const inboxVoiceService = createVoiceInputService({
+      locale: "ru-RU",
+      onStart: () => {
+        inboxState.isListening = true;
+        inboxState.isProcessing = false;
+        inboxState.error = "";
+        app.renderers.renderMainScreen();
+      },
+      onEnd: ({ transcript, hadError }) => {
+        inboxState.isListening = false;
+        if (hadError) {
+          app.renderers.renderMainScreen();
+          return;
+        }
+        if (!transcript) {
+          inboxState.error = "Я ничего не расслышал. Можно попробовать еще раз или записать мысль текстом.";
+          app.renderers.renderMainScreen();
+          return;
+        }
+        inboxState.isProcessing = true;
+        app.renderers.renderMainScreen();
+        const drafts = parseInboxTranscript(transcript);
+        inboxState.isProcessing = false;
+        if (drafts.length === 0) {
+          openInboxVoiceMessage("Не получилось собрать понятный черновик мыслей. Можно попробовать еще раз или записать мысли текстом.");
+          return;
+        }
+        openInboxDraftModal(drafts);
+      },
+      onError: (message) => {
+        inboxState.isListening = false;
+        inboxState.isProcessing = false;
+        if (message) {
+          openInboxVoiceMessage(message);
+        } else {
+          app.renderers.renderMainScreen();
+        }
+      }
+    });
+    inboxState.isSupported = inboxVoiceService.isSupported();
     [
       elements.weeklyTaskModal,
       elements.libraryModal,
@@ -2350,6 +2803,8 @@
       elements.lowEnergySwapModal,
       elements.helperModal,
       elements.voiceModal,
+      elements.inboxVoiceModal,
+      elements.inboxSortModal,
       elements.sosModal,
       elements.allDoneModal
     ].forEach((modal) => {
@@ -2358,6 +2813,15 @@
         if (modal === elements.voiceModal) {
           closeVoiceModal();
           app.renderers.renderMainScreen();
+          return;
+        }
+        if (modal === elements.inboxVoiceModal) {
+          closeInboxVoiceModal();
+          app.renderers.renderMainScreen();
+          return;
+        }
+        if (modal === elements.inboxSortModal) {
+          closeInboxSortModal();
           return;
         }
         if (modal === elements.templateAutoModal) {
@@ -2384,6 +2848,7 @@
       });
     });
     bindSubmitOnEnter(elements.taskInput, elements.addTaskForm);
+    bindSubmitOnEnter(elements.inboxInput, elements.addInboxForm);
     bindSubmitOnEnter(elements.resourceInput, elements.addResourceForm);
     bindSubmitOnEnter(elements.weeklyTaskText, elements.addWeeklyTaskForm);
     elements.energyInput.addEventListener("input", (event) => {
@@ -2463,11 +2928,32 @@
       app.renderers.renderCompleted();
       app.renderers.renderWeeklyScreen();
     }
+    function resetInboxPendingAction() {
+      inboxState.pendingAction = {
+        itemId: null,
+        mode: null,
+        weight: 20,
+        date: getLocalDateString()
+      };
+    }
+    function openInboxPendingAction(itemId, mode) {
+      inboxState.pendingAction = {
+        itemId,
+        mode,
+        weight: 20,
+        date: getLocalDateString()
+      };
+    }
     function renderAllTaskViews() {
       app.renderers.renderMainScreen();
       app.renderers.renderArchive();
       app.renderers.renderCompleted();
       app.renderers.renderWeeklyScreen();
+    }
+    function renderInboxViews() {
+      app.renderers.renderMainScreen();
+      app.renderers.renderInboxVoiceModal();
+      app.renderers.renderInboxSortModal();
     }
     function saveInlineEdit() {
       if (!editTaskState.taskId) return;
@@ -2495,6 +2981,70 @@
       event.preventDefault();
       if (editTaskState.taskId !== input.dataset.taskId) return;
       saveInlineEdit();
+    }
+    function handleInboxAction(action, itemId) {
+      if (!itemId) return;
+      if (action === "inbox-open-today") {
+        openInboxPendingAction(itemId, "today");
+        renderInboxViews();
+        return;
+      }
+      if (action === "inbox-open-week") {
+        openInboxPendingAction(itemId, "week");
+        renderInboxViews();
+        return;
+      }
+      if (action === "inbox-cancel-action") {
+        resetInboxPendingAction();
+        renderInboxViews();
+        return;
+      }
+      if (action === "inbox-confirm-today") {
+        convertInboxItemToToday(store, {
+          itemId,
+          weight: parseInt(inboxState.pendingAction.weight, 10) || 20
+        });
+        resetInboxPendingAction();
+        renderAllTaskViews();
+        app.renderers.renderInboxSortModal();
+        return;
+      }
+      if (action === "inbox-confirm-week") {
+        convertInboxItemToDate(store, {
+          itemId,
+          dateStr: inboxState.pendingAction.date || getLocalDateString(),
+          weight: parseInt(inboxState.pendingAction.weight, 10) || 20
+        });
+        resetInboxPendingAction();
+        renderAllTaskViews();
+        app.renderers.renderInboxSortModal();
+        return;
+      }
+      if (action === "inbox-move-deferred") {
+        convertInboxItemToDeferred(store, itemId);
+        resetInboxPendingAction();
+        renderAllTaskViews();
+        app.renderers.renderInboxSortModal();
+        return;
+      }
+      if (action === "inbox-to-resource") {
+        convertInboxItemToResource(store, itemId);
+        resetInboxPendingAction();
+        renderInboxViews();
+        app.renderers.renderResources();
+        return;
+      }
+      if (action === "inbox-breakdown") {
+        openBreakdownFromInbox(itemId);
+        resetInboxPendingAction();
+        app.renderers.renderInboxSortModal();
+        return;
+      }
+      if (action === "inbox-delete") {
+        deleteInboxItem(store, itemId);
+        resetInboxPendingAction();
+        renderInboxViews();
+      }
     }
     elements.adviceRefreshBtn.addEventListener("click", () => {
       elements.adviceText.style.opacity = 0;
@@ -2531,6 +3081,62 @@
       closeVoiceModal();
       app.renderers.renderMainScreen();
       voiceService.startListening();
+    });
+    elements.addInboxForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const items = splitInboxText(elements.inboxInput.value);
+      if (items.length === 0) return;
+      addInboxItems(store, items);
+      elements.inboxInput.value = "";
+      renderInboxViews();
+    });
+    elements.openInboxVoiceBtn.addEventListener("click", () => {
+      if (!inboxState.isSupported) {
+        openInboxVoiceMessage("Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.");
+        return;
+      }
+      if (inboxState.isListening) {
+        inboxVoiceService.stopListening();
+        return;
+      }
+      inboxState.error = "";
+      closeInboxVoiceModal();
+      app.renderers.renderMainScreen();
+      inboxVoiceService.startListening();
+    });
+    elements.closeInboxVoiceBtn.addEventListener("click", () => {
+      closeInboxVoiceModal();
+      app.renderers.renderMainScreen();
+    });
+    elements.inboxVoiceCancelBtn.addEventListener("click", () => {
+      closeInboxVoiceModal();
+      app.renderers.renderMainScreen();
+    });
+    elements.inboxVoiceConfirmBtn.addEventListener("click", () => {
+      const drafts = inboxState.drafts.map((draft) => draft.text.trim()).filter(Boolean);
+      if (drafts.length === 0) {
+        openInboxVoiceMessage("В черновике пока нет мыслей, которые можно сохранить.");
+        return;
+      }
+      addInboxItems(store, drafts);
+      closeInboxVoiceModal();
+      renderInboxViews();
+    });
+    elements.openInboxSortBtn.addEventListener("click", () => {
+      inboxState.sortMode = "single";
+      resetInboxPendingAction();
+      app.renderers.renderInboxSortModal();
+      elements.inboxSortModal.classList.remove("hidden");
+    });
+    elements.closeInboxSortBtn.addEventListener("click", closeInboxSortModal);
+    elements.clearInboxBtn.addEventListener("click", () => {
+      const inboxItems = store.getState().inboxItems || [];
+      if (inboxItems.length === 0) return;
+      const shouldClear = window.confirm("Очистить все Облако мыслей? Это удалит все сохраненные мысли.");
+      if (!shouldClear) return;
+      clearInboxItems(store);
+      closeInboxSortModal();
+      renderInboxViews();
     });
     elements.openLibraryBtn.addEventListener("click", () => {
       app.renderers.renderResources();
@@ -2704,9 +3310,7 @@
     elements.closeBreakdownEditorBtn.addEventListener("click", () => closeBreakdownEditorModal());
     elements.breakdownCancelBtn.addEventListener("click", () => closeBreakdownEditorModal());
     elements.breakdownManualBtn.addEventListener("click", () => {
-      applyBreakdownPreferenceIfNeeded();
-      if (!breakdownState.taskId) return;
-      openBreakdownEditor(breakdownState.taskId, "manual");
+      closeBreakdownIntroModal();
     });
     elements.breakdownSuggestedBtn.addEventListener("click", () => {
       applyBreakdownPreferenceIfNeeded();
@@ -2714,17 +3318,32 @@
       openBreakdownEditor(breakdownState.taskId, "suggested");
     });
     elements.breakdownConfirmBtn.addEventListener("click", () => {
-      if (!breakdownState.taskId) return;
+      const steps = breakdownState.drafts.map((draft) => ({
+        text: draft.text.trim(),
+        weight: draft.weight
+      })).filter((step) => step.text);
+      if (steps.length < 2) return;
+      let breakdownTaskId = breakdownState.taskId;
+      if (!breakdownTaskId && breakdownState.sourceInboxId && breakdownState.sourceText) {
+        const createdTask = addTask2(store, {
+          text: breakdownState.sourceText,
+          weight: 20,
+          isResource: false,
+          targetDate: getLocalDateString()
+        });
+        breakdownTaskId = (createdTask == null ? void 0 : createdTask.id) || null;
+        if (!breakdownTaskId) return;
+        deleteInboxItem(store, breakdownState.sourceInboxId);
+      }
+      if (!breakdownTaskId) return;
       const created = createTaskBreakdown(store, {
-        taskId: breakdownState.taskId,
-        steps: breakdownState.drafts.map((draft) => ({
-          text: draft.text.trim(),
-          weight: draft.weight
-        }))
+        taskId: breakdownTaskId,
+        steps
       });
       if (!created) return;
       closeBreakdownEditorModal();
       app.renderers.renderMainScreen();
+      app.renderers.renderInboxSortModal();
       app.renderers.renderArchive();
       app.renderers.renderWeeklyScreen();
     });
@@ -2951,6 +3570,44 @@
       editTaskState.weight = parseInt(target.value, 10);
     });
     elements.completedList.addEventListener("keydown", handleInlineEditEnter);
+    [elements.inboxList, elements.inboxSortCard].forEach((container) => {
+      container.addEventListener("click", (event) => {
+        const target = closestActionTarget(event.target);
+        if (!target) return;
+        handleInboxAction(target.dataset.action, target.dataset.inboxId);
+      });
+      container.addEventListener("change", (event) => {
+        const target = event.target.closest("[data-action]");
+        if (!target) return;
+        if (target.dataset.action === "inbox-update-weight") {
+          inboxState.pendingAction.weight = parseInt(target.value, 10) || 20;
+          app.renderers.renderMainScreen();
+          app.renderers.renderInboxSortModal();
+        }
+        if (target.dataset.action === "inbox-update-date") {
+          inboxState.pendingAction.date = target.value || getLocalDateString();
+          app.renderers.renderMainScreen();
+          app.renderers.renderInboxSortModal();
+        }
+      });
+    });
+    elements.inboxVoiceDraftList.addEventListener("click", (event) => {
+      const target = closestActionTarget(event.target);
+      if (!target || target.dataset.action !== "inbox-voice-remove-draft") return;
+      inboxState.drafts = inboxState.drafts.filter((draft) => draft.id !== target.dataset.draftId);
+      if (inboxState.drafts.length === 0) {
+        openInboxVoiceMessage("Черновик опустел. Можно надиктовать мысли еще раз или записать их текстом.");
+        return;
+      }
+      app.renderers.renderInboxVoiceModal();
+    });
+    elements.inboxVoiceDraftList.addEventListener("input", (event) => {
+      const target = event.target.closest('[data-action="inbox-voice-update-text"]');
+      if (!target) return;
+      const draft = inboxState.drafts.find((item) => item.id === target.dataset.draftId);
+      if (!draft) return;
+      draft.text = target.value;
+    });
     elements.voiceDraftList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
       if (!target || target.dataset.action !== "voice-remove-draft") return;
@@ -2994,6 +3651,12 @@
       const draft = breakdownState.drafts.find((item) => item.id === target.dataset.draftId);
       if (!draft) return;
       draft.weight = parseInt(target.value, 10) === 10 ? 10 : 5;
+    });
+    elements.breakdownDraftList.addEventListener("keydown", (event) => {
+      const input = event.target.closest('[data-action="breakdown-update-text"]');
+      if (!input || event.key !== "Enter" || event.shiftKey) return;
+      event.preventDefault();
+      elements.breakdownConfirmBtn.click();
     });
     elements.resourcesList.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
@@ -3126,11 +3789,11 @@
     });
     elements.weeklyContainer.addEventListener("keydown", handleInlineEditEnter);
     elements.weeklyContainer.addEventListener("dragstart", (event) => {
-      var _a;
+      var _a2;
       const task = event.target.closest(".weekly-task");
       if (!task) return;
       task.classList.add("weekly-dragging");
-      (_a = event.dataTransfer) == null ? void 0 : _a.setData("taskId", task.dataset.taskId);
+      (_a2 = event.dataTransfer) == null ? void 0 : _a2.setData("taskId", task.dataset.taskId);
     });
     elements.weeklyContainer.addEventListener("dragend", (event) => {
       const task = event.target.closest(".weekly-task");
@@ -3198,10 +3861,27 @@
           voiceError: "",
           modalMode: "hidden"
         },
+        inbox: {
+          isSupported: false,
+          isListening: false,
+          isProcessing: false,
+          drafts: [],
+          error: "",
+          modalMode: "hidden",
+          pendingAction: {
+            itemId: null,
+            mode: null,
+            weight: 20,
+            date: getLocalDateString()
+          },
+          sortMode: false
+        },
         breakdown: {
           taskId: null,
           mode: "intro",
-          drafts: []
+          drafts: [],
+          sourceInboxId: null,
+          sourceText: ""
         },
         editTask: {
           taskId: null,

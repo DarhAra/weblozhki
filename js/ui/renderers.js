@@ -10,6 +10,7 @@ import {
     getTodayTasks,
     shouldShowBreakdownAction,
 } from '../domain/tasks.js';
+import { getInboxItems, getInboxSortDates } from '../domain/inbox.js';
 import { getMoodHistoryInsights, normalizeMoodHistory } from '../domain/history.js';
 
 function genderText(state, male, female) {
@@ -87,7 +88,7 @@ function renderTaskElement(task, editTaskState = null) {
         ? `<button class="task-breakdown-btn" type="button" title="Разбить на шаги" data-action="open-breakdown" data-task-id="${task.id}">Разбить</button>`
         : '';
     const taskMetaHtml = task.isBreakdownStep
-        ? `<div class="task-meta">Шаг ${(task.breakdownIndex ?? 0) + 1} из 3</div>`
+        ? `<div class="task-meta">\u0428\u0430\u0433 ${(task.breakdownIndex ?? 0) + 1} \u0438\u0437 ${task.breakdownTotalSteps || 3}</div>`
         : '';
 
     taskEl.innerHTML = `
@@ -205,6 +206,175 @@ export function createRenderers(app) {
         }
     }
 
+    function renderInboxUi() {
+        const inbox = runtime.inbox;
+        const inboxItems = getInboxItems(store.getState());
+
+        elements.inboxList.innerHTML = '';
+        elements.inboxStatus.classList.add('hidden');
+        elements.openInboxVoiceBtn.classList.remove('listening', 'processing', 'unsupported');
+
+        if (!inbox.isSupported) {
+            elements.openInboxVoiceBtn.classList.add('unsupported');
+            elements.openInboxVoiceBtn.title = 'Голосовой ввод в Облако недоступен';
+        } else if (inbox.isListening) {
+            elements.openInboxVoiceBtn.classList.add('listening');
+            elements.openInboxVoiceBtn.title = 'Остановить запись';
+            elements.openInboxVoiceBtn.textContent = '🎙️';
+            elements.inboxStatus.textContent = 'Я слушаю. Можно просто выгрузить поток мыслей.';
+            elements.inboxStatus.classList.remove('hidden');
+        } else if (inbox.isProcessing) {
+            elements.openInboxVoiceBtn.classList.add('processing');
+            elements.openInboxVoiceBtn.title = 'Собираю мысли в Облако';
+            elements.openInboxVoiceBtn.textContent = '⏳';
+            elements.inboxStatus.textContent = 'Собираю черновик мыслей...';
+            elements.inboxStatus.classList.remove('hidden');
+        } else {
+            elements.openInboxVoiceBtn.textContent = '🎤';
+            elements.openInboxVoiceBtn.title = 'Надиктовать в Облако';
+            if (inbox.error) {
+                elements.inboxStatus.textContent = inbox.error;
+                elements.inboxStatus.classList.remove('hidden');
+            }
+        }
+
+        elements.openInboxSortBtn.disabled = inboxItems.length === 0;
+        elements.clearInboxBtn.disabled = inboxItems.length === 0;
+
+        if (inboxItems.length === 0) {
+            elements.inboxList.innerHTML = '<div class="inbox-empty-state">Сюда можно быстро выгрузить всё, что крутится в голове. Разобрать можно потом.</div>';
+            return;
+        }
+
+        inboxItems.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'inbox-item';
+
+            const isPendingToday = inbox.pendingAction.itemId === item.id && inbox.pendingAction.mode === 'today';
+            const isPendingWeek = inbox.pendingAction.itemId === item.id && inbox.pendingAction.mode === 'week';
+            const todayActionHtml = isPendingToday
+                ? `
+                    <div class="inbox-action-config">
+                        <select data-action="inbox-update-weight" data-inbox-id="${item.id}">
+                            ${[5, 10, 20, 30, 50].map(weight => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? 'selected' : ''}>${weight}</option>`).join('')}
+                        </select>
+                        <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-today" data-inbox-id="${item.id}">Добавить</button>
+                        <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${item.id}">Отмена</button>
+                    </div>
+                `
+                : '';
+            const weekActionHtml = isPendingWeek
+                ? `
+                    <div class="inbox-action-config">
+                        <select data-action="inbox-update-date" data-inbox-id="${item.id}">
+                            ${getInboxSortDates().map(date => `<option value="${date}" ${inbox.pendingAction.date === date ? 'selected' : ''}>${formatVoiceDateLabel(date)}</option>`).join('')}
+                        </select>
+                        <select data-action="inbox-update-weight" data-inbox-id="${item.id}">
+                            ${[5, 10, 20, 30, 50].map(weight => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? 'selected' : ''}>${weight}</option>`).join('')}
+                        </select>
+                        <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-week" data-inbox-id="${item.id}">Добавить</button>
+                        <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${item.id}">Отмена</button>
+                    </div>
+                `
+                : '';
+
+            card.innerHTML = `
+                <div class="inbox-item-text">${escapeHtml(item.text)}</div>
+                <div class="inbox-item-actions">
+                    <button class="text-btn" type="button" data-action="inbox-open-today" data-inbox-id="${item.id}">На сегодня</button>
+                    <button class="text-btn" type="button" data-action="inbox-open-week" data-inbox-id="${item.id}">В план</button>
+                    <button class="text-btn" type="button" data-action="inbox-move-deferred" data-inbox-id="${item.id}">На потом</button>
+                    <button class="text-btn" type="button" data-action="inbox-to-resource" data-inbox-id="${item.id}">В ресурсы</button>
+                    <button class="text-btn" type="button" data-action="inbox-breakdown" data-inbox-id="${item.id}">Разбить</button>
+                    <button class="delete-btn" title="Удалить" data-action="inbox-delete" data-inbox-id="${item.id}">&times;</button>
+                </div>
+                ${todayActionHtml}
+                ${weekActionHtml}
+            `;
+            elements.inboxList.appendChild(card);
+        });
+    }
+
+    function renderInboxVoiceModal() {
+        const state = store.getState();
+        const inbox = runtime.inbox;
+        const isDraftMode = inbox.modalMode === 'draft' && inbox.drafts.length > 0;
+
+        elements.inboxVoiceHelperAvatar.src = state.avatar;
+        elements.inboxVoiceDraftList.innerHTML = '';
+        elements.inboxVoiceEmptyState.classList.toggle('hidden', isDraftMode);
+        elements.inboxVoiceConfirmBtn.classList.toggle('hidden', !isDraftMode);
+
+        if (!isDraftMode) {
+            elements.inboxVoiceModalTitle.textContent = 'Голос в Облако';
+            elements.inboxVoiceModalSubtitle.textContent = inbox.error || 'Пока не получилось подготовить черновик мыслей.';
+            elements.inboxVoiceEmptyState.textContent = inbox.error || 'Можно попробовать ещё раз или записать мысль текстом.';
+            return;
+        }
+
+        elements.inboxVoiceModalTitle.textContent = 'Сохраняем в Облако?';
+        elements.inboxVoiceModalSubtitle.textContent = 'Вот что я услышал. Можно спокойно поправить перед сохранением.';
+
+        inbox.drafts.forEach(draft => {
+            const row = document.createElement('div');
+            row.className = 'voice-draft-item';
+            row.innerHTML = `
+                <input class="voice-draft-input" type="text" value="${escapeHtml(draft.text)}" data-action="inbox-voice-update-text" data-draft-id="${draft.id}">
+                <div class="breakdown-draft-note">Мысль</div>
+                <div class="breakdown-draft-spacer"></div>
+                <button class="delete-btn" title="Удалить" data-action="inbox-voice-remove-draft" data-draft-id="${draft.id}">&times;</button>
+            `;
+            elements.inboxVoiceDraftList.appendChild(row);
+        });
+    }
+
+    function renderInboxSortModal() {
+        const inboxItems = getInboxItems(store.getState());
+        const currentItem = inboxItems[0] || null;
+        const inbox = runtime.inbox;
+
+        if (!currentItem) {
+            elements.inboxSortCard.innerHTML = '<div class="inbox-empty-state">Сейчас Облако пустое. Можно просто закрыть окно и вернуться позже.</div>';
+            return;
+        }
+
+        const isPendingToday = inbox.pendingAction.itemId === currentItem.id && inbox.pendingAction.mode === 'today';
+        const isPendingWeek = inbox.pendingAction.itemId === currentItem.id && inbox.pendingAction.mode === 'week';
+
+        elements.inboxSortCard.innerHTML = `
+            <div class="inbox-sort-text">${escapeHtml(currentItem.text)}</div>
+            <div class="inbox-item-actions inbox-sort-actions">
+                <button class="text-btn" type="button" data-action="inbox-open-today" data-inbox-id="${currentItem.id}">На сегодня</button>
+                <button class="text-btn" type="button" data-action="inbox-open-week" data-inbox-id="${currentItem.id}">В план</button>
+                <button class="text-btn" type="button" data-action="inbox-move-deferred" data-inbox-id="${currentItem.id}">На потом</button>
+                <button class="text-btn" type="button" data-action="inbox-to-resource" data-inbox-id="${currentItem.id}">В ресурсы</button>
+                <button class="text-btn" type="button" data-action="inbox-breakdown" data-inbox-id="${currentItem.id}">Разбить</button>
+                <button class="delete-btn" title="Удалить" data-action="inbox-delete" data-inbox-id="${currentItem.id}">&times;</button>
+            </div>
+            ${isPendingToday ? `
+                <div class="inbox-action-config">
+                    <select data-action="inbox-update-weight" data-inbox-id="${currentItem.id}">
+                        ${[5, 10, 20, 30, 50].map(weight => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? 'selected' : ''}>${weight}</option>`).join('')}
+                    </select>
+                    <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-today" data-inbox-id="${currentItem.id}">Добавить</button>
+                    <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${currentItem.id}">Отмена</button>
+                </div>
+            ` : ''}
+            ${isPendingWeek ? `
+                <div class="inbox-action-config">
+                    <select data-action="inbox-update-date" data-inbox-id="${currentItem.id}">
+                        ${getInboxSortDates().map(date => `<option value="${date}" ${inbox.pendingAction.date === date ? 'selected' : ''}>${formatVoiceDateLabel(date)}</option>`).join('')}
+                    </select>
+                    <select data-action="inbox-update-weight" data-inbox-id="${currentItem.id}">
+                        ${[5, 10, 20, 30, 50].map(weight => `<option value="${weight}" ${Number(inbox.pendingAction.weight) === weight ? 'selected' : ''}>${weight}</option>`).join('')}
+                    </select>
+                    <button class="task-breakdown-btn" type="button" data-action="inbox-confirm-week" data-inbox-id="${currentItem.id}">Добавить</button>
+                    <button class="text-btn" type="button" data-action="inbox-cancel-action" data-inbox-id="${currentItem.id}">Отмена</button>
+                </div>
+            ` : ''}
+        `;
+    }
+
     function renderReviewTasks(tasks) {
         elements.reviewTasksList.innerHTML = '';
         tasks.forEach(task => {
@@ -282,6 +452,7 @@ export function createRenderers(app) {
         }
 
         renderLowEnergyPanel(state, todayTasks, isSosView);
+        renderInboxUi();
 
         elements.balanceSection.classList.toggle('hidden', isSosView);
         elements.addTaskForm.classList.toggle('hidden', isSosView);
@@ -595,7 +766,7 @@ export function createRenderers(app) {
             ? state.tasks.find(item => item.id === breakdown.taskId)
             : null;
         const parentTask = task?.isBreakdownStep ? getTaskBreakdownParent(state, task) : null;
-        const sourceTask = parentTask || task;
+        const sourceTask = parentTask || task || (breakdown.sourceText ? { text: breakdown.sourceText } : null);
         const isSuggested = breakdown.mode === 'suggested';
 
         elements.breakdownDraftList.innerHTML = '';
@@ -612,7 +783,7 @@ export function createRenderers(app) {
                 <select class="voice-draft-select" data-action="breakdown-update-weight" data-draft-id="${draft.id}">
                     ${[5, 10].map(weight => `<option value="${weight}" ${draft.weight === weight ? 'selected' : ''}>${weight}</option>`).join('')}
                 </select>
-                <div class="breakdown-draft-note">Шаг ${(draft.index ?? 0) + 1} из 3</div>
+                <div class="breakdown-draft-note">\u0428\u0430\u0433 ${(draft.index ?? 0) + 1} \u0438\u0437 ${breakdown.drafts.length || 3}</div>
                 <div class="breakdown-draft-spacer"></div>
             `;
             elements.breakdownDraftList.appendChild(row);
@@ -693,6 +864,9 @@ export function createRenderers(app) {
     return {
         renderReviewTasks,
         renderMainScreen,
+        renderInboxUi,
+        renderInboxVoiceModal,
+        renderInboxSortModal,
         renderArchive,
         renderCompleted,
         renderHistoryScreen,

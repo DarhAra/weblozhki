@@ -47,10 +47,27 @@ export function initApp({ elements }) {
                 voiceError: '',
                 modalMode: 'hidden',
             },
+            inbox: {
+                isSupported: false,
+                isListening: false,
+                isProcessing: false,
+                drafts: [],
+                error: '',
+                modalMode: 'hidden',
+                pendingAction: {
+                    itemId: null,
+                    mode: null,
+                    weight: 20,
+                    date: getLocalDateString(),
+                },
+                sortMode: false,
+            },
             breakdown: {
                 taskId: null,
                 mode: 'intro',
                 drafts: [],
+                sourceInboxId: null,
+                sourceText: '',
             },
             editTask: {
                 taskId: null,

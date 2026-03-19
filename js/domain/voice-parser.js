@@ -32,6 +32,13 @@ function splitTranscriptIntoParts(transcript) {
     return parts.length > 0 ? parts : [cleanupTaskText(transcript)].filter(Boolean);
 }
 
+function createInboxDraft(text, index = 0) {
+    return {
+        id: `inbox_draft_${Date.now()}_${index}_${Math.floor(Math.random() * 100000)}`,
+        text,
+    };
+}
+
 function suggestWeight(text) {
     const normalized = text.toLowerCase();
 
@@ -80,4 +87,16 @@ export function parseVoiceTranscript(transcript, today = getLocalDateString()) {
             };
         })
         .filter(Boolean);
+}
+
+export function parseInboxTranscript(transcript) {
+    const normalizedTranscript = String(transcript || '').replace(/\s+/g, ' ').trim();
+    if (!normalizedTranscript) {
+        return [];
+    }
+
+    return splitTranscriptIntoParts(normalizedTranscript)
+        .map((part, index) => cleanupTaskText(part))
+        .filter(Boolean)
+        .map((text, index) => createInboxDraft(text, index));
 }

@@ -74,6 +74,7 @@ function getDefaultState() {
         currentDayMeta: createCurrentDayMeta(null),
         moodHistory: [],
         tasks: [],
+        inboxItems: [],
         preferences: {
             breakDownLargeTasksPromptMode: 'ask-first-time',
         },
@@ -190,6 +191,7 @@ export function createStore() {
             state = { ...state, ...JSON.parse(saved) };
 
             if (!Array.isArray(state.tasks)) state.tasks = [];
+            if (!Array.isArray(state.inboxItems)) state.inboxItems = [];
             if (!Array.isArray(state.resources)) state.resources = [];
             state.moodHistory = normalizeMoodHistory(state.moodHistory);
             ensurePreferenceDefaults(state);
@@ -268,6 +270,15 @@ export function createStore() {
                     task.targetDate = null;
                 }
             });
+
+            state.inboxItems = state.inboxItems
+                .filter(item => item && typeof item.text === 'string')
+                .map(item => ({
+                    id: typeof item.id === 'string' ? item.id : `inbox_${Date.now()}_${Math.floor(Math.random() * 1000000)}`,
+                    text: item.text.trim(),
+                    createdAt: typeof item.createdAt === 'string' ? item.createdAt : new Date().toISOString(),
+                }))
+                .filter(item => item.text);
 
             if (state.avatar && !state.avatar.includes('.png')) {
                 state.avatar = 'assets/girl.png';

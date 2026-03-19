@@ -21,6 +21,8 @@ export function createScreens(app) {
         elements.lowEnergyModal.classList.add('hidden');
         elements.lowEnergySwapModal.classList.add('hidden');
         elements.voiceModal.classList.add('hidden');
+        elements.inboxVoiceModal.classList.add('hidden');
+        elements.inboxSortModal.classList.add('hidden');
     }
 
     function showOnboardingScreen() {

@@ -1,7 +1,17 @@
 import { getLocalDateString } from '../utils/date.js';
 import { closestActionTarget } from '../utils/dom.js';
 import { createCurrentDayMeta } from '../domain/history.js';
-import { parseVoiceTranscript } from '../domain/voice-parser.js';
+import { parseInboxTranscript, parseVoiceTranscript } from '../domain/voice-parser.js';
+import {
+    addInboxItems,
+    clearInboxItems,
+    convertInboxItemToDate,
+    convertInboxItemToDeferred,
+    convertInboxItemToResource,
+    convertInboxItemToToday,
+    deleteInboxItem,
+    splitInboxText,
+} from '../domain/inbox.js';
 import {
     addTask,
     advanceBreakdownAfterCompletion,
@@ -73,6 +83,99 @@ function buildManualBreakdownDrafts() {
     return [0, 1, 2].map(index => createBreakdownDraft('', 5, index));
 }
 
+function capitalizeBreakdownStep(text) {
+    if (!text) return '';
+    return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function looksLikeActionPhrase(text) {
+    const firstWord = String(text || '').trim().split(/\s+/)[0] || '';
+    return ['\u0442\u044c', '\u0442\u0438', '\u0447\u044c'].some(ending => firstWord.toLowerCase().endsWith(ending));
+}
+
+function splitCompoundTaskText(taskText) {
+    const normalized = String(taskText || '').trim();
+    const directParts = normalized
+        .split(/[\n,;]+/)
+        .map(part => part.trim())
+        .filter(Boolean);
+    if (directParts.length > 1) {
+        return directParts;
+    }
+    const andParts = normalized
+        .split(/\s+?\s+/i)
+        .map(part => part.trim())
+        .filter(Boolean);
+    if (andParts.length > 1 && andParts.every(looksLikeActionPhrase)) {
+        return andParts;
+    }
+    return [normalized];
+}
+function buildCompactSuggestedBreakdownDrafts(taskText) {
+    const normalized = String(taskText || '').trim();
+    const lower = normalized.toLowerCase();
+    const compoundParts = splitCompoundTaskText(normalized);
+    let suggestions;
+    if (compoundParts.length > 1) {
+        suggestions = compoundParts.slice(0, 3).map(capitalizeBreakdownStep);
+    } else if (lower.includes('\u0432\u0430\u0440\u0438\u0442\u044c') && lower.includes('\u043a\u0430\u0440\u0442\u043e\u0448\u043a')) {
+        suggestions = [
+            '\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u0438\u0442\u044c \u043a\u0430\u0440\u0442\u043e\u0448\u043a\u0443 \u0438 \u0432\u043e\u0434\u0443',
+            '\u041f\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u043a\u0430\u0440\u0442\u043e\u0448\u043a\u0443 \u0432\u0430\u0440\u0438\u0442\u044c\u0441\u044f',
+            '\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0433\u043e\u0442\u043e\u0432\u043d\u043e\u0441\u0442\u044c \u0438 \u0441\u043b\u0438\u0442\u044c \u0432\u043e\u0434\u0443',
+        ];
+    } else if (lower.includes('\u043c\u044b\u0442\u044c \u043f\u043e\u043b') || lower.includes('\u043f\u043e\u043b\u044b')) {
+        suggestions = [
+            '\u041f\u043e\u0434\u0433\u043e\u0442\u043e\u0432\u0438\u0442\u044c \u0432\u043e\u0434\u0443 \u0438\u043b\u0438 \u0448\u0432\u0430\u0431\u0440\u0443',
+            '\u041f\u043e\u043c\u044b\u0442\u044c \u043e\u0434\u043d\u0443 \u0437\u043e\u043d\u0443',
+            '\u0414\u043e\u043c\u044b\u0442\u044c \u043e\u0441\u0442\u0430\u043b\u044c\u043d\u043e\u0435 \u0438 \u0443\u0431\u0440\u0430\u0442\u044c \u0438\u043d\u0432\u0435\u043d\u0442\u0430\u0440\u044c',
+        ];
+    } else if (lower.includes('\u043f\u044b\u043b\u0435\u0441\u043e\u0441')) {
+        suggestions = [
+            '\u0414\u043e\u0441\u0442\u0430\u0442\u044c \u043f\u044b\u043b\u0435\u0441\u043e\u0441',
+            '\u041f\u0440\u043e\u043f\u044b\u043b\u0435\u0441\u043e\u0441\u0438\u0442\u044c \u043e\u0434\u043d\u0443 \u043a\u043e\u043c\u043d\u0430\u0442\u0443',
+            '\u0423\u0431\u0440\u0430\u0442\u044c \u043f\u044b\u043b\u0435\u0441\u043e\u0441 \u043d\u0430 \u043c\u0435\u0441\u0442\u043e',
+        ];
+    } else if (lower.includes('\u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442')) {
+        suggestions = [
+            '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043d\u0443\u0436\u043d\u044b\u0435 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u044b',
+            '\u0421\u0434\u0435\u043b\u0430\u0442\u044c \u043f\u0435\u0440\u0432\u0443\u044e \u0447\u0430\u0441\u0442\u044c',
+            '\u041f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c \u0438 \u043e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c',
+        ];
+    } else if (lower.includes('\u0443\u0431\u043e\u0440\u043a') || lower.includes('\u043f\u0440\u0438\u0431\u0440\u0430\u0442')) {
+        suggestions = [
+            '\u0412\u044b\u0431\u0440\u0430\u0442\u044c \u043e\u0434\u0438\u043d \u0443\u0447\u0430\u0441\u0442\u043e\u043a',
+            '\u0423\u0431\u0440\u0430\u0442\u044c \u0435\u0433\u043e 10 \u043c\u0438\u043d\u0443\u0442',
+            '\u0412\u0435\u0440\u043d\u0443\u0442\u044c \u0432\u0435\u0449\u0438 \u043f\u043e \u043c\u0435\u0441\u0442\u0430\u043c',
+        ];
+    } else if (lower.includes('\u0437\u0432\u043e\u043d') || lower.includes('\u043f\u043e\u0437\u0432\u043e\u043d')) {
+        suggestions = [
+            '\u041e\u0442\u043a\u0440\u044b\u0442\u044c \u043d\u043e\u043c\u0435\u0440',
+            '\u0421\u0434\u0435\u043b\u0430\u0442\u044c \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 \u0437\u0432\u043e\u043d\u043e\u043a',
+            '\u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c \u0438\u0442\u043e\u0433',
+        ];
+    } else if (lower.includes('\u043a\u0443\u043f') || lower.includes('\u043c\u0430\u0433\u0430\u0437')) {
+        suggestions = [
+            '\u0421\u043e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u043a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 \u0441\u043f\u0438\u0441\u043e\u043a',
+            '\u0421\u0445\u043e\u0434\u0438\u0442\u044c \u0438\u043b\u0438 \u043e\u0442\u043a\u0440\u044b\u0442\u044c \u0434\u043e\u0441\u0442\u0430\u0432\u043a\u0443',
+            '\u0420\u0430\u0437\u043b\u043e\u0436\u0438\u0442\u044c \u043f\u043e\u043a\u0443\u043f\u043a\u0438',
+        ];
+    } else if (lower.includes('\u0432\u0440\u0430\u0447') || lower.includes('\u043f\u043e\u043b\u0438\u043a\u043b\u0438\u043d\u0438\u043a')) {
+        suggestions = [
+            '\u041d\u0430\u0439\u0442\u0438 \u043a\u043e\u043d\u0442\u0430\u043a\u0442\u044b',
+            '\u0421\u0434\u0435\u043b\u0430\u0442\u044c \u043e\u0434\u0438\u043d \u0437\u0432\u043e\u043d\u043e\u043a',
+            '\u0417\u0430\u043f\u0438\u0441\u0430\u0442\u044c \u0434\u0430\u0442\u0443 \u0438\u043b\u0438 \u0448\u0430\u0433',
+        ];
+    } else {
+        suggestions = [
+            '\u041d\u0430\u0447\u0430\u0442\u044c \u0441 \u043e\u0434\u043d\u043e\u0433\u043e \u043c\u0430\u043b\u0435\u043d\u044c\u043a\u043e\u0433\u043e \u043a\u0443\u0441\u043e\u0447\u043a\u0430',
+            `\u0421\u0434\u0435\u043b\u0430\u0442\u044c \u0447\u0430\u0441\u0442\u044c: ${normalized}`,
+            '\u0417\u0430\u043a\u0440\u044b\u0442\u044c \u0438 \u043f\u0440\u043e\u0432\u0435\u0440\u0438\u0442\u044c',
+        ];
+    }
+    return suggestions.slice(0, 3).map((text, index) => createBreakdownDraft(text, index === 1 ? 10 : 5, index));
+}
+
 function buildSuggestedBreakdownDrafts(taskText) {
     const normalized = String(taskText || '').trim();
     const lower = normalized.toLowerCase();
@@ -122,10 +225,17 @@ function buildSuggestedBreakdownDrafts(taskText) {
 export function bindAppEvents(app) {
     const { elements, store, runtime } = app;
     const voiceState = runtime.voice;
+    const inboxState = runtime.inbox;
     const breakdownState = runtime.breakdown;
     const editTaskState = runtime.editTask;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = 'tpl_4';
+    const breakdownRememberLabel = elements.breakdownRememberRow?.querySelector('span');
+    if (breakdownRememberLabel) {
+        breakdownRememberLabel.textContent = '\u0411\u043e\u043b\u044c\u0448\u0435 \u043d\u0435 \u043f\u043e\u043a\u0430\u0437\u044b\u0432\u0430\u0442\u044c';
+    }
+    elements.breakdownManualBtn.textContent = '\u041d\u0435 \u0441\u0435\u0439\u0447\u0430\u0441';
+    elements.breakdownSuggestedBtn.textContent = '\u041f\u043e\u043c\u043e\u0433\u0438 \u0440\u0430\u0437\u0431\u0438\u0442\u044c';
 
     function closeVoiceModal({ resetDraft = true } = {}) {
         elements.voiceModal.classList.add('hidden');
@@ -134,6 +244,42 @@ export function bindAppEvents(app) {
             voiceState.voiceDraft = [];
             voiceState.lastTranscript = '';
         }
+    }
+
+    function closeInboxVoiceModal({ resetDraft = true } = {}) {
+        elements.inboxVoiceModal.classList.add('hidden');
+        inboxState.modalMode = 'hidden';
+        if (resetDraft) {
+            inboxState.drafts = [];
+        }
+    }
+
+    function openInboxVoiceMessage(message) {
+        inboxState.isListening = false;
+        inboxState.isProcessing = false;
+        inboxState.drafts = [];
+        inboxState.error = message;
+        inboxState.modalMode = 'message';
+        app.renderers.renderMainScreen();
+        app.renderers.renderInboxVoiceModal();
+        elements.inboxVoiceModal.classList.remove('hidden');
+    }
+
+    function openInboxDraftModal(drafts) {
+        inboxState.isListening = false;
+        inboxState.isProcessing = false;
+        inboxState.drafts = drafts;
+        inboxState.error = '';
+        inboxState.modalMode = 'draft';
+        app.renderers.renderMainScreen();
+        app.renderers.renderInboxVoiceModal();
+        elements.inboxVoiceModal.classList.remove('hidden');
+    }
+
+    function closeInboxSortModal() {
+        elements.inboxSortModal.classList.add('hidden');
+        inboxState.sortMode = 'idle';
+        inboxState.pendingAction = { itemId: null, mode: null, weight: 20, date: getLocalDateString() };
     }
 
     function openVoiceMessage(message) {
@@ -168,6 +314,8 @@ export function bindAppEvents(app) {
         elements.breakdownIntroModal.classList.add('hidden');
         if (!preserveTask) {
             breakdownState.taskId = null;
+            breakdownState.sourceInboxId = null;
+            breakdownState.sourceText = '';
         }
         elements.breakdownRememberChoice.checked = false;
         elements.breakdownRememberRow.classList.remove('hidden');
@@ -179,6 +327,8 @@ export function bindAppEvents(app) {
             breakdownState.taskId = null;
             breakdownState.mode = 'intro';
             breakdownState.drafts = [];
+            breakdownState.sourceInboxId = null;
+            breakdownState.sourceText = '';
             elements.breakdownRememberChoice.checked = false;
         }
     }
@@ -215,9 +365,11 @@ export function bindAppEvents(app) {
         if (!task) return;
 
         breakdownState.taskId = taskId;
+        breakdownState.sourceInboxId = null;
+        breakdownState.sourceText = task.text;
         breakdownState.mode = mode;
         breakdownState.drafts = mode === 'suggested'
-            ? buildSuggestedBreakdownDrafts(task.text)
+            ? buildCompactSuggestedBreakdownDrafts(task.text)
             : buildManualBreakdownDrafts();
 
         closeBreakdownIntroModal({ preserveTask: true });
@@ -230,12 +382,38 @@ export function bindAppEvents(app) {
         if (!task) return;
 
         breakdownState.taskId = taskId;
+        breakdownState.sourceInboxId = null;
+        breakdownState.sourceText = task.text;
         const shouldSkipIntro = store.getState().preferences?.breakDownLargeTasksPromptMode === 'skip-intro-ask';
-        elements.breakdownIntroText.textContent = shouldSkipIntro
-            ? `Как тебе будет легче разложить задачу «${task.text}»?`
-            : `Задача «${task.text}» выглядит тяжёлой. Давай превратим её в три маленьких шага?`;
-        elements.breakdownRememberRow.classList.toggle('hidden', shouldSkipIntro);
+        if (shouldSkipIntro) {
+            openBreakdownEditor(taskId, 'suggested');
+            return;
+        }
 
+        elements.breakdownIntroText.textContent = '\u0417\u0430\u0434\u0430\u0447\u0430 \u0432\u044b\u0433\u043b\u044f\u0434\u0438\u0442 \u0442\u044f\u0436\u0435\u043b\u043e\u0432\u0430\u0442\u043e. \u0414\u0430\u0432\u0430\u0439 \u043f\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u043c \u0435\u0435 \u0432 \u043c\u0430\u043b\u0435\u043d\u044c\u043a\u0438\u0435 \u0448\u0430\u0433\u0438?';
+        elements.breakdownRememberRow.classList.remove('hidden');
+        elements.breakdownRememberChoice.checked = false;
+        elements.breakdownIntroModal.classList.remove('hidden');
+    }
+
+    function openBreakdownFromInbox(itemId) {
+        const item = store.getState().inboxItems.find(entry => entry.id === itemId);
+        if (!item) return;
+
+        breakdownState.taskId = null;
+        breakdownState.sourceInboxId = itemId;
+        breakdownState.sourceText = item.text;
+        const shouldSkipIntro = store.getState().preferences?.breakDownLargeTasksPromptMode === 'skip-intro-ask';
+        if (shouldSkipIntro) {
+            breakdownState.mode = 'suggested';
+            breakdownState.drafts = buildCompactSuggestedBreakdownDrafts(item.text);
+            app.renderers.renderBreakdownEditorModal();
+            elements.breakdownEditorModal.classList.remove('hidden');
+            return;
+        }
+
+        elements.breakdownIntroText.textContent = '\u041c\u044b\u0441\u043b\u044c \u0432\u044b\u0433\u043b\u044f\u0434\u0438\u0442 \u0431\u043e\u043b\u044c\u0448\u043e\u0439. \u0414\u0430\u0432\u0430\u0439 \u043f\u0440\u0435\u0432\u0440\u0430\u0442\u0438\u043c \u0435\u0435 \u0432 \u043c\u0430\u043b\u0435\u043d\u044c\u043a\u0438\u0435 \u0448\u0430\u0433\u0438?';
+        elements.breakdownRememberRow.classList.remove('hidden');
         elements.breakdownRememberChoice.checked = false;
         elements.breakdownIntroModal.classList.remove('hidden');
     }
@@ -345,6 +523,52 @@ export function bindAppEvents(app) {
 
     voiceState.isSupported = voiceService.isSupported();
 
+    const inboxVoiceService = createVoiceInputService({
+        locale: 'ru-RU',
+        onStart: () => {
+            inboxState.isListening = true;
+            inboxState.isProcessing = false;
+            inboxState.error = '';
+            app.renderers.renderMainScreen();
+        },
+        onEnd: ({ transcript, hadError }) => {
+            inboxState.isListening = false;
+            if (hadError) {
+                app.renderers.renderMainScreen();
+                return;
+            }
+
+            if (!transcript) {
+                inboxState.error = 'Я ничего не расслышал. Можно попробовать еще раз или записать мысль текстом.';
+                app.renderers.renderMainScreen();
+                return;
+            }
+
+            inboxState.isProcessing = true;
+            app.renderers.renderMainScreen();
+            const drafts = parseInboxTranscript(transcript);
+            inboxState.isProcessing = false;
+
+            if (drafts.length === 0) {
+                openInboxVoiceMessage('Не получилось собрать понятный черновик мыслей. Можно попробовать еще раз или записать мысли текстом.');
+                return;
+            }
+
+            openInboxDraftModal(drafts);
+        },
+        onError: message => {
+            inboxState.isListening = false;
+            inboxState.isProcessing = false;
+            if (message) {
+                openInboxVoiceMessage(message);
+            } else {
+                app.renderers.renderMainScreen();
+            }
+        },
+    });
+
+    inboxState.isSupported = inboxVoiceService.isSupported();
+
     [
         elements.weeklyTaskModal,
         elements.libraryModal,
@@ -358,6 +582,8 @@ export function bindAppEvents(app) {
         elements.lowEnergySwapModal,
         elements.helperModal,
         elements.voiceModal,
+        elements.inboxVoiceModal,
+        elements.inboxSortModal,
         elements.sosModal,
         elements.allDoneModal,
     ].forEach(modal => {
@@ -366,6 +592,15 @@ export function bindAppEvents(app) {
             if (modal === elements.voiceModal) {
                 closeVoiceModal();
                 app.renderers.renderMainScreen();
+                return;
+            }
+            if (modal === elements.inboxVoiceModal) {
+                closeInboxVoiceModal();
+                app.renderers.renderMainScreen();
+                return;
+            }
+            if (modal === elements.inboxSortModal) {
+                closeInboxSortModal();
                 return;
             }
             if (modal === elements.templateAutoModal) {
@@ -393,6 +628,7 @@ export function bindAppEvents(app) {
     });
 
     bindSubmitOnEnter(elements.taskInput, elements.addTaskForm);
+    bindSubmitOnEnter(elements.inboxInput, elements.addInboxForm);
     bindSubmitOnEnter(elements.resourceInput, elements.addResourceForm);
     bindSubmitOnEnter(elements.weeklyTaskText, elements.addWeeklyTaskForm);
 
@@ -487,11 +723,35 @@ export function bindAppEvents(app) {
         app.renderers.renderWeeklyScreen();
     }
 
+    function resetInboxPendingAction() {
+        inboxState.pendingAction = {
+            itemId: null,
+            mode: null,
+            weight: 20,
+            date: getLocalDateString(),
+        };
+    }
+
+    function openInboxPendingAction(itemId, mode) {
+        inboxState.pendingAction = {
+            itemId,
+            mode,
+            weight: 20,
+            date: getLocalDateString(),
+        };
+    }
+
     function renderAllTaskViews() {
         app.renderers.renderMainScreen();
         app.renderers.renderArchive();
         app.renderers.renderCompleted();
         app.renderers.renderWeeklyScreen();
+    }
+
+    function renderInboxViews() {
+        app.renderers.renderMainScreen();
+        app.renderers.renderInboxVoiceModal();
+        app.renderers.renderInboxSortModal();
     }
 
     function saveInlineEdit() {
@@ -527,6 +787,80 @@ export function bindAppEvents(app) {
         event.preventDefault();
         if (editTaskState.taskId !== input.dataset.taskId) return;
         saveInlineEdit();
+    }
+
+    function handleInboxAction(action, itemId) {
+        if (!itemId) return;
+
+        if (action === 'inbox-open-today') {
+            openInboxPendingAction(itemId, 'today');
+            renderInboxViews();
+            return;
+        }
+
+        if (action === 'inbox-open-week') {
+            openInboxPendingAction(itemId, 'week');
+            renderInboxViews();
+            return;
+        }
+
+        if (action === 'inbox-cancel-action') {
+            resetInboxPendingAction();
+            renderInboxViews();
+            return;
+        }
+
+        if (action === 'inbox-confirm-today') {
+            convertInboxItemToToday(store, {
+                itemId,
+                weight: parseInt(inboxState.pendingAction.weight, 10) || 20,
+            });
+            resetInboxPendingAction();
+            renderAllTaskViews();
+            app.renderers.renderInboxSortModal();
+            return;
+        }
+
+        if (action === 'inbox-confirm-week') {
+            convertInboxItemToDate(store, {
+                itemId,
+                dateStr: inboxState.pendingAction.date || getLocalDateString(),
+                weight: parseInt(inboxState.pendingAction.weight, 10) || 20,
+            });
+            resetInboxPendingAction();
+            renderAllTaskViews();
+            app.renderers.renderInboxSortModal();
+            return;
+        }
+
+        if (action === 'inbox-move-deferred') {
+            convertInboxItemToDeferred(store, itemId);
+            resetInboxPendingAction();
+            renderAllTaskViews();
+            app.renderers.renderInboxSortModal();
+            return;
+        }
+
+        if (action === 'inbox-to-resource') {
+            convertInboxItemToResource(store, itemId);
+            resetInboxPendingAction();
+            renderInboxViews();
+            app.renderers.renderResources();
+            return;
+        }
+
+        if (action === 'inbox-breakdown') {
+            openBreakdownFromInbox(itemId);
+            resetInboxPendingAction();
+            app.renderers.renderInboxSortModal();
+            return;
+        }
+
+        if (action === 'inbox-delete') {
+            deleteInboxItem(store, itemId);
+            resetInboxPendingAction();
+            renderInboxViews();
+        }
     }
 
     elements.adviceRefreshBtn.addEventListener('click', () => {
@@ -571,6 +905,79 @@ export function bindAppEvents(app) {
         closeVoiceModal();
         app.renderers.renderMainScreen();
         voiceService.startListening();
+    });
+
+    elements.addInboxForm.addEventListener('submit', event => {
+        event.preventDefault();
+        const items = splitInboxText(elements.inboxInput.value);
+        if (items.length === 0) return;
+
+        addInboxItems(store, items);
+        elements.inboxInput.value = '';
+        renderInboxViews();
+    });
+
+    elements.openInboxVoiceBtn.addEventListener('click', () => {
+        if (!inboxState.isSupported) {
+            openInboxVoiceMessage('Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.');
+            return;
+        }
+
+        if (inboxState.isListening) {
+            inboxVoiceService.stopListening();
+            return;
+        }
+
+        inboxState.error = '';
+        closeInboxVoiceModal();
+        app.renderers.renderMainScreen();
+        inboxVoiceService.startListening();
+    });
+
+    elements.closeInboxVoiceBtn.addEventListener('click', () => {
+        closeInboxVoiceModal();
+        app.renderers.renderMainScreen();
+    });
+
+    elements.inboxVoiceCancelBtn.addEventListener('click', () => {
+        closeInboxVoiceModal();
+        app.renderers.renderMainScreen();
+    });
+
+    elements.inboxVoiceConfirmBtn.addEventListener('click', () => {
+        const drafts = inboxState.drafts
+            .map(draft => draft.text.trim())
+            .filter(Boolean);
+
+        if (drafts.length === 0) {
+            openInboxVoiceMessage('В черновике пока нет мыслей, которые можно сохранить.');
+            return;
+        }
+
+        addInboxItems(store, drafts);
+        closeInboxVoiceModal();
+        renderInboxViews();
+    });
+
+    elements.openInboxSortBtn.addEventListener('click', () => {
+        inboxState.sortMode = 'single';
+        resetInboxPendingAction();
+        app.renderers.renderInboxSortModal();
+        elements.inboxSortModal.classList.remove('hidden');
+    });
+
+    elements.closeInboxSortBtn.addEventListener('click', closeInboxSortModal);
+
+    elements.clearInboxBtn.addEventListener('click', () => {
+        const inboxItems = store.getState().inboxItems || [];
+        if (inboxItems.length === 0) return;
+
+        const shouldClear = window.confirm('Очистить все Облако мыслей? Это удалит все сохраненные мысли.');
+        if (!shouldClear) return;
+
+        clearInboxItems(store);
+        closeInboxSortModal();
+        renderInboxViews();
     });
 
     elements.openLibraryBtn.addEventListener('click', () => {
@@ -786,10 +1193,7 @@ export function bindAppEvents(app) {
     elements.breakdownCancelBtn.addEventListener('click', () => closeBreakdownEditorModal());
 
     elements.breakdownManualBtn.addEventListener('click', () => {
-        applyBreakdownPreferenceIfNeeded();
-        if (!breakdownState.taskId) return;
-
-        openBreakdownEditor(breakdownState.taskId, 'manual');
+        closeBreakdownIntroModal();
     });
 
     elements.breakdownSuggestedBtn.addEventListener('click', () => {
@@ -800,20 +1204,41 @@ export function bindAppEvents(app) {
     });
 
     elements.breakdownConfirmBtn.addEventListener('click', () => {
-        if (!breakdownState.taskId) return;
-
-        const created = createTaskBreakdown(store, {
-            taskId: breakdownState.taskId,
-            steps: breakdownState.drafts.map(draft => ({
+        const steps = breakdownState.drafts
+            .map(draft => ({
                 text: draft.text.trim(),
                 weight: draft.weight,
-            })),
+            }))
+            .filter(step => step.text);
+
+        if (steps.length < 2) return;
+
+        let breakdownTaskId = breakdownState.taskId;
+
+        if (!breakdownTaskId && breakdownState.sourceInboxId && breakdownState.sourceText) {
+            const createdTask = addTask(store, {
+                text: breakdownState.sourceText,
+                weight: 20,
+                isResource: false,
+                targetDate: getLocalDateString(),
+            });
+            breakdownTaskId = createdTask?.id || null;
+            if (!breakdownTaskId) return;
+            deleteInboxItem(store, breakdownState.sourceInboxId);
+        }
+
+        if (!breakdownTaskId) return;
+
+        const created = createTaskBreakdown(store, {
+            taskId: breakdownTaskId,
+            steps,
         });
 
         if (!created) return;
 
         closeBreakdownEditorModal();
         app.renderers.renderMainScreen();
+        app.renderers.renderInboxSortModal();
         app.renderers.renderArchive();
         app.renderers.renderWeeklyScreen();
     });
@@ -1095,6 +1520,55 @@ export function bindAppEvents(app) {
 
     elements.completedList.addEventListener('keydown', handleInlineEditEnter);
 
+    [elements.inboxList, elements.inboxSortCard].forEach(container => {
+        container.addEventListener('click', event => {
+            const target = closestActionTarget(event.target);
+            if (!target) return;
+
+            handleInboxAction(target.dataset.action, target.dataset.inboxId);
+        });
+
+        container.addEventListener('change', event => {
+            const target = event.target.closest('[data-action]');
+            if (!target) return;
+
+            if (target.dataset.action === 'inbox-update-weight') {
+                inboxState.pendingAction.weight = parseInt(target.value, 10) || 20;
+                app.renderers.renderMainScreen();
+                app.renderers.renderInboxSortModal();
+            }
+
+            if (target.dataset.action === 'inbox-update-date') {
+                inboxState.pendingAction.date = target.value || getLocalDateString();
+                app.renderers.renderMainScreen();
+                app.renderers.renderInboxSortModal();
+            }
+        });
+    });
+
+    elements.inboxVoiceDraftList.addEventListener('click', event => {
+        const target = closestActionTarget(event.target);
+        if (!target || target.dataset.action !== 'inbox-voice-remove-draft') return;
+
+        inboxState.drafts = inboxState.drafts.filter(draft => draft.id !== target.dataset.draftId);
+        if (inboxState.drafts.length === 0) {
+            openInboxVoiceMessage('Черновик опустел. Можно надиктовать мысли еще раз или записать их текстом.');
+            return;
+        }
+
+        app.renderers.renderInboxVoiceModal();
+    });
+
+    elements.inboxVoiceDraftList.addEventListener('input', event => {
+        const target = event.target.closest('[data-action="inbox-voice-update-text"]');
+        if (!target) return;
+
+        const draft = inboxState.drafts.find(item => item.id === target.dataset.draftId);
+        if (!draft) return;
+
+        draft.text = target.value;
+    });
+
     elements.voiceDraftList.addEventListener('click', event => {
         const target = closestActionTarget(event.target);
         if (!target || target.dataset.action !== 'voice-remove-draft') return;
@@ -1153,6 +1627,14 @@ export function bindAppEvents(app) {
         if (!draft) return;
 
         draft.weight = parseInt(target.value, 10) === 10 ? 10 : 5;
+    });
+
+    elements.breakdownDraftList.addEventListener('keydown', event => {
+        const input = event.target.closest('[data-action="breakdown-update-text"]');
+        if (!input || event.key !== 'Enter' || event.shiftKey) return;
+
+        event.preventDefault();
+        elements.breakdownConfirmBtn.click();
     });
 
     elements.resourcesList.addEventListener('click', event => {
