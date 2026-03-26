@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ресурсный To-Do</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="style.css?v=20260320-main-layout">
 </head>
 
 <body>
@@ -139,12 +139,33 @@
             <header>
                 <h2>Сегодня</h2>
                 <div class="header-actions">
+                    <span id="storage-status" class="storage-status-pill">Сохранение: локально</span>
                     <img id="app-helper-avatar" class="app-helper-avatar cursor-pointer" title="Совет от помощника" alt="Аватар помощника">
-                    <button id="open-archive-btn" class="icon-btn" title="На потом">📦</button>
-                    <button id="open-completed-btn" class="icon-btn" title="Сделано">✅</button>
-                    <button id="open-history-btn" class="icon-btn" title="История самочувствия">📈</button>
-                    <button id="open-weekly-btn" class="icon-btn" title="План на неделю">📅</button>
-                    <button id="open-library-btn" class="icon-btn" title="Мои радости">☕</button>
+                    <div class="app-menu-wrapper">
+                        <button id="open-app-menu-btn" class="menu-trigger-btn" type="button" aria-expanded="false" aria-controls="app-menu-popover">Меню</button>
+                        <div id="app-menu-popover" class="app-menu-popover hidden" role="menu">
+                            <button id="open-library-btn" class="app-menu-item" type="button" role="menuitem">
+                                <span class="app-menu-icon">☕</span>
+                                <span>Мои радости</span>
+                            </button>
+                            <button id="open-archive-btn" class="app-menu-item" type="button" role="menuitem">
+                                <span class="app-menu-icon">📦</span>
+                                <span>На потом</span>
+                            </button>
+                            <button id="open-completed-btn" class="app-menu-item" type="button" role="menuitem">
+                                <span class="app-menu-icon">✅</span>
+                                <span>Сделано</span>
+                            </button>
+                            <button id="open-weekly-btn" class="app-menu-item" type="button" role="menuitem">
+                                <span class="app-menu-icon">📅</span>
+                                <span>План на неделю</span>
+                            </button>
+                            <button id="open-history-btn" class="app-menu-item" type="button" role="menuitem">
+                                <span class="app-menu-icon">📈</span>
+                                <span>История самочувствия</span>
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </header>
 
@@ -196,30 +217,7 @@
                 </div>
             </div>
 
-            <section id="inbox-section" class="inbox-section">
-                <div class="inbox-header">
-                    <div>
-                        <p class="inbox-caption">Без оценки и без спешки</p>
-                        <h3 class="inbox-title">Облако мыслей</h3>
-                    </div>
-                    <div class="inbox-header-actions">
-                        <button id="open-inbox-sort-btn" class="secondary-btn inbox-header-btn" type="button">Разобрать по одной</button>
-                        <button id="clear-inbox-btn" class="text-btn" type="button">Очистить</button>
-                    </div>
-                </div>
-                <p class="inbox-subtitle">Сюда можно быстро выгрузить всё, что крутится в голове. Разобрать можно потом.</p>
-                <form id="add-inbox-form" class="inbox-form">
-                    <textarea id="inbox-text" rows="3" placeholder="Запиши мысль, идею или список строк..." autocomplete="off"></textarea>
-                    <div class="inbox-form-actions">
-                        <button id="open-inbox-voice-btn" type="button" class="voice-btn" title="Надиктовать в Облако">🎤</button>
-                        <button type="submit" class="primary-btn inbox-submit-btn">Сохранить в Облако</button>
-                    </div>
-                </form>
-                <div id="inbox-status" class="voice-status hidden"></div>
-                <div id="inbox-list" class="inbox-list"></div>
-            </section>
-
-            <div id="main-content-grid" class="main-content-grid">
+                                                <div id="main-content-grid" class="main-content-grid">
                 <!-- Слот "Для себя" -->
                 <div id="self-care-slot" class="self-care-slot">
                     <div class="slot-header">
@@ -229,32 +227,57 @@
                     <div id="self-care-list" class="task-list"></div>
                 </div>
 
-                <div id="tasks-section" class="tasks-section">
-                    <div class="tasks-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <h3 id="tasks-title" style="font-size: 16px; font-weight: 500;">Задачи</h3>
-                        <button id="open-templates-btn" class="text-btn" style="background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px;">📋 Выбрать из шаблона</button>
-                    </div>
-                    <!-- Форма добавления задачи -->
-                    <form id="add-task-form" class="add-task-form">
-                        <input type="text" id="task-text" placeholder="Новая задача..." required autocomplete="off">
-                        <select id="task-weight">
-                            <option value="5">Пустяк (5)</option>
-                            <option value="10">Мелкая (10)</option>
-                            <option value="20" selected>Средняя (20)</option>
-                            <option value="30">Большая (30)</option>
-                            <option value="50">Глыба (50)</option>
-                        </select>
-                        <button id="open-voice-btn" type="button" class="voice-btn" title="Добавить голосом">🎤</button>
-                        <button type="submit" class="add-btn">+</button>
-                    </form>
-                    <div id="voice-status" class="voice-status hidden"></div>
+                <div class="main-right-column">
+                    <section id="inbox-section" class="inbox-section">
+                        <div class="inbox-header">
+                            <div>
+                                <h3 class="inbox-title">Облако мыслей</h3>
+                            </div>
+                            <div class="inbox-header-actions">
+                                <button id="open-inbox-sort-btn" class="secondary-btn inbox-header-btn" type="button">Разобрать по одной</button>
+                                <button id="clear-inbox-btn" class="text-btn" type="button">Очистить</button>
+                            </div>
+                        </div>
+                        <p class="inbox-subtitle">Сюда можно быстро выгрузить всё, что крутится в голове. Разобрать можно потом.</p>
+                        <form id="add-inbox-form" class="inbox-form">
+                            <textarea id="inbox-text" rows="2" placeholder="Запиши мысль, идею или список строк..." autocomplete="off"></textarea>
+                            <div class="inbox-form-actions">
+                                <button id="open-inbox-voice-btn" type="button" class="voice-btn" title="Надиктовать в Облако">🎤</button>
+                                <button type="submit" class="primary-btn inbox-submit-btn">Сохранить в Облако</button>
+                            </div>
+                        </form>
+                        <div id="inbox-status" class="voice-status hidden"></div>
+                        <div id="inbox-list" class="inbox-list"></div>
+                    </section>
 
-                    <div id="tasks-list" class="task-list"></div>
+                    <div id="tasks-section" class="tasks-section">
+                        <div class="tasks-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                            <h3 id="tasks-title" style="font-size: 16px; font-weight: 500;">Задачи</h3>
+                            <button id="open-templates-btn" class="text-btn" style="background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px;">📋 Выбрать из шаблона</button>
+                        </div>
+
+                        <!-- Форма добавления задачи -->
+                        <form id="add-task-form" class="add-task-form">
+                            <input type="text" id="task-text" placeholder="Новая задача..." required autocomplete="off">
+                            <select id="task-weight">
+                                <option value="5">Пустяк (5)</option>
+                                <option value="10">Мелкая (10)</option>
+                                <option value="20" selected>Средняя (20)</option>
+                                <option value="30">Большая (30)</option>
+                                <option value="50">Глыба (50)</option>
+                            </select>
+                            <button id="open-voice-btn" type="button" class="voice-btn" title="Добавить голосом">🎤</button>
+                            <button type="submit" class="add-btn">+</button>
+                        </form>
+                        <div id="voice-status" class="voice-status hidden"></div>
+
+                        <div id="tasks-list" class="task-list"></div>
+                    </div>
                 </div>
             </div>
+
         </div>
 
-        <!-- Экран "История самочувствия" -->
         <div id="history-screen" class="screen hidden">
             <header>
                 <h2>История самочувствия</h2>
@@ -554,7 +577,7 @@
         </div>
     </div>
 
-    <script src="js/app.bundle.js?v=20260319-inbox-cloud-v6"></script>
+    <script src="js/app.bundle.js?v=20260322-text-menu"></script>
 </body>
 
 </html>

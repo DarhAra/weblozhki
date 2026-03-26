@@ -1,5 +1,5 @@
 import { getLocalDateString } from '../utils/date.js';
-import { getTaskStorageStatus, getTodayTasks, TASK_STORAGE } from './tasks.js';
+import { addTask, getTaskStorageStatus, getTodayTasks, TASK_STORAGE } from './tasks.js';
 
 export function addResource(store, text) {
     const resource = { id: `res_${Date.now()}`, text };

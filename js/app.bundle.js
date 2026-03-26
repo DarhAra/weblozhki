@@ -31,7 +31,10 @@
       reviewTasksList: doc.getElementById("review-tasks-list"),
       finishReviewBtn: doc.getElementById("finish-review-btn"),
       morningTitle: doc.getElementById("morning-title"),
+      storageStatus: doc.getElementById("storage-status"),
       appHelperAvatar: doc.getElementById("app-helper-avatar"),
+      openAppMenuBtn: doc.getElementById("open-app-menu-btn"),
+      appMenuPopover: doc.getElementById("app-menu-popover"),
       balanceSection: doc.getElementById("balance-section"),
       usedEnergyEl: doc.getElementById("used-energy"),
       totalEnergyEl: doc.getElementById("total-energy"),
@@ -423,7 +426,7 @@
   function getDoneTasks(state) {
     return state.tasks.filter((task) => getTaskStorageStatus(task) === TASK_STORAGE.DONE);
   }
-  function addTask2(store, { text, weight, isResource, targetDate = null }) {
+  function addTask(store, { text, weight, isResource, targetDate = null }) {
     const newTask = {
       id: `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
       text,
@@ -745,6 +748,7 @@
 
   // js/state/store.js
   var STORAGE_KEY = "resourceTodoState";
+  var API_STATE_URL = "/api/state";
   function getDefaultTemplates() {
     return [
       {
@@ -826,6 +830,11 @@
       templates: []
     };
   }
+  function createDefaultStateWithTemplates() {
+    const nextState = getDefaultState();
+    nextState.templates = getDefaultTemplates();
+    return nextState;
+  }
   function ensurePreferenceDefaults(state) {
     if (!state.preferences || typeof state.preferences !== "object") {
       state.preferences = {};
@@ -851,14 +860,13 @@
   function ensureTemplateMigrations(state) {
     state.templates.forEach(ensureTemplateDefaults);
     const exitHomeTemplate = state.templates.find((template) => template.id === "tpl_2");
-    if (!(exitHomeTemplate == null ? void 0 : exitHomeTemplate.tasks)) {
-      return;
-    }
-    if (!exitHomeTemplate.tasks.find((task) => task.id === "tt_25")) {
-      exitHomeTemplate.tasks.push({ id: "tt_25", text: "Проверить розетки", weight: 5 });
-    }
-    if (!exitHomeTemplate.tasks.find((task) => task.id === "tt_26")) {
-      exitHomeTemplate.tasks.push({ id: "tt_26", text: "Проверить входную дверь", weight: 5 });
+    if (exitHomeTemplate == null ? void 0 : exitHomeTemplate.tasks) {
+      if (!exitHomeTemplate.tasks.find((task) => task.id === "tt_25")) {
+        exitHomeTemplate.tasks.push({ id: "tt_25", text: "Проверить розетки", weight: 5 });
+      }
+      if (!exitHomeTemplate.tasks.find((task) => task.id === "tt_26")) {
+        exitHomeTemplate.tasks.push({ id: "tt_26", text: "Проверить входную дверь", weight: 5 });
+      }
     }
     const sosTemplate = state.templates.find((template) => template.id === "tpl_4");
     if (!(sosTemplate == null ? void 0 : sosTemplate.tasks)) {
@@ -881,8 +889,97 @@
       }
     });
   }
+  function normalizeLoadedState(rawState, previousState = getDefaultState()) {
+    const today = getLocalDateString();
+    const nextState = { ...previousState, ...rawState };
+    if (!Array.isArray(nextState.tasks)) nextState.tasks = [];
+    if (!Array.isArray(nextState.inboxItems)) nextState.inboxItems = [];
+    if (!Array.isArray(nextState.resources)) nextState.resources = [];
+    nextState.moodHistory = normalizeMoodHistory(nextState.moodHistory);
+    ensurePreferenceDefaults(nextState);
+    if (!Array.isArray(nextState.templates) || nextState.templates.length === 0) {
+      nextState.templates = getDefaultTemplates();
+    } else {
+      ensureTemplateMigrations(nextState);
+    }
+    if (typeof nextState.pendingReviewDate !== "string") {
+      nextState.pendingReviewDate = null;
+    }
+    if (!nextState.currentDayMeta || typeof nextState.currentDayMeta !== "object") {
+      nextState.currentDayMeta = createCurrentDayMeta(nextState.lastDate);
+    } else {
+      nextState.currentDayMeta = normalizeCurrentDayMeta(
+        nextState.currentDayMeta,
+        nextState.currentDayMeta.date || nextState.lastDate || today
+      );
+    }
+    if (nextState.lastDate && nextState.currentDayMeta.date !== nextState.lastDate) {
+      nextState.currentDayMeta = createCurrentDayMeta(nextState.lastDate);
+    }
+    const seenIds = /* @__PURE__ */ new Set();
+    nextState.tasks.forEach((task) => {
+      if (seenIds.has(task.id)) {
+        task.id = `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+      }
+      seenIds.add(task.id);
+      if (typeof task.completedAtDate !== "string") {
+        task.completedAtDate = null;
+      }
+      if (typeof task.breakdownParentId !== "string") {
+        task.breakdownParentId = null;
+      }
+      if (!Array.isArray(task.breakdownChildIds)) {
+        task.breakdownChildIds = [];
+      }
+      if (typeof task.breakdownIndex !== "number") {
+        task.breakdownIndex = null;
+      }
+      if (typeof task.isBreakdownParent !== "boolean") {
+        task.isBreakdownParent = false;
+      }
+      if (typeof task.isBreakdownStep !== "boolean") {
+        task.isBreakdownStep = false;
+      }
+      if (typeof task.isHiddenFromMainList !== "boolean") {
+        task.isHiddenFromMainList = false;
+      }
+      if (typeof task.showOnlyCurrentStep !== "boolean") {
+        task.showOnlyCurrentStep = false;
+      }
+      if (typeof task.isCurrentBreakdownStep !== "boolean") {
+        task.isCurrentBreakdownStep = false;
+      }
+      task.storageStatus = getTaskStorageStatus(task);
+      task.isArchived = task.storageStatus === TASK_STORAGE.DEFERRED;
+      if (task.storageStatus === TASK_STORAGE.ACTIVE && !task.targetDate) {
+        task.targetDate = nextState.lastDate || today;
+      }
+      if (task.storageStatus !== TASK_STORAGE.ACTIVE) {
+        task.targetDate = null;
+      }
+    });
+    nextState.inboxItems = nextState.inboxItems.filter((item) => item && typeof item.text === "string").map((item) => ({
+      id: typeof item.id === "string" ? item.id : `inbox_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+      text: item.text.trim(),
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : (/* @__PURE__ */ new Date()).toISOString()
+    })).filter((item) => item.text);
+    if (nextState.avatar && !nextState.avatar.includes(".png")) {
+      nextState.avatar = "assets/girl.png";
+    }
+    const hasOverdue = nextState.tasks.some((task) => task.targetDate && task.targetDate < today);
+    if (!nextState.pendingReviewDate && nextState.lastDate !== today && hasOverdue) {
+      nextState.pendingReviewDate = today;
+    }
+    return nextState;
+  }
   function createStore() {
-    let state = getDefaultState();
+    let state = createDefaultStateWithTemplates();
+    let persistenceStatus = {
+      mode: "local-fallback",
+      message: "Сейчас работаем локально. Сервер недоступен."
+    };
+    let persistenceStatusListener = null;
+    let saveChain = Promise.resolve();
     function getState() {
       return state;
     }
@@ -890,110 +987,158 @@
       state = nextState;
       return state;
     }
-    function saveState(nextState = state) {
+    function getPersistenceStatus() {
+      return persistenceStatus;
+    }
+    function setPersistenceStatusListener(listener) {
+      persistenceStatusListener = listener;
+      if (typeof listener === "function") {
+        listener({ ...persistenceStatus });
+      }
+    }
+    function updatePersistenceStatus(nextStatus) {
+      const nextMode = (nextStatus == null ? void 0 : nextStatus.mode) || "local-fallback";
+      const nextMessage = (nextStatus == null ? void 0 : nextStatus.message) || "";
+      if (persistenceStatus.mode === nextMode && persistenceStatus.message === nextMessage) {
+        return;
+      }
+      persistenceStatus = {
+        mode: nextMode,
+        message: nextMessage
+      };
+      if (typeof persistenceStatusListener === "function") {
+        persistenceStatusListener({ ...persistenceStatus });
+      }
+    }
+    function saveStateToLocal(nextState = state) {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+    }
+    function getLocalSavedState() {
+      return localStorage.getItem(STORAGE_KEY);
+    }
+    async function fetchServerState() {
+      const response = await fetch(API_STATE_URL, {
+        headers: {
+          Accept: "application/json"
+        }
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to load state from server: ${response.status}`);
+      }
+      const payload = await response.json();
+      if (!payload || typeof payload !== "object") {
+        return null;
+      }
+      if (payload.state === null) {
+        return null;
+      }
+      if (typeof payload.state !== "object") {
+        throw new Error("Server returned invalid state payload");
+      }
+      return payload.state;
+    }
+    async function postServerState(nextState = state) {
+      const response = await fetch(API_STATE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json"
+        },
+        body: JSON.stringify(nextState)
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to save state to server: ${response.status}`);
+      }
+      return response.json().catch(() => null);
+    }
+    function saveState(nextState = state) {
+      saveStateToLocal(nextState);
+      saveChain = saveChain.catch(() => void 0).then(async () => {
+        try {
+          await postServerState(nextState);
+          updatePersistenceStatus({
+            mode: "server",
+            message: "Данные читаются и сохраняются через локальный сервер."
+          });
+        } catch (error) {
+          console.warn("Failed to save state to server, using local fallback", error);
+          saveStateToLocal(nextState);
+          updatePersistenceStatus({
+            mode: "local-fallback",
+            message: "Сейчас работаем локально. Сервер недоступен."
+          });
+        }
+      });
+      return saveChain;
     }
     function updateState(mutator, options = { save: true }) {
       mutator(state);
       if (options.save !== false) {
-        saveState();
+        void saveState();
       }
       return state;
     }
-    function loadState() {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (!saved) {
-        state.templates = getDefaultTemplates();
+    async function loadState() {
+      const localSaved = getLocalSavedState();
+      try {
+        const serverState = await fetchServerState();
+        if (serverState) {
+          state = normalizeLoadedState(serverState, createDefaultStateWithTemplates());
+          saveStateToLocal(state);
+          updatePersistenceStatus({
+            mode: "server",
+            message: "Данные читаются и сохраняются через локальный сервер."
+          });
+          return state;
+        }
+        if (localSaved) {
+          state = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
+          saveStateToLocal(state);
+          try {
+            await postServerState(state);
+            updatePersistenceStatus({
+              mode: "server",
+              message: "Данные читаются и сохраняются через локальный сервер."
+            });
+          } catch (migrationError) {
+            console.warn("Failed to migrate local state to server", migrationError);
+            updatePersistenceStatus({
+              mode: "local-fallback",
+              message: "Сейчас работаем локально. Сервер недоступен."
+            });
+          }
+          return state;
+        }
+        state = createDefaultStateWithTemplates();
+        updatePersistenceStatus({
+          mode: "server",
+          message: "Данные читаются и сохраняются через локальный сервер."
+        });
+        return state;
+      } catch (serverError) {
+        console.warn("Failed to load state from server, using local fallback", serverError);
+        if (localSaved) {
+          try {
+            state = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
+          } catch (localError) {
+            console.error("Failed to load local state", localError);
+            state = createDefaultStateWithTemplates();
+          }
+        } else {
+          state = createDefaultStateWithTemplates();
+        }
+        updatePersistenceStatus({
+          mode: "local-fallback",
+          message: "Сейчас работаем локально. Сервер недоступен."
+        });
         return state;
       }
-      try {
-        const today = getLocalDateString();
-        state = { ...state, ...JSON.parse(saved) };
-        if (!Array.isArray(state.tasks)) state.tasks = [];
-        if (!Array.isArray(state.inboxItems)) state.inboxItems = [];
-        if (!Array.isArray(state.resources)) state.resources = [];
-        state.moodHistory = normalizeMoodHistory(state.moodHistory);
-        ensurePreferenceDefaults(state);
-        if (!Array.isArray(state.templates) || state.templates.length === 0) {
-          state.templates = getDefaultTemplates();
-        } else {
-          ensureTemplateMigrations(state);
-        }
-        if (typeof state.pendingReviewDate !== "string") {
-          state.pendingReviewDate = null;
-        }
-        if (!state.currentDayMeta || typeof state.currentDayMeta !== "object") {
-          state.currentDayMeta = createCurrentDayMeta(state.lastDate);
-        } else {
-          state.currentDayMeta = normalizeCurrentDayMeta(state.currentDayMeta, state.currentDayMeta.date || state.lastDate || today);
-        }
-        if (state.lastDate && state.currentDayMeta.date !== state.lastDate) {
-          state.currentDayMeta = createCurrentDayMeta(state.lastDate);
-        }
-        const seenIds = /* @__PURE__ */ new Set();
-        state.tasks.forEach((task) => {
-          if (seenIds.has(task.id)) {
-            task.id = `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
-          }
-          seenIds.add(task.id);
-          if (typeof task.completedAtDate !== "string") {
-            task.completedAtDate = null;
-          }
-          if (typeof task.breakdownParentId !== "string") {
-            task.breakdownParentId = null;
-          }
-          if (!Array.isArray(task.breakdownChildIds)) {
-            task.breakdownChildIds = [];
-          }
-          if (typeof task.breakdownIndex !== "number") {
-            task.breakdownIndex = null;
-          }
-          if (typeof task.isBreakdownParent !== "boolean") {
-            task.isBreakdownParent = false;
-          }
-          if (typeof task.isBreakdownStep !== "boolean") {
-            task.isBreakdownStep = false;
-          }
-          if (typeof task.isHiddenFromMainList !== "boolean") {
-            task.isHiddenFromMainList = false;
-          }
-          if (typeof task.showOnlyCurrentStep !== "boolean") {
-            task.showOnlyCurrentStep = false;
-          }
-          if (typeof task.isCurrentBreakdownStep !== "boolean") {
-            task.isCurrentBreakdownStep = false;
-          }
-          task.storageStatus = getTaskStorageStatus(task);
-          task.isArchived = task.storageStatus === TASK_STORAGE.DEFERRED;
-          if (task.storageStatus === TASK_STORAGE.ACTIVE && !task.targetDate) {
-            task.targetDate = state.lastDate || today;
-          }
-          if (task.storageStatus !== TASK_STORAGE.ACTIVE) {
-            task.targetDate = null;
-          }
-        });
-        state.inboxItems = state.inboxItems.filter((item) => item && typeof item.text === "string").map((item) => ({
-          id: typeof item.id === "string" ? item.id : `inbox_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
-          text: item.text.trim(),
-          createdAt: typeof item.createdAt === "string" ? item.createdAt : (/* @__PURE__ */ new Date()).toISOString()
-        })).filter((item) => item.text);
-        if (state.avatar && !state.avatar.includes(".png")) {
-          state.avatar = "assets/girl.png";
-        }
-        const hasOverdue = state.tasks.some((task) => task.targetDate && task.targetDate < today);
-        if (!state.pendingReviewDate && state.lastDate !== today && hasOverdue) {
-          state.pendingReviewDate = today;
-        }
-      } catch (error) {
-        console.error("Failed to load state", error);
-        state = getDefaultState();
-        state.templates = getDefaultTemplates();
-      }
-      return state;
     }
     return {
       getState,
       setState,
+      getPersistenceStatus,
+      setPersistenceStatusListener,
       saveState,
       updateState,
       loadState
@@ -1142,7 +1287,7 @@
     if (!item) {
       return null;
     }
-    const task = addTask2(store, {
+    const task = addTask(store, {
       text: item.text,
       weight,
       isResource: false,
@@ -1157,7 +1302,7 @@
     if (!item) {
       return null;
     }
-    const task = addTask2(store, {
+    const task = addTask(store, {
       text: item.text,
       weight,
       isResource: false,
@@ -1172,7 +1317,7 @@
     if (!item) {
       return null;
     }
-    const task = addTask2(store, {
+    const task = addTask(store, {
       text: item.text,
       weight: 20,
       isResource: false,
@@ -1316,6 +1461,18 @@
   }
   function createRenderers(app) {
     const { elements, store, runtime } = app;
+    function renderPersistenceStatus() {
+      var _a;
+      if (!elements.storageStatus) {
+        return;
+      }
+      const status = runtime.persistenceStatus || ((_a = store.getPersistenceStatus) == null ? void 0 : _a.call(store)) || { mode: "local-fallback" };
+      const isServerMode = status.mode === "server";
+      elements.storageStatus.textContent = isServerMode ? "Сохранение: сервер" : "Сохранение: локально";
+      elements.storageStatus.classList.toggle("is-server", isServerMode);
+      elements.storageStatus.classList.toggle("is-local", !isServerMode);
+      elements.storageStatus.title = isServerMode ? "Данные читаются и сохраняются через локальный сервер." : "Сервер сейчас недоступен, поэтому приложение временно работает через localStorage.";
+    }
     function renderVoiceUi() {
       const voice = runtime.voice;
       elements.openVoiceBtn.classList.remove("listening", "processing", "unsupported");
@@ -1388,7 +1545,7 @@
       elements.openInboxSortBtn.disabled = inboxItems.length === 0;
       elements.clearInboxBtn.disabled = inboxItems.length === 0;
       if (inboxItems.length === 0) {
-        elements.inboxList.innerHTML = '<div class="inbox-empty-state">Сюда можно быстро выгрузить всё, что крутится в голове. Разобрать можно потом.</div>';
+        elements.inboxList.innerHTML = "";
         return;
       }
       inboxItems.forEach((item) => {
@@ -1567,6 +1724,7 @@
       }
       renderLowEnergyPanel(state, todayTasks, isSosView);
       renderInboxUi();
+      renderPersistenceStatus();
       elements.balanceSection.classList.toggle("hidden", isSosView);
       elements.addTaskForm.classList.toggle("hidden", isSosView);
       elements.openTemplatesBtn.classList.toggle("hidden", isSosView);
@@ -1917,6 +2075,7 @@
     return {
       renderReviewTasks,
       renderMainScreen,
+      renderPersistenceStatus,
       renderInboxUi,
       renderInboxVoiceModal,
       renderInboxSortModal,
@@ -2223,7 +2382,7 @@
     if (!task) {
       return null;
     }
-    return addTask2(store, {
+    return addTask(store, {
       text: task.text,
       weight: task.weight,
       isResource: false
@@ -2237,7 +2396,7 @@
     }
     let addedCount = 0;
     template.tasks.forEach((task) => {
-      addTask2(store, {
+      addTask(store, {
         text: task.text,
         weight: task.weight,
         isResource: false,
@@ -2591,6 +2750,15 @@
         elements.breakdownRememberChoice.checked = false;
       }
     }
+    function closeAppMenu() {
+      elements.appMenuPopover.classList.add("hidden");
+      elements.openAppMenuBtn.setAttribute("aria-expanded", "false");
+    }
+    function toggleAppMenu() {
+      const shouldOpen = elements.appMenuPopover.classList.contains("hidden");
+      elements.appMenuPopover.classList.toggle("hidden", !shouldOpen);
+      elements.openAppMenuBtn.setAttribute("aria-expanded", String(shouldOpen));
+    }
     function stopInlineEdit() {
       editTaskState.taskId = null;
       editTaskState.text = "";
@@ -2642,6 +2810,27 @@
       elements.breakdownRememberChoice.checked = false;
       elements.breakdownIntroModal.classList.remove("hidden");
     }
+    elements.openAppMenuBtn.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleAppMenu();
+    });
+    elements.appMenuPopover.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+    document.addEventListener("click", (event) => {
+      if (elements.appMenuPopover.classList.contains("hidden")) {
+        return;
+      }
+      if (elements.openAppMenuBtn.contains(event.target) || elements.appMenuPopover.contains(event.target)) {
+        return;
+      }
+      closeAppMenu();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        closeAppMenu();
+      }
+    });
     function openBreakdownFromInbox(itemId) {
       var _a2;
       const item = store.getState().inboxItems.find((entry) => entry.id === itemId);
@@ -2875,7 +3064,7 @@
       const text = elements.taskInput.value.trim();
       const weight = parseInt(elements.taskWeightSelect.value, 10);
       if (!text) return;
-      addTask2(store, { text, weight, isResource: false });
+      addTask(store, { text, weight, isResource: false });
       elements.taskInput.value = "";
       app.screens.showMainScreen();
       if (!elements.weeklyScreen.classList.contains("hidden")) {
@@ -3055,7 +3244,7 @@
     });
     elements.adviceAddBtn.addEventListener("click", () => {
       if (!runtime.currentAdvice) return;
-      addTask2(store, { text: runtime.currentAdvice, weight: 0, isResource: true });
+      addTask(store, { text: runtime.currentAdvice, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
       const originalText = elements.adviceAddBtn.textContent;
       elements.adviceAddBtn.textContent = "Добавлено ✓";
@@ -3139,6 +3328,7 @@
       renderInboxViews();
     });
     elements.openLibraryBtn.addEventListener("click", () => {
+      closeAppMenu();
       app.renderers.renderResources();
       elements.libraryModal.classList.remove("hidden");
     });
@@ -3194,16 +3384,19 @@
       app.renderers.renderMainScreen();
     });
     elements.openArchiveBtn.addEventListener("click", () => {
+      closeAppMenu();
       app.renderers.renderArchive();
       elements.completedModal.classList.add("hidden");
       elements.archiveModal.classList.remove("hidden");
     });
     elements.openCompletedBtn.addEventListener("click", () => {
+      closeAppMenu();
       app.renderers.renderCompleted();
       elements.archiveModal.classList.add("hidden");
       elements.completedModal.classList.remove("hidden");
     });
     elements.openHistoryBtn.addEventListener("click", () => {
+      closeAppMenu();
       app.screens.showHistoryScreen();
     });
     elements.closeHistoryBtn.addEventListener("click", () => {
@@ -3240,7 +3433,7 @@
         return;
       }
       draftsToAdd.forEach((draft) => {
-        addTask2(store, {
+        addTask(store, {
           text: draft.text,
           weight: draft.weight,
           isResource: false,
@@ -3252,6 +3445,7 @@
       app.renderers.renderWeeklyScreen();
     });
     elements.openWeeklyBtn.addEventListener("click", () => {
+      closeAppMenu();
       app.screens.showWeeklyScreen();
     });
     elements.closeWeeklyBtn.addEventListener("click", () => {
@@ -3265,7 +3459,7 @@
       const text = elements.weeklyTaskText.value.trim();
       const weight = parseInt(elements.weeklyTaskWeight.value, 10);
       if (!text || !runtime.currentWeeklyTaskDate) return;
-      addTask2(store, {
+      addTask(store, {
         text,
         weight,
         isResource: false,
@@ -3325,7 +3519,7 @@
       if (steps.length < 2) return;
       let breakdownTaskId = breakdownState.taskId;
       if (!breakdownTaskId && breakdownState.sourceInboxId && breakdownState.sourceText) {
-        const createdTask = addTask2(store, {
+        const createdTask = addTask(store, {
           text: breakdownState.sourceText,
           weight: 20,
           isResource: false,
@@ -3748,7 +3942,7 @@
       const state = store.getState();
       const suggestions = [...runtime.builtinAdvices, ...state.resources.map((resource) => resource.text)];
       const suggestion = suggestions[Math.floor(Math.random() * suggestions.length)];
-      addTask2(store, { text: suggestion, weight: 0, isResource: true });
+      addTask(store, { text: suggestion, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
     });
     elements.weeklyContainer.addEventListener("click", (event) => {
@@ -3842,7 +4036,8 @@
     var _a;
     return state.lastDate === today && state.energyBudget !== null && state.energyBudget >= 10 && state.energyBudget <= 15 && ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === today && !state.currentDayMeta.lowEnergyPromptHandled;
   }
-  function initApp({ elements }) {
+  async function initApp({ elements }) {
+    var _a, _b;
     const store = createStore();
     const app = {
       elements,
@@ -3891,6 +4086,10 @@
         },
         templateAutoPrompt: {
           templateId: null
+        },
+        persistenceStatus: ((_a = store.getPersistenceStatus) == null ? void 0 : _a.call(store)) || {
+          mode: "local-fallback",
+          message: ""
         }
       }
     };
@@ -3898,7 +4097,11 @@
     app.onboarding = createOnboardingController(app);
     app.screens = createScreens(app);
     bindAppEvents(app);
-    store.loadState();
+    (_b = store.setPersistenceStatusListener) == null ? void 0 : _b.call(store, (status) => {
+      app.runtime.persistenceStatus = status;
+      app.renderers.renderPersistenceStatus();
+    });
+    await store.loadState();
     const today = getLocalDateString();
     store.updateState((state2) => {
       state2.tasks.forEach((task) => {
@@ -3966,14 +4169,16 @@
     }
     return app;
   }
-  function bootstrap() {
-    initApp({ elements: collectElements(document) });
+  async function bootstrap() {
+    await initApp({ elements: collectElements(document) });
   }
   if (typeof document !== "undefined") {
     if (document.readyState === "loading") {
-      document.addEventListener("DOMContentLoaded", bootstrap);
+      document.addEventListener("DOMContentLoaded", () => {
+        void bootstrap();
+      });
     } else {
-      bootstrap();
+      void bootstrap();
     }
   }
 })();

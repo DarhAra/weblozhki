@@ -1,0 +1,217 @@
+{
+  "hasOnboarded": true,
+  "userName": "Алина",
+  "gender": "female",
+  "avatar": "assets/cat1.png",
+  "energyBudget": 50,
+  "lastDate": "2026-03-22",
+  "pendingReviewDate": null,
+  "currentDayMeta": {
+    "date": "2026-03-22",
+    "usedSos": false,
+    "sosDestination": null,
+    "lowEnergyPromptHandled": false,
+    "lowEnergyDayApplied": false,
+    "lowEnergyKeptTaskId": null,
+    "lowEnergyResourceId": null,
+    "lowEnergyResourceTaskId": null
+  },
+  "moodHistory": [],
+  "tasks": [
+    {
+      "id": "task_1774197878987_40664",
+      "text": "Попить кофе",
+      "weight": 0,
+      "isResource": true,
+      "completed": false,
+      "completedAtDate": null,
+      "storageStatus": "active",
+      "isArchived": false,
+      "targetDate": "2026-03-22",
+      "breakdownParentId": null,
+      "breakdownChildIds": [],
+      "breakdownIndex": null,
+      "isBreakdownParent": false,
+      "isBreakdownStep": false,
+      "isHiddenFromMainList": false,
+      "showOnlyCurrentStep": false,
+      "isCurrentBreakdownStep": false
+    },
+    {
+      "id": "task_1774197879306_557505",
+      "text": "10 минут соцсетей",
+      "weight": 0,
+      "isResource": true,
+      "completed": false,
+      "completedAtDate": null,
+      "storageStatus": "active",
+      "isArchived": false,
+      "targetDate": "2026-03-22",
+      "breakdownParentId": null,
+      "breakdownChildIds": [],
+      "breakdownIndex": null,
+      "isBreakdownParent": false,
+      "isBreakdownStep": false,
+      "isHiddenFromMainList": false,
+      "showOnlyCurrentStep": false,
+      "isCurrentBreakdownStep": false
+    }
+  ],
+  "inboxItems": [],
+  "preferences": {
+    "breakDownLargeTasksPromptMode": "ask-first-time"
+  },
+  "resources": [
+    {
+      "id": "res_1",
+      "text": "Попить кофе"
+    },
+    {
+      "id": "res_2",
+      "text": "10 минут соцсетей"
+    },
+    {
+      "id": "res_3",
+      "text": "Прогулка 15 минут"
+    },
+    {
+      "id": "res_1774195735424_0.8161327494810867",
+      "text": "Читать книгу"
+    },
+    {
+      "id": "res_1774195735424_0.17175013041914888",
+      "text": "Погладить кота"
+    },
+    {
+      "id": "res_1774195735424_0.43741871180695",
+      "text": "Послушать подкаст"
+    },
+    {
+      "id": "res_1774195735424_0.5929254646315957",
+      "text": "Подышать свежим воздухом"
+    }
+  ],
+  "templates": [
+    {
+      "id": "tpl_1",
+      "name": "Утро",
+      "autoAddDaily": false,
+      "hasAskedAutoAdd": true,
+      "lastAutoAddedDate": null,
+      "tasks": [
+        {
+          "id": "tt_11",
+          "text": "Выпить воду",
+          "weight": 5
+        },
+        {
+          "id": "tt_12",
+          "text": "Принять лекарства",
+          "weight": 5
+        },
+        {
+          "id": "tt_13",
+          "text": "Почистить зубы",
+          "weight": 5
+        },
+        {
+          "id": "tt_14",
+          "text": "Завтрак-минимум",
+          "weight": 5
+        }
+      ]
+    },
+    {
+      "id": "tpl_2",
+      "name": "Выход из дома",
+      "autoAddDaily": false,
+      "hasAskedAutoAdd": false,
+      "lastAutoAddedDate": null,
+      "tasks": [
+        {
+          "id": "tt_21",
+          "text": "Ключи",
+          "weight": 5
+        },
+        {
+          "id": "tt_22",
+          "text": "Телефон",
+          "weight": 5
+        },
+        {
+          "id": "tt_23",
+          "text": "Наушники",
+          "weight": 5
+        },
+        {
+          "id": "tt_24",
+          "text": "Проверить плиту",
+          "weight": 5
+        },
+        {
+          "id": "tt_25",
+          "text": "Проверить розетки",
+          "weight": 5
+        },
+        {
+          "id": "tt_26",
+          "text": "Проверить входную дверь",
+          "weight": 5
+        }
+      ]
+    },
+    {
+      "id": "tpl_3",
+      "name": "Вечер",
+      "autoAddDaily": false,
+      "hasAskedAutoAdd": false,
+      "lastAutoAddedDate": null,
+      "tasks": [
+        {
+          "id": "tt_31",
+          "text": "Поставить устройства на зарядку",
+          "weight": 5
+        },
+        {
+          "id": "tt_32",
+          "text": "Проветрить",
+          "weight": 5
+        },
+        {
+          "id": "tt_33",
+          "text": "Вечерние таблетки",
+          "weight": 5
+        }
+      ]
+    },
+    {
+      "id": "tpl_4",
+      "name": "SOS-день",
+      "autoAddDaily": false,
+      "hasAskedAutoAdd": false,
+      "lastAutoAddedDate": null,
+      "tasks": [
+        {
+          "id": "tt_41",
+          "text": "Выпить воды",
+          "weight": 5
+        },
+        {
+          "id": "tt_42",
+          "text": "Поесть или взять перекус",
+          "weight": 5
+        },
+        {
+          "id": "tt_43",
+          "text": "Принять лекарства или проверить базовый уход",
+          "weight": 5
+        },
+        {
+          "id": "tt_44",
+          "text": "Полежать или посидеть в тишине 10 минут",
+          "weight": 5
+        }
+      ]
+    }
+  ]
+}

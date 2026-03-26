@@ -159,6 +159,23 @@ function buildMoodNote(entry) {
 export function createRenderers(app) {
     const { elements, store, runtime } = app;
 
+    function renderPersistenceStatus() {
+        if (!elements.storageStatus) {
+            return;
+        }
+
+        const status = runtime.persistenceStatus || store.getPersistenceStatus?.() || { mode: 'local-fallback' };
+        const isServerMode = status.mode === 'server';
+        elements.storageStatus.textContent = isServerMode
+            ? 'Сохранение: сервер'
+            : 'Сохранение: локально';
+        elements.storageStatus.classList.toggle('is-server', isServerMode);
+        elements.storageStatus.classList.toggle('is-local', !isServerMode);
+        elements.storageStatus.title = isServerMode
+            ? 'Данные читаются и сохраняются через локальный сервер.'
+            : 'Сервер сейчас недоступен, поэтому приложение временно работает через localStorage.';
+    }
+
     function renderVoiceUi() {
         const voice = runtime.voice;
 
@@ -242,7 +259,7 @@ export function createRenderers(app) {
         elements.clearInboxBtn.disabled = inboxItems.length === 0;
 
         if (inboxItems.length === 0) {
-            elements.inboxList.innerHTML = '<div class="inbox-empty-state">Сюда можно быстро выгрузить всё, что крутится в голове. Разобрать можно потом.</div>';
+            elements.inboxList.innerHTML = '';
             return;
         }
 
@@ -453,6 +470,7 @@ export function createRenderers(app) {
 
         renderLowEnergyPanel(state, todayTasks, isSosView);
         renderInboxUi();
+        renderPersistenceStatus();
 
         elements.balanceSection.classList.toggle('hidden', isSosView);
         elements.addTaskForm.classList.toggle('hidden', isSosView);
@@ -864,6 +882,7 @@ export function createRenderers(app) {
     return {
         renderReviewTasks,
         renderMainScreen,
+        renderPersistenceStatus,
         renderInboxUi,
         renderInboxVoiceModal,
         renderInboxSortModal,

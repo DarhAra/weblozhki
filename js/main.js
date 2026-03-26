@@ -28,7 +28,7 @@ function shouldOfferLowEnergyDay(state, today = getLocalDateString()) {
         && !state.currentDayMeta.lowEnergyPromptHandled;
 }
 
-export function initApp({ elements }) {
+export async function initApp({ elements }) {
     const store = createStore();
     const app = {
         elements,
@@ -78,6 +78,10 @@ export function initApp({ elements }) {
             templateAutoPrompt: {
                 templateId: null,
             },
+            persistenceStatus: store.getPersistenceStatus?.() || {
+                mode: 'local-fallback',
+                message: '',
+            },
         },
     };
 
@@ -85,8 +89,12 @@ export function initApp({ elements }) {
     app.onboarding = createOnboardingController(app);
     app.screens = createScreens(app);
     bindAppEvents(app);
+    store.setPersistenceStatusListener?.(status => {
+        app.runtime.persistenceStatus = status;
+        app.renderers.renderPersistenceStatus();
+    });
 
-    store.loadState();
+    await store.loadState();
 
     const today = getLocalDateString();
     store.updateState(state => {
@@ -165,14 +173,16 @@ export function initApp({ elements }) {
     return app;
 }
 
-function bootstrap() {
-    initApp({ elements: collectElements(document) });
+async function bootstrap() {
+    await initApp({ elements: collectElements(document) });
 }
 
 if (typeof document !== 'undefined') {
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', bootstrap);
+        document.addEventListener('DOMContentLoaded', () => {
+            void bootstrap();
+        });
     } else {
-        bootstrap();
+        void bootstrap();
     }
 }

@@ -333,6 +333,17 @@ export function bindAppEvents(app) {
         }
     }
 
+    function closeAppMenu() {
+        elements.appMenuPopover.classList.add('hidden');
+        elements.openAppMenuBtn.setAttribute('aria-expanded', 'false');
+    }
+
+    function toggleAppMenu() {
+        const shouldOpen = elements.appMenuPopover.classList.contains('hidden');
+        elements.appMenuPopover.classList.toggle('hidden', !shouldOpen);
+        elements.openAppMenuBtn.setAttribute('aria-expanded', String(shouldOpen));
+    }
+
     function stopInlineEdit() {
         editTaskState.taskId = null;
         editTaskState.text = '';
@@ -395,6 +406,33 @@ export function bindAppEvents(app) {
         elements.breakdownRememberChoice.checked = false;
         elements.breakdownIntroModal.classList.remove('hidden');
     }
+
+    elements.openAppMenuBtn.addEventListener('click', event => {
+        event.stopPropagation();
+        toggleAppMenu();
+    });
+
+    elements.appMenuPopover.addEventListener('click', event => {
+        event.stopPropagation();
+    });
+
+    document.addEventListener('click', event => {
+        if (elements.appMenuPopover.classList.contains('hidden')) {
+            return;
+        }
+
+        if (elements.openAppMenuBtn.contains(event.target) || elements.appMenuPopover.contains(event.target)) {
+            return;
+        }
+
+        closeAppMenu();
+    });
+
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') {
+            closeAppMenu();
+        }
+    });
 
     function openBreakdownFromInbox(itemId) {
         const item = store.getState().inboxItems.find(entry => entry.id === itemId);
@@ -981,6 +1019,7 @@ export function bindAppEvents(app) {
     });
 
     elements.openLibraryBtn.addEventListener('click', () => {
+        closeAppMenu();
         app.renderers.renderResources();
         elements.libraryModal.classList.remove('hidden');
     });
@@ -1046,18 +1085,21 @@ export function bindAppEvents(app) {
     });
 
     elements.openArchiveBtn.addEventListener('click', () => {
+        closeAppMenu();
         app.renderers.renderArchive();
         elements.completedModal.classList.add('hidden');
         elements.archiveModal.classList.remove('hidden');
     });
 
     elements.openCompletedBtn.addEventListener('click', () => {
+        closeAppMenu();
         app.renderers.renderCompleted();
         elements.archiveModal.classList.add('hidden');
         elements.completedModal.classList.remove('hidden');
     });
 
     elements.openHistoryBtn.addEventListener('click', () => {
+        closeAppMenu();
         app.screens.showHistoryScreen();
     });
 
@@ -1120,6 +1162,7 @@ export function bindAppEvents(app) {
     });
 
     elements.openWeeklyBtn.addEventListener('click', () => {
+        closeAppMenu();
         app.screens.showWeeklyScreen();
     });
 
