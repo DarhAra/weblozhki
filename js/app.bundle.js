@@ -3,6 +3,7 @@
   // js/ui/elements.js
   function collectElements(doc = document) {
     return {
+      authScreen: doc.getElementById("auth-screen"),
       onboardingScreen: doc.getElementById("onboarding-screen"),
       morningScreen: doc.getElementById("morning-screen"),
       mainScreen: doc.getElementById("main-screen"),
@@ -13,6 +14,7 @@
       libraryModal: doc.getElementById("library-modal"),
       archiveModal: doc.getElementById("archive-modal"),
       completedModal: doc.getElementById("completed-modal"),
+      accountModal: doc.getElementById("account-modal"),
       templatesModal: doc.getElementById("templates-modal"),
       templateAutoModal: doc.getElementById("template-auto-modal"),
       breakdownIntroModal: doc.getElementById("breakdown-intro-modal"),
@@ -25,6 +27,21 @@
       inboxSortModal: doc.getElementById("inbox-sort-modal"),
       sosModal: doc.getElementById("sos-modal"),
       allDoneModal: doc.getElementById("all-done-modal"),
+      authTitle: doc.getElementById("auth-title"),
+      authSubtitle: doc.getElementById("auth-subtitle"),
+      authLoading: doc.getElementById("auth-loading"),
+      authModeSwitcher: doc.getElementById("auth-mode-switcher"),
+      authForm: doc.getElementById("auth-form"),
+      authLoginModeBtn: doc.getElementById("auth-login-mode-btn"),
+      authRegisterModeBtn: doc.getElementById("auth-register-mode-btn"),
+      authEmail: doc.getElementById("auth-email"),
+      authPassword: doc.getElementById("auth-password"),
+      authError: doc.getElementById("auth-error"),
+      authSubmitBtn: doc.getElementById("auth-submit-btn"),
+      accountEmailValue: doc.getElementById("account-email-value"),
+      openAccountBtn: doc.getElementById("open-account-btn"),
+      closeAccountBtn: doc.getElementById("close-account-btn"),
+      accountLogoutBtn: doc.getElementById("account-logout-btn"),
       energyInput: doc.getElementById("energy-input"),
       energyDisplay: doc.getElementById("energy-display"),
       startDayBtn: doc.getElementById("start-day-btn"),
@@ -974,6 +991,10 @@
   }
   function createStore() {
     let state = createDefaultStateWithTemplates();
+    let sessionContext = {
+      authenticated: false,
+      userId: null
+    };
     let persistenceStatus = {
       mode: "local-fallback",
       message: "Сейчас работаем локально. Сервер недоступен."
@@ -989,6 +1010,18 @@
     }
     function getPersistenceStatus() {
       return persistenceStatus;
+    }
+    function getStorageKey() {
+      if (sessionContext.authenticated && sessionContext.userId) {
+        return `${STORAGE_KEY}:${sessionContext.userId}`;
+      }
+      return STORAGE_KEY;
+    }
+    function setSessionContext(nextContext = {}) {
+      sessionContext = {
+        authenticated: Boolean(nextContext.authenticated),
+        userId: typeof nextContext.userId === "string" ? nextContext.userId : null
+      };
     }
     function setPersistenceStatusListener(listener) {
       persistenceStatusListener = listener;
@@ -1011,10 +1044,10 @@
       }
     }
     function saveStateToLocal(nextState = state) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+      localStorage.setItem(getStorageKey(), JSON.stringify(nextState));
     }
     function getLocalSavedState() {
-      return localStorage.getItem(STORAGE_KEY);
+      return localStorage.getItem(getStorageKey());
     }
     async function fetchServerState() {
       const response = await fetch(API_STATE_URL, {
@@ -1078,8 +1111,9 @@
       }
       return state;
     }
-    async function loadState() {
+    async function loadState(options = {}) {
       const localSaved = getLocalSavedState();
+      const allowLegacyGuestBootstrap = options.allowLegacyGuestBootstrap !== false;
       try {
         const serverState = await fetchServerState();
         if (serverState) {
@@ -1107,6 +1141,14 @@
               message: "Сейчас работаем локально. Сервер недоступен."
             });
           }
+          return state;
+        }
+        if (sessionContext.authenticated && allowLegacyGuestBootstrap && getStorageKey() !== STORAGE_KEY && localStorage.getItem(STORAGE_KEY)) {
+          state = createDefaultStateWithTemplates();
+          updatePersistenceStatus({
+            mode: "server",
+            message: "Данные читаются и сохраняются через локальный сервер."
+          });
           return state;
         }
         state = createDefaultStateWithTemplates();
@@ -1137,6 +1179,7 @@
     return {
       getState,
       setState,
+      setSessionContext,
       getPersistenceStatus,
       setPersistenceStatusListener,
       saveState,
@@ -1472,6 +1515,30 @@
       elements.storageStatus.classList.toggle("is-server", isServerMode);
       elements.storageStatus.classList.toggle("is-local", !isServerMode);
       elements.storageStatus.title = isServerMode ? "Данные читаются и сохраняются через локальный сервер." : "Сервер сейчас недоступен, поэтому приложение временно работает через localStorage.";
+    }
+    function renderAuthScreen() {
+      const auth = runtime.auth || {
+        status: "guest",
+        mode: "login",
+        error: ""
+      };
+      const isRegisterMode = auth.mode === "register";
+      const isChecking = auth.status === "checking";
+      const isSubmitting = auth.status === "submitting";
+      const isBusy = isChecking || isSubmitting;
+      elements.authTitle.textContent = isRegisterMode ? "Создать профиль" : "Вход в своё пространство";
+      elements.authSubtitle.textContent = isRegisterMode ? "Аккаунт нужен только для того, чтобы ваши данные жили в личном пространстве." : "Здесь будут жить ваши задачи, ритм дня и история самочувствия.";
+      elements.authLoading.classList.toggle("hidden", !isChecking);
+      elements.authModeSwitcher.classList.toggle("hidden", isChecking);
+      elements.authLoginModeBtn.classList.toggle("is-active", !isRegisterMode);
+      elements.authRegisterModeBtn.classList.toggle("is-active", isRegisterMode);
+      elements.authEmail.disabled = isBusy;
+      elements.authPassword.disabled = isBusy;
+      elements.authSubmitBtn.disabled = isBusy;
+      elements.authSubmitBtn.textContent = isChecking ? "Проверяем вход..." : isSubmitting ? isRegisterMode ? "Создаём аккаунт..." : "Входим..." : isRegisterMode ? "Создать аккаунт" : "Войти";
+      elements.authPassword.autocomplete = isRegisterMode ? "new-password" : "current-password";
+      elements.authError.textContent = auth.error || "";
+      elements.authError.classList.toggle("hidden", !auth.error);
     }
     function renderVoiceUi() {
       const voice = runtime.voice;
@@ -2074,6 +2141,7 @@
     }
     return {
       renderReviewTasks,
+      renderAuthScreen,
       renderMainScreen,
       renderPersistenceStatus,
       renderInboxUi,
@@ -2096,6 +2164,7 @@
   function createScreens(app) {
     const { elements } = app;
     function hidePrimaryScreens() {
+      elements.authScreen.classList.add("hidden");
       elements.onboardingScreen.classList.add("hidden");
       elements.morningScreen.classList.add("hidden");
       elements.mainScreen.classList.add("hidden");
@@ -2104,24 +2173,35 @@
       elements.historyScreen.classList.add("hidden");
     }
     function hideSecondaryModals() {
+      elements.weeklyTaskModal.classList.add("hidden");
       elements.libraryModal.classList.add("hidden");
       elements.archiveModal.classList.add("hidden");
       elements.completedModal.classList.add("hidden");
+      elements.accountModal.classList.add("hidden");
       elements.templatesModal.classList.add("hidden");
       elements.templateAutoModal.classList.add("hidden");
       elements.breakdownIntroModal.classList.add("hidden");
       elements.breakdownEditorModal.classList.add("hidden");
       elements.lowEnergyModal.classList.add("hidden");
       elements.lowEnergySwapModal.classList.add("hidden");
+      elements.helperModal.classList.add("hidden");
       elements.voiceModal.classList.add("hidden");
       elements.inboxVoiceModal.classList.add("hidden");
       elements.inboxSortModal.classList.add("hidden");
+      elements.sosModal.classList.add("hidden");
+      elements.allDoneModal.classList.add("hidden");
     }
     function showOnboardingScreen() {
       hidePrimaryScreens();
       hideSecondaryModals();
       elements.onboardingScreen.classList.remove("hidden");
       app.onboarding.activate();
+    }
+    function showAuthScreen() {
+      hidePrimaryScreens();
+      hideSecondaryModals();
+      elements.authScreen.classList.remove("hidden");
+      app.renderers.renderAuthScreen();
     }
     function showMorningScreen() {
       const state = app.store.getState();
@@ -2163,6 +2243,7 @@
       elements.finishReviewBtn.textContent = "Оставшееся в «На потом»";
     }
     return {
+      showAuthScreen,
       showOnboardingScreen,
       showMorningScreen,
       showMainScreen,
@@ -2652,6 +2733,7 @@
   function bindAppEvents(app) {
     var _a;
     const { elements, store, runtime } = app;
+    const authState = runtime.auth;
     const voiceState = runtime.voice;
     const inboxState = runtime.inbox;
     const breakdownState = runtime.breakdown;
@@ -2754,10 +2836,53 @@
       elements.appMenuPopover.classList.add("hidden");
       elements.openAppMenuBtn.setAttribute("aria-expanded", "false");
     }
+    function openAccountModal() {
+      var _a2, _b;
+      const currentEmail = ((_b = (_a2 = runtime.auth) == null ? void 0 : _a2.user) == null ? void 0 : _b.email) || "Email пока недоступен";
+      elements.accountEmailValue.textContent = currentEmail;
+      elements.accountModal.classList.remove("hidden");
+    }
+    function closeAccountModal() {
+      elements.accountModal.classList.add("hidden");
+    }
     function toggleAppMenu() {
       const shouldOpen = elements.appMenuPopover.classList.contains("hidden");
       elements.appMenuPopover.classList.toggle("hidden", !shouldOpen);
       elements.openAppMenuBtn.setAttribute("aria-expanded", String(shouldOpen));
+    }
+    function resetAuthForm({ preserveEmail = true } = {}) {
+      if (!preserveEmail) {
+        elements.authEmail.value = "";
+      }
+      elements.authPassword.value = "";
+    }
+    function switchAuthMode(mode) {
+      authState.mode = mode === "register" ? "register" : "login";
+      authState.error = "";
+      authState.status = "guest";
+      app.renderers.renderAuthScreen();
+    }
+    async function submitAuthForm() {
+      const email = elements.authEmail.value.trim();
+      const password = elements.authPassword.value;
+      if (!email || !password) {
+        authState.error = "Заполни, пожалуйста, email и пароль.";
+        authState.status = "guest";
+        app.renderers.renderAuthScreen();
+        return;
+      }
+      authState.status = "submitting";
+      authState.error = "";
+      app.renderers.renderAuthScreen();
+      try {
+        const user = authState.mode === "register" ? await app.auth.register({ email, password }) : await app.auth.login({ email, password });
+        resetAuthForm();
+        await app.startAuthenticatedFlow(user);
+      } catch (error) {
+        authState.status = "guest";
+        authState.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается продолжить. Попробуй ещё раз чуть позже.";
+        app.renderers.renderAuthScreen();
+      }
     }
     function stopInlineEdit() {
       editTaskState.taskId = null;
@@ -2814,6 +2939,16 @@
       event.stopPropagation();
       toggleAppMenu();
     });
+    elements.authLoginModeBtn.addEventListener("click", () => {
+      switchAuthMode("login");
+    });
+    elements.authRegisterModeBtn.addEventListener("click", () => {
+      switchAuthMode("register");
+    });
+    elements.authForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void submitAuthForm();
+    });
     elements.appMenuPopover.addEventListener("click", (event) => {
       event.stopPropagation();
     });
@@ -2830,6 +2965,20 @@
       if (event.key === "Escape") {
         closeAppMenu();
       }
+    });
+    elements.accountLogoutBtn.addEventListener("click", async () => {
+      closeAccountModal();
+      try {
+        await app.auth.logout();
+      } catch (error) {
+        runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается выйти из аккаунта.";
+      }
+      store.setSessionContext({ authenticated: false, userId: null });
+      authState.user = null;
+      authState.mode = "login";
+      authState.status = "guest";
+      resetAuthForm({ preserveEmail: false });
+      app.screens.showAuthScreen();
     });
     function openBreakdownFromInbox(itemId) {
       var _a2;
@@ -2984,6 +3133,7 @@
       elements.libraryModal,
       elements.archiveModal,
       elements.completedModal,
+      elements.accountModal,
       elements.templatesModal,
       elements.templateAutoModal,
       elements.breakdownIntroModal,
@@ -3398,6 +3548,13 @@
     elements.openHistoryBtn.addEventListener("click", () => {
       closeAppMenu();
       app.screens.showHistoryScreen();
+    });
+    elements.openAccountBtn.addEventListener("click", () => {
+      closeAppMenu();
+      openAccountModal();
+    });
+    elements.closeAccountBtn.addEventListener("click", () => {
+      closeAccountModal();
     });
     elements.closeHistoryBtn.addEventListener("click", () => {
       app.screens.showMainScreen();
@@ -4022,6 +4179,125 @@
     });
   }
 
+  // js/services/auth.js
+  var API_AUTH_SESSION_URL = "/api/auth/session";
+  var API_AUTH_LOGIN_URL = "/api/auth/login";
+  var API_AUTH_REGISTER_URL = "/api/auth/register";
+  var API_AUTH_LOGOUT_URL = "/api/auth/logout";
+  async function readJsonResponse(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      return null;
+    }
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+  function buildFriendlyAuthError(payload, fallbackMessage) {
+    const errorCode = payload == null ? void 0 : payload.error;
+    if (errorCode === "EMAIL_EXISTS") {
+      return "Этот email уже используется.";
+    }
+    if (errorCode === "INVALID_PASSWORD") {
+      return "Пароль должен быть не короче 6 символов.";
+    }
+    if (errorCode === "INVALID_EMAIL") {
+      return "Пожалуйста, проверь email.";
+    }
+    if (errorCode === "AUTH_FAILED" || errorCode === "INVALID_CREDENTIALS") {
+      return "Не получилось войти. Проверь email и пароль.";
+    }
+    return fallbackMessage;
+  }
+  async function requestJson(url, options = {}, fallbackMessage = "Сейчас не получается связаться с сервером.") {
+    let response;
+    try {
+      response = await fetch(url, {
+        credentials: "same-origin",
+        ...options
+      });
+    } catch (error) {
+      const networkError = new Error("Network request failed");
+      networkError.friendlyMessage = fallbackMessage;
+      throw networkError;
+    }
+    const payload = await readJsonResponse(response);
+    if (!response.ok) {
+      const requestError = new Error(`Request failed with status ${response.status}`);
+      requestError.friendlyMessage = buildFriendlyAuthError(payload, fallbackMessage);
+      requestError.payload = payload;
+      throw requestError;
+    }
+    return payload;
+  }
+  function createAuthService() {
+    async function checkSession() {
+      const payload = await requestJson(
+        API_AUTH_SESSION_URL,
+        {
+          headers: {
+            Accept: "application/json"
+          }
+        },
+        "Сейчас не получается проверить вход. Попробуй чуть позже."
+      );
+      return {
+        authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
+        user: (payload == null ? void 0 : payload.user) || null
+      };
+    }
+    async function login({ email, password }) {
+      const payload = await requestJson(
+        API_AUTH_LOGIN_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ email, password })
+        },
+        "Сейчас не получается войти. Попробуй ещё раз чуть позже."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function register({ email, password }) {
+      const payload = await requestJson(
+        API_AUTH_REGISTER_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ email, password })
+        },
+        "Сейчас не получается создать аккаунт. Попробуй ещё раз чуть позже."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function logout() {
+      await requestJson(
+        API_AUTH_LOGOUT_URL,
+        {
+          method: "POST",
+          headers: {
+            Accept: "application/json"
+          }
+        },
+        "Сейчас не получается выйти из аккаунта. Попробуй ещё раз чуть позже."
+      );
+    }
+    return {
+      checkSession,
+      login,
+      register,
+      logout
+    };
+  }
+
   // js/main.js
   var builtinAdvices = [
     "Выпить стакан чистой воды",
@@ -4036,73 +4312,10 @@
     var _a;
     return state.lastDate === today && state.energyBudget !== null && state.energyBudget >= 10 && state.energyBudget <= 15 && ((_a = state.currentDayMeta) == null ? void 0 : _a.date) === today && !state.currentDayMeta.lowEnergyPromptHandled;
   }
-  async function initApp({ elements }) {
-    var _a, _b;
-    const store = createStore();
-    const app = {
-      elements,
-      store,
-      runtime: {
-        builtinAdvices,
-        currentAdvice: "",
-        currentWeeklyTaskDate: null,
-        sosView: null,
-        voice: {
-          isSupported: false,
-          isListening: false,
-          isProcessing: false,
-          lastTranscript: "",
-          voiceDraft: [],
-          voiceError: "",
-          modalMode: "hidden"
-        },
-        inbox: {
-          isSupported: false,
-          isListening: false,
-          isProcessing: false,
-          drafts: [],
-          error: "",
-          modalMode: "hidden",
-          pendingAction: {
-            itemId: null,
-            mode: null,
-            weight: 20,
-            date: getLocalDateString()
-          },
-          sortMode: false
-        },
-        breakdown: {
-          taskId: null,
-          mode: "intro",
-          drafts: [],
-          sourceInboxId: null,
-          sourceText: ""
-        },
-        editTask: {
-          taskId: null,
-          text: "",
-          weight: 20,
-          isResource: false
-        },
-        templateAutoPrompt: {
-          templateId: null
-        },
-        persistenceStatus: ((_a = store.getPersistenceStatus) == null ? void 0 : _a.call(store)) || {
-          mode: "local-fallback",
-          message: ""
-        }
-      }
-    };
-    app.renderers = createRenderers(app);
-    app.onboarding = createOnboardingController(app);
-    app.screens = createScreens(app);
-    bindAppEvents(app);
-    (_b = store.setPersistenceStatusListener) == null ? void 0 : _b.call(store, (status) => {
-      app.runtime.persistenceStatus = status;
-      app.renderers.renderPersistenceStatus();
-    });
-    await store.loadState();
+  async function startAuthenticatedFlow(app) {
+    const { elements, store } = app;
     const today = getLocalDateString();
+    await store.loadState({ allowLegacyGuestBootstrap: false });
     store.updateState((state2) => {
       state2.tasks.forEach((task) => {
         if (task.postponedTo && !task.targetDate) {
@@ -4166,6 +4379,112 @@
         elements.lowEnergyAvatar.src = store.getState().avatar;
         elements.lowEnergyModal.classList.remove("hidden");
       }
+    }
+    return app;
+  }
+  async function initApp({ elements }) {
+    var _a, _b;
+    const store = createStore();
+    const auth = createAuthService();
+    const app = {
+      elements,
+      store,
+      auth,
+      runtime: {
+        builtinAdvices,
+        currentAdvice: "",
+        currentWeeklyTaskDate: null,
+        sosView: null,
+        auth: {
+          status: "checking",
+          mode: "login",
+          user: null,
+          error: ""
+        },
+        voice: {
+          isSupported: false,
+          isListening: false,
+          isProcessing: false,
+          lastTranscript: "",
+          voiceDraft: [],
+          voiceError: "",
+          modalMode: "hidden"
+        },
+        inbox: {
+          isSupported: false,
+          isListening: false,
+          isProcessing: false,
+          drafts: [],
+          error: "",
+          modalMode: "hidden",
+          pendingAction: {
+            itemId: null,
+            mode: null,
+            weight: 20,
+            date: getLocalDateString()
+          },
+          sortMode: false
+        },
+        breakdown: {
+          taskId: null,
+          mode: "intro",
+          drafts: [],
+          sourceInboxId: null,
+          sourceText: ""
+        },
+        editTask: {
+          taskId: null,
+          text: "",
+          weight: 20,
+          isResource: false
+        },
+        templateAutoPrompt: {
+          templateId: null
+        },
+        persistenceStatus: ((_a = store.getPersistenceStatus) == null ? void 0 : _a.call(store)) || {
+          mode: "local-fallback",
+          message: ""
+        }
+      }
+    };
+    app.renderers = createRenderers(app);
+    app.onboarding = createOnboardingController(app);
+    app.screens = createScreens(app);
+    app.startAuthenticatedFlow = async (user) => {
+      app.runtime.auth.user = user || null;
+      app.runtime.auth.status = "authenticated";
+      app.runtime.auth.error = "";
+      store.setSessionContext({
+        authenticated: true,
+        userId: (user == null ? void 0 : user.id) || null
+      });
+      return startAuthenticatedFlow(app);
+    };
+    bindAppEvents(app);
+    (_b = store.setPersistenceStatusListener) == null ? void 0 : _b.call(store, (status) => {
+      app.runtime.persistenceStatus = status;
+      app.renderers.renderPersistenceStatus();
+    });
+    app.screens.showAuthScreen();
+    try {
+      const session = await auth.checkSession();
+      if (!session.authenticated || !session.user) {
+        app.runtime.auth.mode = "login";
+        app.runtime.auth.status = "guest";
+        app.runtime.auth.user = null;
+        app.runtime.auth.error = "";
+        store.setSessionContext({ authenticated: false, userId: null });
+        app.screens.showAuthScreen();
+        return app;
+      }
+      await app.startAuthenticatedFlow(session.user);
+    } catch (error) {
+      app.runtime.auth.mode = "login";
+      app.runtime.auth.status = "guest";
+      app.runtime.auth.user = null;
+      app.runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается проверить вход. Попробуй чуть позже.";
+      store.setSessionContext({ authenticated: false, userId: null });
+      app.screens.showAuthScreen();
     }
     return app;
   }

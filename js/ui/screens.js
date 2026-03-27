@@ -2,6 +2,7 @@ export function createScreens(app) {
     const { elements } = app;
 
     function hidePrimaryScreens() {
+        elements.authScreen.classList.add('hidden');
         elements.onboardingScreen.classList.add('hidden');
         elements.morningScreen.classList.add('hidden');
         elements.mainScreen.classList.add('hidden');
@@ -11,18 +12,23 @@ export function createScreens(app) {
     }
 
     function hideSecondaryModals() {
+        elements.weeklyTaskModal.classList.add('hidden');
         elements.libraryModal.classList.add('hidden');
         elements.archiveModal.classList.add('hidden');
         elements.completedModal.classList.add('hidden');
+        elements.accountModal.classList.add('hidden');
         elements.templatesModal.classList.add('hidden');
         elements.templateAutoModal.classList.add('hidden');
         elements.breakdownIntroModal.classList.add('hidden');
         elements.breakdownEditorModal.classList.add('hidden');
         elements.lowEnergyModal.classList.add('hidden');
         elements.lowEnergySwapModal.classList.add('hidden');
+        elements.helperModal.classList.add('hidden');
         elements.voiceModal.classList.add('hidden');
         elements.inboxVoiceModal.classList.add('hidden');
         elements.inboxSortModal.classList.add('hidden');
+        elements.sosModal.classList.add('hidden');
+        elements.allDoneModal.classList.add('hidden');
     }
 
     function showOnboardingScreen() {
@@ -30,6 +36,13 @@ export function createScreens(app) {
         hideSecondaryModals();
         elements.onboardingScreen.classList.remove('hidden');
         app.onboarding.activate();
+    }
+
+    function showAuthScreen() {
+        hidePrimaryScreens();
+        hideSecondaryModals();
+        elements.authScreen.classList.remove('hidden');
+        app.renderers.renderAuthScreen();
     }
 
     function showMorningScreen() {
@@ -78,6 +91,7 @@ export function createScreens(app) {
     }
 
     return {
+        showAuthScreen,
         showOnboardingScreen,
         showMorningScreen,
         showMainScreen,

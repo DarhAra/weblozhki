@@ -176,6 +176,40 @@ export function createRenderers(app) {
             : 'Сервер сейчас недоступен, поэтому приложение временно работает через localStorage.';
     }
 
+    function renderAuthScreen() {
+        const auth = runtime.auth || {
+            status: 'guest',
+            mode: 'login',
+            error: '',
+        };
+        const isRegisterMode = auth.mode === 'register';
+        const isChecking = auth.status === 'checking';
+        const isSubmitting = auth.status === 'submitting';
+        const isBusy = isChecking || isSubmitting;
+
+        elements.authTitle.textContent = isRegisterMode
+            ? 'Создать профиль'
+            : 'Вход в своё пространство';
+        elements.authSubtitle.textContent = isRegisterMode
+            ? 'Аккаунт нужен только для того, чтобы ваши данные жили в личном пространстве.'
+            : 'Здесь будут жить ваши задачи, ритм дня и история самочувствия.';
+        elements.authLoading.classList.toggle('hidden', !isChecking);
+        elements.authModeSwitcher.classList.toggle('hidden', isChecking);
+        elements.authLoginModeBtn.classList.toggle('is-active', !isRegisterMode);
+        elements.authRegisterModeBtn.classList.toggle('is-active', isRegisterMode);
+        elements.authEmail.disabled = isBusy;
+        elements.authPassword.disabled = isBusy;
+        elements.authSubmitBtn.disabled = isBusy;
+        elements.authSubmitBtn.textContent = isChecking
+            ? 'Проверяем вход...'
+            : isSubmitting
+                ? (isRegisterMode ? 'Создаём аккаунт...' : 'Входим...')
+                : (isRegisterMode ? 'Создать аккаунт' : 'Войти');
+        elements.authPassword.autocomplete = isRegisterMode ? 'new-password' : 'current-password';
+        elements.authError.textContent = auth.error || '';
+        elements.authError.classList.toggle('hidden', !auth.error);
+    }
+
     function renderVoiceUi() {
         const voice = runtime.voice;
 
@@ -881,6 +915,7 @@ export function createRenderers(app) {
 
     return {
         renderReviewTasks,
+        renderAuthScreen,
         renderMainScreen,
         renderPersistenceStatus,
         renderInboxUi,

@@ -224,6 +224,7 @@ function buildSuggestedBreakdownDrafts(taskText) {
 
 export function bindAppEvents(app) {
     const { elements, store, runtime } = app;
+    const authState = runtime.auth;
     const voiceState = runtime.voice;
     const inboxState = runtime.inbox;
     const breakdownState = runtime.breakdown;
@@ -338,10 +339,62 @@ export function bindAppEvents(app) {
         elements.openAppMenuBtn.setAttribute('aria-expanded', 'false');
     }
 
+    function openAccountModal() {
+        const currentEmail = runtime.auth?.user?.email || 'Email пока недоступен';
+        elements.accountEmailValue.textContent = currentEmail;
+        elements.accountModal.classList.remove('hidden');
+    }
+
+    function closeAccountModal() {
+        elements.accountModal.classList.add('hidden');
+    }
+
     function toggleAppMenu() {
         const shouldOpen = elements.appMenuPopover.classList.contains('hidden');
         elements.appMenuPopover.classList.toggle('hidden', !shouldOpen);
         elements.openAppMenuBtn.setAttribute('aria-expanded', String(shouldOpen));
+    }
+
+    function resetAuthForm({ preserveEmail = true } = {}) {
+        if (!preserveEmail) {
+            elements.authEmail.value = '';
+        }
+        elements.authPassword.value = '';
+    }
+
+    function switchAuthMode(mode) {
+        authState.mode = mode === 'register' ? 'register' : 'login';
+        authState.error = '';
+        authState.status = 'guest';
+        app.renderers.renderAuthScreen();
+    }
+
+    async function submitAuthForm() {
+        const email = elements.authEmail.value.trim();
+        const password = elements.authPassword.value;
+        if (!email || !password) {
+            authState.error = 'Заполни, пожалуйста, email и пароль.';
+            authState.status = 'guest';
+            app.renderers.renderAuthScreen();
+            return;
+        }
+
+        authState.status = 'submitting';
+        authState.error = '';
+        app.renderers.renderAuthScreen();
+
+        try {
+            const user = authState.mode === 'register'
+                ? await app.auth.register({ email, password })
+                : await app.auth.login({ email, password });
+
+            resetAuthForm();
+            await app.startAuthenticatedFlow(user);
+        } catch (error) {
+            authState.status = 'guest';
+            authState.error = error?.friendlyMessage || 'Сейчас не получается продолжить. Попробуй ещё раз чуть позже.';
+            app.renderers.renderAuthScreen();
+        }
     }
 
     function stopInlineEdit() {
@@ -412,6 +465,19 @@ export function bindAppEvents(app) {
         toggleAppMenu();
     });
 
+    elements.authLoginModeBtn.addEventListener('click', () => {
+        switchAuthMode('login');
+    });
+
+    elements.authRegisterModeBtn.addEventListener('click', () => {
+        switchAuthMode('register');
+    });
+
+    elements.authForm.addEventListener('submit', event => {
+        event.preventDefault();
+        void submitAuthForm();
+    });
+
     elements.appMenuPopover.addEventListener('click', event => {
         event.stopPropagation();
     });
@@ -432,6 +498,23 @@ export function bindAppEvents(app) {
         if (event.key === 'Escape') {
             closeAppMenu();
         }
+    });
+
+    elements.accountLogoutBtn.addEventListener('click', async () => {
+        closeAccountModal();
+
+        try {
+            await app.auth.logout();
+        } catch (error) {
+            runtime.auth.error = error?.friendlyMessage || 'Сейчас не получается выйти из аккаунта.';
+        }
+
+        store.setSessionContext({ authenticated: false, userId: null });
+        authState.user = null;
+        authState.mode = 'login';
+        authState.status = 'guest';
+        resetAuthForm({ preserveEmail: false });
+        app.screens.showAuthScreen();
     });
 
     function openBreakdownFromInbox(itemId) {
@@ -612,6 +695,7 @@ export function bindAppEvents(app) {
         elements.libraryModal,
         elements.archiveModal,
         elements.completedModal,
+        elements.accountModal,
         elements.templatesModal,
         elements.templateAutoModal,
         elements.breakdownIntroModal,
@@ -1101,6 +1185,15 @@ export function bindAppEvents(app) {
     elements.openHistoryBtn.addEventListener('click', () => {
         closeAppMenu();
         app.screens.showHistoryScreen();
+    });
+
+    elements.openAccountBtn.addEventListener('click', () => {
+        closeAppMenu();
+        openAccountModal();
+    });
+
+    elements.closeAccountBtn.addEventListener('click', () => {
+        closeAccountModal();
     });
 
     elements.closeHistoryBtn.addEventListener('click', () => {

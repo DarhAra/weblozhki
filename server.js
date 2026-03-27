@@ -1,74 +1,37 @@
 const express = require('express');
-const fs = require('fs/promises');
-const path = require('path');
 const crypto = require('crypto');
+const path = require('path');
+const { config, getSafeRuntimeSummary } = require('./server/config');
+const { createDatabase } = require('./server/db');
+const { createRepositories } = require('./server/repositories');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const ROOT_DIR = __dirname;
-const DATA_DIR = path.join(ROOT_DIR, 'data');
-const STATE_FILE = path.join(DATA_DIR, 'state.json');
-const USER_FILE = path.join(DATA_DIR, 'users.json');
-const USER_STATE_DIR = path.join(DATA_DIR, 'states');
-const SESSION_COOKIE = 'rtodo_sid';
-const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const PORT = config.port;
+const ROOT_DIR = config.rootDir;
 const sessions = new Map();
+const { db, databasePath } = createDatabase({
+    rootDir: ROOT_DIR,
+    databasePath: config.databasePath,
+    legacyPaths: {
+        stateFile: config.legacyStateFile,
+        userFile: config.legacyUserFile,
+        userStateDir: config.legacyUserStateDir,
+    },
+});
+const repositories = createRepositories(db);
 
-async function ensureDir(dirPath) {
-    await fs.mkdir(dirPath, { recursive: true });
-}
+app.set('trust proxy', config.trustProxy);
 
-async function readJsonFile(filePath) {
-    try {
-        const raw = await fs.readFile(filePath, 'utf8');
-        return JSON.parse(raw);
-    } catch (error) {
-        if (error.code === 'ENOENT') {
-            return null;
-        }
-
-        if (error.name === 'SyntaxError') {
-            const parseError = new Error(`Invalid JSON in ${filePath}`);
-            parseError.statusCode = 500;
-            throw parseError;
-        }
-
-        throw error;
-    }
-}
-
-async function writeJsonFileAtomic(filePath, value) {
-    await ensureDir(path.dirname(filePath));
-    const tempFile = `${filePath}.tmp`;
-    const payload = `${JSON.stringify(value, null, 2)}\n`;
-    await fs.writeFile(tempFile, payload, 'utf8');
-    await fs.rename(tempFile, filePath);
-}
-
-function getUserStateFilePath(userId) {
-    return path.join(USER_STATE_DIR, `${userId}.json`);
-}
-
-async function readUsersFile() {
-    const users = await readJsonFile(USER_FILE);
-    if (!users) {
-        return [];
+function logServerError(label, error) {
+    if (config.isDevelopment) {
+        console.error(label, error);
+        return;
     }
 
-    if (!Array.isArray(users)) {
-        const error = new Error('users.json must contain an array');
-        error.statusCode = 500;
-        throw error;
-    }
-
-    return users;
-}
-
-async function writeUsersFile(users) {
-    if (!Array.isArray(users)) {
-        throw new Error('Users payload must be an array');
-    }
-    await writeJsonFileAtomic(USER_FILE, users);
+    console.error(label, {
+        message: error?.message || 'Unknown error',
+        statusCode: error?.statusCode || 500,
+    });
 }
 
 function normalizeEmail(email) {
@@ -117,16 +80,16 @@ function parseCookies(cookieHeader = '') {
         }, {});
 }
 
-function buildSessionCookie(sessionId, maxAgeMs = SESSION_TTL_MS) {
+function buildSessionCookie(sessionId, maxAgeMs = config.sessionTtlMs) {
     const parts = [
-        `${SESSION_COOKIE}=${encodeURIComponent(sessionId)}`,
+        `${config.sessionCookieName}=${encodeURIComponent(sessionId)}`,
         'Path=/',
         'HttpOnly',
-        'SameSite=Lax',
+        `SameSite=${config.sessionCookieSameSite}`,
         `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
     ];
 
-    if (process.env.NODE_ENV === 'production') {
+    if (config.sessionCookieSecure) {
         parts.push('Secure');
     }
 
@@ -134,14 +97,26 @@ function buildSessionCookie(sessionId, maxAgeMs = SESSION_TTL_MS) {
 }
 
 function buildClearSessionCookie() {
-    return `${SESSION_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`;
+    const parts = [
+        `${config.sessionCookieName}=`,
+        'Path=/',
+        'HttpOnly',
+        `SameSite=${config.sessionCookieSameSite}`,
+        'Max-Age=0',
+    ];
+
+    if (config.sessionCookieSecure) {
+        parts.push('Secure');
+    }
+
+    return parts.join('; ');
 }
 
 function createSession(userId) {
     const sessionId = crypto.randomBytes(24).toString('hex');
     sessions.set(sessionId, {
         userId,
-        expiresAt: Date.now() + SESSION_TTL_MS,
+        expiresAt: Date.now() + config.sessionTtlMs,
     });
     return sessionId;
 }
@@ -171,10 +146,10 @@ function deleteSession(sessionId) {
     sessions.delete(sessionId);
 }
 
-async function attachUser(req, _res, next) {
+function attachUser(req, _res, next) {
     try {
         const cookies = parseCookies(req.headers.cookie || '');
-        const sessionId = cookies[SESSION_COOKIE];
+        const sessionId = cookies[config.sessionCookieName];
         const session = getSession(sessionId);
         if (!session) {
             req.user = null;
@@ -182,8 +157,7 @@ async function attachUser(req, _res, next) {
             return next();
         }
 
-        const users = await readUsersFile();
-        const user = users.find(item => item.id === session.userId);
+        const user = repositories.findUserById(session.userId);
         if (!user) {
             deleteSession(sessionId);
             req.user = null;
@@ -221,7 +195,7 @@ app.get('/api/auth/session', (req, res) => {
     });
 });
 
-app.post('/api/auth/register', async (req, res) => {
+app.post('/api/auth/register', (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = req.body?.password;
 
@@ -240,8 +214,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     try {
-        const users = await readUsersFile();
-        if (users.some(user => user.email === email)) {
+        if (repositories.findUserByEmail(email)) {
             return res.status(409).json({
                 error: 'EMAIL_EXISTS',
                 message: 'A user with this email already exists.',
@@ -257,8 +230,7 @@ app.post('/api/auth/register', async (req, res) => {
             createdAt: new Date().toISOString(),
         };
 
-        users.push(user);
-        await writeUsersFile(users);
+        repositories.createUser(user);
 
         const sessionId = createSession(user.id);
         res.setHeader('Set-Cookie', buildSessionCookie(sessionId));
@@ -267,7 +239,7 @@ app.post('/api/auth/register', async (req, res) => {
             user: toPublicUser(user),
         });
     } catch (error) {
-        console.error('Failed to register user', error);
+        logServerError('Failed to register user', error);
         return res.status(error.statusCode || 500).json({
             error: 'REGISTER_FAILED',
             message: 'Could not register user right now.',
@@ -275,7 +247,7 @@ app.post('/api/auth/register', async (req, res) => {
     }
 });
 
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = req.body?.password;
 
@@ -287,8 +259,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     try {
-        const users = await readUsersFile();
-        const user = users.find(item => item.email === email);
+        const user = repositories.findUserByEmail(email);
         if (!user) {
             return res.status(401).json({
                 error: 'AUTH_FAILED',
@@ -315,7 +286,7 @@ app.post('/api/auth/login', async (req, res) => {
             user: toPublicUser(user),
         });
     } catch (error) {
-        console.error('Failed to log in', error);
+        logServerError('Failed to log in', error);
         return res.status(error.statusCode || 500).json({
             error: 'LOGIN_FAILED',
             message: 'Could not log in right now.',
@@ -329,17 +300,14 @@ app.post('/api/auth/logout', (req, res) => {
     res.json({ ok: true });
 });
 
-app.get('/api/state', async (req, res) => {
+app.get('/api/state', (req, res) => {
     try {
-        let state;
-        if (req.user) {
-            state = await readJsonFile(getUserStateFilePath(req.user.id));
-        } else {
-            state = await readJsonFile(STATE_FILE);
-        }
+        const state = req.user
+            ? repositories.getUserState(req.user.id)
+            : repositories.getGuestState();
         return res.json({ state });
     } catch (error) {
-        console.error('Failed to read state file', error);
+        logServerError('Failed to read state from SQLite', error);
         return res.status(error.statusCode || 500).json({
             error: 'STATE_READ_FAILED',
             message: 'Could not read saved state.',
@@ -347,7 +315,7 @@ app.get('/api/state', async (req, res) => {
     }
 });
 
-app.post('/api/state', async (req, res) => {
+app.post('/api/state', (req, res) => {
     if (!req.is('application/json')) {
         return res.status(415).json({
             error: 'UNSUPPORTED_CONTENT_TYPE',
@@ -364,13 +332,13 @@ app.post('/api/state', async (req, res) => {
 
     try {
         if (req.user) {
-            await writeJsonFileAtomic(getUserStateFilePath(req.user.id), req.body);
+            repositories.saveUserState(req.user.id, req.body);
         } else {
-            await writeJsonFileAtomic(STATE_FILE, req.body);
+            repositories.saveGuestState(req.body);
         }
         return res.json({ ok: true });
     } catch (error) {
-        console.error('Failed to write state file', error);
+        logServerError('Failed to write state to SQLite', error);
         return res.status(500).json({
             error: 'STATE_WRITE_FAILED',
             message: 'Could not save state.',
@@ -382,6 +350,26 @@ app.get('/', (_req, res) => {
     res.sendFile(path.join(ROOT_DIR, 'index.html'));
 });
 
+app.use((error, _req, res, _next) => {
+    logServerError('Unhandled server error', error);
+
+    if (res.headersSent) {
+        return;
+    }
+
+    res.status(error?.statusCode || 500).json({
+        error: 'INTERNAL_SERVER_ERROR',
+        message: config.isDevelopment
+            ? (error?.message || 'Unexpected server error.')
+            : 'Something went wrong on the server.',
+    });
+});
+
 app.listen(PORT, () => {
+    const summary = getSafeRuntimeSummary();
     console.log(`Server started: http://localhost:${PORT}`);
+    console.log(`SQLite ready: ${databasePath}`);
+    console.log(`Mode: ${summary.mode}`);
+    console.log(`Trust proxy: ${summary.trustProxy ? 'enabled' : 'disabled'}`);
+    console.log(`Cookie: ${summary.sessionCookieName}, SameSite=${summary.sessionCookieSameSite}, Secure=${summary.sessionCookieSecure}`);
 });

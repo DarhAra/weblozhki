@@ -11,6 +11,32 @@
 
 <body>
     <div id="app" class="app-container">
+        <div id="auth-screen" class="screen hidden">
+            <div class="auth-card">
+                <div class="auth-intro">
+                    <h1 id="auth-title">Вход в своё пространство</h1>
+                    <p id="auth-subtitle">Здесь будут жить ваши задачи, ритм дня и история самочувствия.</p>
+                </div>
+                <div id="auth-loading" class="auth-loading-note hidden">Проверяем вход...</div>
+                <div id="auth-mode-switcher" class="auth-mode-switcher">
+                    <button id="auth-login-mode-btn" class="auth-mode-btn is-active" type="button">Войти</button>
+                    <button id="auth-register-mode-btn" class="auth-mode-btn" type="button">Создать аккаунт</button>
+                </div>
+                <form id="auth-form" class="auth-form">
+                    <label class="auth-field">
+                        <span>Email</span>
+                        <input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" required>
+                    </label>
+                    <label class="auth-field">
+                        <span>Пароль</span>
+                        <input id="auth-password" type="password" autocomplete="current-password" placeholder="Не короче 6 символов" required>
+                    </label>
+                    <p id="auth-error" class="auth-error hidden"></p>
+                    <button id="auth-submit-btn" class="primary-btn auth-submit-btn" type="submit">Войти</button>
+                </form>
+                <p class="auth-footnote">Данные будут храниться в личном пространстве пользователя.</p>
+            </div>
+        </div>
 
         <!-- Экран Онбординга (Приветствие и настройка профиля) -->
         <div id="onboarding-screen" class="screen hidden">
@@ -163,6 +189,10 @@
                             <button id="open-history-btn" class="app-menu-item" type="button" role="menuitem">
                                 <span class="app-menu-icon">📈</span>
                                 <span>История самочувствия</span>
+                            </button>
+                            <button id="open-account-btn" class="app-menu-item" type="button" role="menuitem">
+                                <span class="app-menu-icon">◌</span>
+                                <span>Аккаунт</span>
                             </button>
                         </div>
                     </div>
@@ -350,6 +380,25 @@
                 <div class="modal-body">
                     <p class="modal-subtitle">Завершённые задачи, к которым уже не нужно возвращаться сегодня.</p>
                     <div id="completed-list" class="task-list"></div>
+                </div>
+            </div>
+        </div>
+
+        <div id="account-modal" class="modal hidden">
+            <div class="modal-content account-modal-card">
+                <div class="modal-header">
+                    <h3>Аккаунт</h3>
+                    <button id="close-account-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Здесь можно спокойно посмотреть, под каким аккаунтом сейчас открыто приложение.</p>
+                    <div class="account-email-card">
+                        <div class="account-email-label">Текущий email</div>
+                        <div id="account-email-value" class="account-email-value"></div>
+                    </div>
+                    <div class="account-actions">
+                        <button id="account-logout-btn" class="secondary-btn account-logout-btn" type="button">Выйти</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -577,7 +626,7 @@
         </div>
     </div>
 
-    <script src="js/app.bundle.js?v=20260322-text-menu"></script>
+    <script src="js/app.bundle.js?v=20260326-auth"></script>
 </body>
 
 </html>

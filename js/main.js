@@ -8,6 +8,7 @@ import { getLocalDateString } from './utils/date.js';
 import { getOverdueTasks } from './domain/tasks.js';
 import { buildMoodHistoryEntry, createCurrentDayMeta, upsertMoodHistoryEntry } from './domain/history.js';
 import { applyDailyTemplatesForDate } from './domain/templates.js';
+import { createAuthService } from './services/auth.js';
 
 const builtinAdvices = [
     'Выпить стакан чистой воды',
@@ -28,75 +29,12 @@ function shouldOfferLowEnergyDay(state, today = getLocalDateString()) {
         && !state.currentDayMeta.lowEnergyPromptHandled;
 }
 
-export async function initApp({ elements }) {
-    const store = createStore();
-    const app = {
-        elements,
-        store,
-        runtime: {
-            builtinAdvices,
-            currentAdvice: '',
-            currentWeeklyTaskDate: null,
-            sosView: null,
-            voice: {
-                isSupported: false,
-                isListening: false,
-                isProcessing: false,
-                lastTranscript: '',
-                voiceDraft: [],
-                voiceError: '',
-                modalMode: 'hidden',
-            },
-            inbox: {
-                isSupported: false,
-                isListening: false,
-                isProcessing: false,
-                drafts: [],
-                error: '',
-                modalMode: 'hidden',
-                pendingAction: {
-                    itemId: null,
-                    mode: null,
-                    weight: 20,
-                    date: getLocalDateString(),
-                },
-                sortMode: false,
-            },
-            breakdown: {
-                taskId: null,
-                mode: 'intro',
-                drafts: [],
-                sourceInboxId: null,
-                sourceText: '',
-            },
-            editTask: {
-                taskId: null,
-                text: '',
-                weight: 20,
-                isResource: false,
-            },
-            templateAutoPrompt: {
-                templateId: null,
-            },
-            persistenceStatus: store.getPersistenceStatus?.() || {
-                mode: 'local-fallback',
-                message: '',
-            },
-        },
-    };
-
-    app.renderers = createRenderers(app);
-    app.onboarding = createOnboardingController(app);
-    app.screens = createScreens(app);
-    bindAppEvents(app);
-    store.setPersistenceStatusListener?.(status => {
-        app.runtime.persistenceStatus = status;
-        app.renderers.renderPersistenceStatus();
-    });
-
-    await store.loadState();
-
+async function startAuthenticatedFlow(app) {
+    const { elements, store } = app;
     const today = getLocalDateString();
+
+    await store.loadState({ allowLegacyGuestBootstrap: false });
+
     store.updateState(state => {
         state.tasks.forEach(task => {
             if (task.postponedTo && !task.targetDate) {
@@ -168,6 +106,117 @@ export async function initApp({ elements }) {
             elements.lowEnergyAvatar.src = store.getState().avatar;
             elements.lowEnergyModal.classList.remove('hidden');
         }
+    }
+
+    return app;
+}
+
+export async function initApp({ elements }) {
+    const store = createStore();
+    const auth = createAuthService();
+    const app = {
+        elements,
+        store,
+        auth,
+        runtime: {
+            builtinAdvices,
+            currentAdvice: '',
+            currentWeeklyTaskDate: null,
+            sosView: null,
+            auth: {
+                status: 'checking',
+                mode: 'login',
+                user: null,
+                error: '',
+            },
+            voice: {
+                isSupported: false,
+                isListening: false,
+                isProcessing: false,
+                lastTranscript: '',
+                voiceDraft: [],
+                voiceError: '',
+                modalMode: 'hidden',
+            },
+            inbox: {
+                isSupported: false,
+                isListening: false,
+                isProcessing: false,
+                drafts: [],
+                error: '',
+                modalMode: 'hidden',
+                pendingAction: {
+                    itemId: null,
+                    mode: null,
+                    weight: 20,
+                    date: getLocalDateString(),
+                },
+                sortMode: false,
+            },
+            breakdown: {
+                taskId: null,
+                mode: 'intro',
+                drafts: [],
+                sourceInboxId: null,
+                sourceText: '',
+            },
+            editTask: {
+                taskId: null,
+                text: '',
+                weight: 20,
+                isResource: false,
+            },
+            templateAutoPrompt: {
+                templateId: null,
+            },
+            persistenceStatus: store.getPersistenceStatus?.() || {
+                mode: 'local-fallback',
+                message: '',
+            },
+        },
+    };
+
+    app.renderers = createRenderers(app);
+    app.onboarding = createOnboardingController(app);
+    app.screens = createScreens(app);
+    app.startAuthenticatedFlow = async user => {
+        app.runtime.auth.user = user || null;
+        app.runtime.auth.status = 'authenticated';
+        app.runtime.auth.error = '';
+        store.setSessionContext({
+            authenticated: true,
+            userId: user?.id || null,
+        });
+        return startAuthenticatedFlow(app);
+    };
+    bindAppEvents(app);
+    store.setPersistenceStatusListener?.(status => {
+        app.runtime.persistenceStatus = status;
+        app.renderers.renderPersistenceStatus();
+    });
+
+    app.screens.showAuthScreen();
+
+    try {
+        const session = await auth.checkSession();
+        if (!session.authenticated || !session.user) {
+            app.runtime.auth.mode = 'login';
+            app.runtime.auth.status = 'guest';
+            app.runtime.auth.user = null;
+            app.runtime.auth.error = '';
+            store.setSessionContext({ authenticated: false, userId: null });
+            app.screens.showAuthScreen();
+            return app;
+        }
+
+        await app.startAuthenticatedFlow(session.user);
+    } catch (error) {
+        app.runtime.auth.mode = 'login';
+        app.runtime.auth.status = 'guest';
+        app.runtime.auth.user = null;
+        app.runtime.auth.error = error?.friendlyMessage || 'Сейчас не получается проверить вход. Попробуй чуть позже.';
+        store.setSessionContext({ authenticated: false, userId: null });
+        app.screens.showAuthScreen();
     }
 
     return app;

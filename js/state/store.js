@@ -271,6 +271,10 @@ function normalizeLoadedState(rawState, previousState = getDefaultState()) {
 
 export function createStore() {
     let state = createDefaultStateWithTemplates();
+    let sessionContext = {
+        authenticated: false,
+        userId: null,
+    };
     let persistenceStatus = {
         mode: 'local-fallback',
         message: 'Сейчас работаем локально. Сервер недоступен.',
@@ -289,6 +293,21 @@ export function createStore() {
 
     function getPersistenceStatus() {
         return persistenceStatus;
+    }
+
+    function getStorageKey() {
+        if (sessionContext.authenticated && sessionContext.userId) {
+            return `${STORAGE_KEY}:${sessionContext.userId}`;
+        }
+
+        return STORAGE_KEY;
+    }
+
+    function setSessionContext(nextContext = {}) {
+        sessionContext = {
+            authenticated: Boolean(nextContext.authenticated),
+            userId: typeof nextContext.userId === 'string' ? nextContext.userId : null,
+        };
     }
 
     function setPersistenceStatusListener(listener) {
@@ -316,11 +335,11 @@ export function createStore() {
     }
 
     function saveStateToLocal(nextState = state) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(nextState));
+        localStorage.setItem(getStorageKey(), JSON.stringify(nextState));
     }
 
     function getLocalSavedState() {
-        return localStorage.getItem(STORAGE_KEY);
+        return localStorage.getItem(getStorageKey());
     }
 
     async function fetchServerState() {
@@ -400,8 +419,9 @@ export function createStore() {
         return state;
     }
 
-    async function loadState() {
+    async function loadState(options = {}) {
         const localSaved = getLocalSavedState();
+        const allowLegacyGuestBootstrap = options.allowLegacyGuestBootstrap !== false;
 
         try {
             const serverState = await fetchServerState();
@@ -432,6 +452,20 @@ export function createStore() {
                         message: 'Сейчас работаем локально. Сервер недоступен.',
                     });
                 }
+                return state;
+            }
+
+            if (
+                sessionContext.authenticated
+                && allowLegacyGuestBootstrap
+                && getStorageKey() !== STORAGE_KEY
+                && localStorage.getItem(STORAGE_KEY)
+            ) {
+                state = createDefaultStateWithTemplates();
+                updatePersistenceStatus({
+                    mode: 'server',
+                    message: 'Данные читаются и сохраняются через локальный сервер.',
+                });
                 return state;
             }
 
@@ -466,6 +500,7 @@ export function createStore() {
     return {
         getState,
         setState,
+        setSessionContext,
         getPersistenceStatus,
         setPersistenceStatusListener,
         saveState,
