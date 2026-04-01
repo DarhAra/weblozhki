@@ -21,6 +21,7 @@ import {
     clearDeferredTasks,
     clearDoneTasks,
     completePendingReview,
+    copyTaskToDate,
     createTaskBreakdown,
     deleteTask,
     getOverdueTasks,
@@ -229,6 +230,7 @@ export function bindAppEvents(app) {
     const inboxState = runtime.inbox;
     const breakdownState = runtime.breakdown;
     const editTaskState = runtime.editTask;
+    const copyTaskState = runtime.copyTask;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = 'tpl_4';
     const breakdownRememberLabel = elements.breakdownRememberRow?.querySelector('span');
@@ -332,6 +334,33 @@ export function bindAppEvents(app) {
             breakdownState.sourceText = '';
             elements.breakdownRememberChoice.checked = false;
         }
+    }
+
+    function closeCopyTaskModal() {
+        copyTaskState.taskId = null;
+        copyTaskState.targetDate = getLocalDateString();
+        elements.copyTaskModal.classList.add('hidden');
+        if (elements.copyTaskDate) {
+            elements.copyTaskDate.value = copyTaskState.targetDate;
+        }
+        if (elements.copyTaskPreview) {
+            elements.copyTaskPreview.textContent = '';
+        }
+    }
+
+    function openCopyTaskModal(taskId) {
+        const task = store.getState().tasks.find(item => item.id === taskId);
+        if (!task) {
+            return;
+        }
+
+        stopInlineEdit();
+        copyTaskState.taskId = task.id;
+        copyTaskState.targetDate = getLocalDateString();
+        elements.copyTaskPreview.textContent = task.text;
+        elements.copyTaskDate.value = copyTaskState.targetDate;
+        elements.copyTaskModal.classList.remove('hidden');
+        setTimeout(() => elements.copyTaskDate.focus(), 0);
     }
 
     function closeAppMenu() {
@@ -692,6 +721,7 @@ export function bindAppEvents(app) {
 
     [
         elements.weeklyTaskModal,
+        elements.copyTaskModal,
         elements.libraryModal,
         elements.archiveModal,
         elements.completedModal,
@@ -727,6 +757,10 @@ export function bindAppEvents(app) {
             }
             if (modal === elements.templateAutoModal) {
                 closeTemplateAutoModal();
+                return;
+            }
+            if (modal === elements.copyTaskModal) {
+                closeCopyTaskModal();
                 return;
             }
             if (modal === elements.breakdownIntroModal) {
@@ -1267,6 +1301,33 @@ export function bindAppEvents(app) {
         elements.weeklyTaskModal.classList.add('hidden');
     });
 
+    elements.closeCopyTaskBtn.addEventListener('click', closeCopyTaskModal);
+    elements.copyTaskCancelBtn.addEventListener('click', closeCopyTaskModal);
+
+    elements.copyTaskDate.addEventListener('change', event => {
+        copyTaskState.targetDate = event.target.value || getLocalDateString();
+    });
+
+    elements.copyTaskDate.addEventListener('keydown', event => {
+        if (event.key !== 'Enter' || event.shiftKey) return;
+
+        event.preventDefault();
+        elements.copyTaskConfirmBtn.click();
+    });
+
+    elements.copyTaskConfirmBtn.addEventListener('click', () => {
+        if (!copyTaskState.taskId) return;
+
+        const targetDate = elements.copyTaskDate.value || copyTaskState.targetDate || getLocalDateString();
+        const copiedTask = copyTaskToDate(store, {
+            taskId: copyTaskState.taskId,
+            targetDate,
+        });
+        if (!copiedTask) return;
+
+        closeCopyTaskModal();
+        renderAllTaskViews();
+    });
 
     elements.addWeeklyTaskForm.addEventListener('submit', event => {
         event.preventDefault();
@@ -1430,6 +1491,8 @@ export function bindAppEvents(app) {
                 deleteTask(store, taskId);
                 app.renderers.renderMainScreen();
                 app.renderers.renderWeeklyScreen();
+            } else if (target.dataset.action === 'open-copy-task') {
+                openCopyTaskModal(taskId);
             } else if (target.dataset.action === 'open-breakdown') {
                 openBreakdownFlow(taskId);
             } else if (target.dataset.action === 'move-to-deferred') {
@@ -1553,6 +1616,11 @@ export function bindAppEvents(app) {
             return;
         }
 
+        if (target.dataset.action === 'open-copy-task') {
+            openCopyTaskModal(taskId);
+            return;
+        }
+
         if (target.dataset.action === 'deferred-move-today') {
             moveToToday(store, taskId);
         } else if (target.dataset.action === 'deferred-delete-task') {
@@ -1622,6 +1690,11 @@ export function bindAppEvents(app) {
         if (target.dataset.action === 'edit-cancel-task') {
             stopInlineEdit();
             renderAllTaskViews();
+            return;
+        }
+
+        if (target.dataset.action === 'open-copy-task') {
+            openCopyTaskModal(taskId);
             return;
         }
 

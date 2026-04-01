@@ -351,6 +351,27 @@
         </div>
 
         <!-- Модальное окно "На потом" -->
+        <div id="copy-task-modal" class="modal hidden">
+            <div class="modal-content copy-task-modal-card">
+                <div class="modal-header">
+                    <h3>Скопировать задачу</h3>
+                    <button id="close-copy-task-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Создадим новую копию на выбранный день, а исходную задачу оставим на месте.</p>
+                    <div id="copy-task-preview" class="copy-task-preview"></div>
+                    <label class="copy-task-field" for="copy-task-date">
+                        <span>Дата</span>
+                        <input id="copy-task-date" type="date">
+                    </label>
+                    <div class="copy-task-actions">
+                        <button id="copy-task-confirm-btn" class="primary-btn advice-btn" type="button">Скопировать</button>
+                        <button id="copy-task-cancel-btn" class="secondary-btn advice-btn" type="button">Отмена</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div id="archive-modal" class="modal hidden">
             <div class="modal-content">
                 <div class="modal-header">

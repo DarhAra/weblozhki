@@ -283,6 +283,8 @@ header {
     justify-content: space-between;
     align-items: center;
     margin-bottom: 24px;
+    position: relative;
+    padding-left: 104px;
 }
 
 header h2 {
@@ -985,6 +987,19 @@ header h2 {
     color: var(--primary-color);
 }
 
+.task-copy-btn {
+    background: none;
+    border: none;
+    color: #cecece;
+    font-size: 16px;
+    cursor: pointer;
+    transition: color 0.2s;
+}
+
+.task-copy-btn:hover {
+    color: #7f91c4;
+}
+
 .task-breakdown-btn {
     border: 1px solid var(--border-color);
     background: #f8fcf9;
@@ -1119,6 +1134,54 @@ header h2 {
 
 .account-modal-card {
     max-width: 460px;
+}
+
+.copy-task-modal-card {
+    max-width: 460px;
+}
+
+.copy-task-preview {
+    padding: 14px 16px;
+    margin-bottom: 16px;
+    border-radius: 16px;
+    border: 1px solid #e8ece9;
+    background: #fafcfb;
+    color: var(--text-primary);
+    font-size: 15px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.copy-task-field {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 20px;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.copy-task-field input {
+    border: 1px solid #dfe8e2;
+    border-radius: 14px;
+    padding: 12px 14px;
+    font: inherit;
+    color: var(--text-primary);
+    background: white;
+}
+
+.copy-task-field input:focus {
+    outline: none;
+    border-color: #bfd4c7;
+    box-shadow: 0 0 0 4px rgba(123, 168, 146, 0.12);
+}
+
+.copy-task-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
 }
 
 .account-email-card {
@@ -1294,10 +1357,14 @@ header h2 {
     display: flex;
     gap: 8px;
     align-items: center;
+    margin-left: auto;
 }
 
 .app-menu-wrapper {
-    position: relative;
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
 }
 
 .menu-trigger-btn {
@@ -1322,7 +1389,7 @@ header h2 {
 .app-menu-popover {
     position: absolute;
     top: calc(100% + 10px);
-    right: 0;
+    left: 0;
     width: min(280px, calc(100vw - 32px));
     padding: 8px;
     border-radius: 18px;
@@ -2234,6 +2301,27 @@ header h2 {
 }
 
 @media (max-width: 640px) {
+    header {
+        padding-left: 0;
+        flex-wrap: wrap;
+        gap: 12px;
+        align-items: flex-start;
+    }
+
+    .header-actions {
+        width: 100%;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        padding-top: 56px;
+    }
+
+    .app-menu-wrapper {
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform: none;
+    }
+
     .auth-card {
         padding: 28px 20px;
         border-radius: 22px;

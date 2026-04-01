@@ -256,6 +256,44 @@ export function addTask(store, { text, weight, isResource, targetDate = null }) 
     return newTask;
 }
 
+export function copyTaskToDate(store, { taskId, targetDate }) {
+    let copiedTask = null;
+
+    store.updateState(state => {
+        const sourceTask = state.tasks.find(task => task.id === taskId);
+        const normalizedDate = String(targetDate || '').trim();
+        if (!sourceTask || !normalizedDate) {
+            return;
+        }
+
+        copiedTask = {
+            id: `task_${Date.now()}_${Math.floor(Math.random() * 1000000)}`,
+            text: sourceTask.text,
+            weight: sourceTask.weight,
+            isResource: Boolean(sourceTask.isResource),
+            completed: false,
+            completedAtDate: null,
+            storageStatus: TASK_STORAGE.ACTIVE,
+            isArchived: false,
+            targetDate: normalizedDate,
+            archivedFromDate: null,
+            breakdownParentId: null,
+            breakdownChildIds: [],
+            breakdownIndex: null,
+            breakdownTotalSteps: null,
+            isBreakdownParent: false,
+            isBreakdownStep: false,
+            isHiddenFromMainList: false,
+            showOnlyCurrentStep: false,
+            isCurrentBreakdownStep: false,
+        };
+
+        state.tasks.push(copiedTask);
+    });
+
+    return copiedTask;
+}
+
 function refreshBreakdownGroup(parentTask, state) {
     if (!parentTask?.isBreakdownParent || !Array.isArray(parentTask.breakdownChildIds)) {
         return;

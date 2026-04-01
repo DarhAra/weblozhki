@@ -2,6 +2,9 @@
   "name": "resource-todo",
   "version": "1.0.0",
   "private": true,
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "node scripts/build.js",
     "start": "node server.js"

@@ -140,6 +140,40 @@ TRUST_PROXY=true
 - различать `development` и `production` режимы;
 - аккуратно готовиться к переносу на внешний хостинг.
 
+## Первый деплой на VPS
+
+Для первого размещения сейчас лучше всего подходит один VPS с Ubuntu.
+
+В проект уже добавлены готовые файлы для такого сценария:
+- `.env.production.example` — шаблон production-настроек;
+- `ecosystem.config.cjs` — конфиг для PM2;
+- `deploy/nginx.resource-todo.conf` — пример nginx-конфига;
+- `DEPLOY-VPS.md` — пошаговая инструкция простым языком.
+
+Короткая схема выглядит так:
+
+1. Арендовать VPS.
+2. Установить Node.js, Git, nginx и PM2.
+3. Склонировать проект на сервер.
+4. Создать `.env` из `.env.production.example`.
+5. Выполнить:
+
+```bash
+npm install
+npm run build
+pm2 start ecosystem.config.cjs --env production
+```
+
+6. Настроить nginx.
+7. Привязать домен.
+8. Включить HTTPS.
+
+Подробные шаги находятся в файле:
+
+```text
+DEPLOY-VPS.md
+```
+
 ## Что ещё не сделано
 
 Пока проект всё ещё остаётся промежуточной версией перед настоящим деплоем:

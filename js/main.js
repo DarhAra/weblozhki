@@ -166,6 +166,10 @@ export async function initApp({ elements }) {
                 weight: 20,
                 isResource: false,
             },
+            copyTask: {
+                taskId: null,
+                targetDate: getLocalDateString(),
+            },
             templateAutoPrompt: {
                 templateId: null,
             },

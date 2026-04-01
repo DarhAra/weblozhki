@@ -87,6 +87,9 @@ function renderTaskElement(task, editTaskState = null) {
     const breakdownButtonHtml = shouldShowBreakdownAction(task)
         ? `<button class="task-breakdown-btn" type="button" title="Разбить на шаги" data-action="open-breakdown" data-task-id="${task.id}">Разбить</button>`
         : '';
+    const copyButtonHtml = `
+        <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
+    `;
     const taskMetaHtml = task.isBreakdownStep
         ? `<div class="task-meta">\u0428\u0430\u0433 ${(task.breakdownIndex ?? 0) + 1} \u0438\u0437 ${task.breakdownTotalSteps || 3}</div>`
         : '';
@@ -102,6 +105,7 @@ function renderTaskElement(task, editTaskState = null) {
         <div class="task-weight ${weightClass}">${weightLabel}</div>
         ${breakdownButtonHtml}
         ${controlsHtml}
+        ${copyButtonHtml}
         <button class="delete-btn" title="Удалить" data-action="delete-task" data-task-id="${task.id}">&times;</button>
     `;
 
@@ -588,6 +592,7 @@ export function createRenderers(app) {
                 <div class="task-desc">${escapeHtml(task.text)}</div>
                 <div class="task-weight ${weightClass}">${weightLabel}</div>
                 <button class="postpone-btn" title="На сегодня" data-action="deferred-move-today" data-task-id="${task.id}">☀️</button>
+                <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
                 <button class="delete-btn" title="Удалить" data-action="deferred-delete-task" data-task-id="${task.id}">&times;</button>
             `;
             elements.archiveList.appendChild(taskEl);
@@ -622,6 +627,7 @@ export function createRenderers(app) {
                         <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Завершено: ${formatDoneDate(task.completedAtDate)}</div>
                     </div>
                     <div class="task-weight ${task.isResource ? 'resource-weight' : ''}">${weightLabel}</div>
+                    <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
                     <button class="delete-btn" title="Удалить" data-action="done-delete-task" data-task-id="${task.id}">&times;</button>
                 `;
                 elements.completedList.appendChild(taskEl);

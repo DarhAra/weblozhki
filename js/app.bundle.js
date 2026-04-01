@@ -11,6 +11,7 @@
       weeklyScreen: doc.getElementById("weekly-screen"),
       historyScreen: doc.getElementById("history-screen"),
       weeklyTaskModal: doc.getElementById("weekly-task-modal"),
+      copyTaskModal: doc.getElementById("copy-task-modal"),
       libraryModal: doc.getElementById("library-modal"),
       archiveModal: doc.getElementById("archive-modal"),
       completedModal: doc.getElementById("completed-modal"),
@@ -114,6 +115,11 @@
       addWeeklyTaskForm: doc.getElementById("add-weekly-task-form"),
       weeklyTaskText: doc.getElementById("weekly-task-text"),
       weeklyTaskWeight: doc.getElementById("weekly-task-weight"),
+      closeCopyTaskBtn: doc.getElementById("close-copy-task-btn"),
+      copyTaskPreview: doc.getElementById("copy-task-preview"),
+      copyTaskDate: doc.getElementById("copy-task-date"),
+      copyTaskConfirmBtn: doc.getElementById("copy-task-confirm-btn"),
+      copyTaskCancelBtn: doc.getElementById("copy-task-cancel-btn"),
       closeHelperBtn: doc.getElementById("close-helper-btn"),
       adviceAvatar: doc.getElementById("advice-avatar"),
       adviceText: doc.getElementById("advice-text"),
@@ -467,6 +473,39 @@
       state.tasks.push(newTask);
     });
     return newTask;
+  }
+  function copyTaskToDate(store, { taskId, targetDate }) {
+    let copiedTask = null;
+    store.updateState((state) => {
+      const sourceTask = state.tasks.find((task) => task.id === taskId);
+      const normalizedDate = String(targetDate || "").trim();
+      if (!sourceTask || !normalizedDate) {
+        return;
+      }
+      copiedTask = {
+        id: `task_${Date.now()}_${Math.floor(Math.random() * 1e6)}`,
+        text: sourceTask.text,
+        weight: sourceTask.weight,
+        isResource: Boolean(sourceTask.isResource),
+        completed: false,
+        completedAtDate: null,
+        storageStatus: TASK_STORAGE.ACTIVE,
+        isArchived: false,
+        targetDate: normalizedDate,
+        archivedFromDate: null,
+        breakdownParentId: null,
+        breakdownChildIds: [],
+        breakdownIndex: null,
+        breakdownTotalSteps: null,
+        isBreakdownParent: false,
+        isBreakdownStep: false,
+        isHiddenFromMainList: false,
+        showOnlyCurrentStep: false,
+        isCurrentBreakdownStep: false
+      };
+      state.tasks.push(copiedTask);
+    });
+    return copiedTask;
   }
   function refreshBreakdownGroup(parentTask, state) {
     if (!(parentTask == null ? void 0 : parentTask.isBreakdownParent) || !Array.isArray(parentTask.breakdownChildIds)) {
@@ -1449,6 +1488,9 @@
             <button class="postpone-btn" title="На завтра" data-action="postpone-task" data-task-id="${task.id}">➡️</button>
         ` : "";
     const breakdownButtonHtml = shouldShowBreakdownAction(task) ? `<button class="task-breakdown-btn" type="button" title="Разбить на шаги" data-action="open-breakdown" data-task-id="${task.id}">Разбить</button>` : "";
+    const copyButtonHtml = `
+        <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
+    `;
     const taskMetaHtml = task.isBreakdownStep ? `<div class="task-meta">Шаг ${((_a = task.breakdownIndex) != null ? _a : 0) + 1} из ${task.breakdownTotalSteps || 3}</div>` : "";
     taskEl.innerHTML = `
         <div class="task-checkbox-container" data-action="toggle-task" data-task-id="${task.id}">
@@ -1461,6 +1503,7 @@
         <div class="task-weight ${weightClass}">${weightLabel}</div>
         ${breakdownButtonHtml}
         ${controlsHtml}
+        ${copyButtonHtml}
         <button class="delete-btn" title="Удалить" data-action="delete-task" data-task-id="${task.id}">&times;</button>
     `;
     return taskEl;
@@ -1862,6 +1905,7 @@
                 <div class="task-desc">${escapeHtml(task.text)}</div>
                 <div class="task-weight ${weightClass}">${weightLabel}</div>
                 <button class="postpone-btn" title="На сегодня" data-action="deferred-move-today" data-task-id="${task.id}">☀️</button>
+                <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
                 <button class="delete-btn" title="Удалить" data-action="deferred-delete-task" data-task-id="${task.id}">&times;</button>
             `;
         elements.archiveList.appendChild(taskEl);
@@ -1890,6 +1934,7 @@
                         <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Завершено: ${formatDoneDate(task.completedAtDate)}</div>
                     </div>
                     <div class="task-weight ${task.isResource ? "resource-weight" : ""}">${weightLabel}</div>
+                    <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
                     <button class="delete-btn" title="Удалить" data-action="done-delete-task" data-task-id="${task.id}">&times;</button>
                 `;
         elements.completedList.appendChild(taskEl);
@@ -2738,6 +2783,7 @@
     const inboxState = runtime.inbox;
     const breakdownState = runtime.breakdown;
     const editTaskState = runtime.editTask;
+    const copyTaskState = runtime.copyTask;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = "tpl_4";
     const breakdownRememberLabel = (_a = elements.breakdownRememberRow) == null ? void 0 : _a.querySelector("span");
@@ -2831,6 +2877,30 @@
         breakdownState.sourceText = "";
         elements.breakdownRememberChoice.checked = false;
       }
+    }
+    function closeCopyTaskModal() {
+      copyTaskState.taskId = null;
+      copyTaskState.targetDate = getLocalDateString();
+      elements.copyTaskModal.classList.add("hidden");
+      if (elements.copyTaskDate) {
+        elements.copyTaskDate.value = copyTaskState.targetDate;
+      }
+      if (elements.copyTaskPreview) {
+        elements.copyTaskPreview.textContent = "";
+      }
+    }
+    function openCopyTaskModal(taskId) {
+      const task = store.getState().tasks.find((item) => item.id === taskId);
+      if (!task) {
+        return;
+      }
+      stopInlineEdit();
+      copyTaskState.taskId = task.id;
+      copyTaskState.targetDate = getLocalDateString();
+      elements.copyTaskPreview.textContent = task.text;
+      elements.copyTaskDate.value = copyTaskState.targetDate;
+      elements.copyTaskModal.classList.remove("hidden");
+      setTimeout(() => elements.copyTaskDate.focus(), 0);
     }
     function closeAppMenu() {
       elements.appMenuPopover.classList.add("hidden");
@@ -3130,6 +3200,7 @@
     inboxState.isSupported = inboxVoiceService.isSupported();
     [
       elements.weeklyTaskModal,
+      elements.copyTaskModal,
       elements.libraryModal,
       elements.archiveModal,
       elements.completedModal,
@@ -3165,6 +3236,10 @@
         }
         if (modal === elements.templateAutoModal) {
           closeTemplateAutoModal();
+          return;
+        }
+        if (modal === elements.copyTaskModal) {
+          closeCopyTaskModal();
           return;
         }
         if (modal === elements.breakdownIntroModal) {
@@ -3611,6 +3686,27 @@
     elements.closeWeeklyTaskBtn.addEventListener("click", () => {
       elements.weeklyTaskModal.classList.add("hidden");
     });
+    elements.closeCopyTaskBtn.addEventListener("click", closeCopyTaskModal);
+    elements.copyTaskCancelBtn.addEventListener("click", closeCopyTaskModal);
+    elements.copyTaskDate.addEventListener("change", (event) => {
+      copyTaskState.targetDate = event.target.value || getLocalDateString();
+    });
+    elements.copyTaskDate.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.shiftKey) return;
+      event.preventDefault();
+      elements.copyTaskConfirmBtn.click();
+    });
+    elements.copyTaskConfirmBtn.addEventListener("click", () => {
+      if (!copyTaskState.taskId) return;
+      const targetDate = elements.copyTaskDate.value || copyTaskState.targetDate || getLocalDateString();
+      const copiedTask = copyTaskToDate(store, {
+        taskId: copyTaskState.taskId,
+        targetDate
+      });
+      if (!copiedTask) return;
+      closeCopyTaskModal();
+      renderAllTaskViews();
+    });
     elements.addWeeklyTaskForm.addEventListener("submit", (event) => {
       event.preventDefault();
       const text = elements.weeklyTaskText.value.trim();
@@ -3743,6 +3839,8 @@
           deleteTask(store, taskId);
           app.renderers.renderMainScreen();
           app.renderers.renderWeeklyScreen();
+        } else if (target.dataset.action === "open-copy-task") {
+          openCopyTaskModal(taskId);
         } else if (target.dataset.action === "open-breakdown") {
           openBreakdownFlow(taskId);
         } else if (target.dataset.action === "move-to-deferred") {
@@ -3844,6 +3942,10 @@
         renderAllTaskViews();
         return;
       }
+      if (target.dataset.action === "open-copy-task") {
+        openCopyTaskModal(taskId);
+        return;
+      }
       if (target.dataset.action === "deferred-move-today") {
         moveToToday(store, taskId);
       } else if (target.dataset.action === "deferred-delete-task") {
@@ -3897,6 +3999,10 @@
       if (target.dataset.action === "edit-cancel-task") {
         stopInlineEdit();
         renderAllTaskViews();
+        return;
+      }
+      if (target.dataset.action === "open-copy-task") {
+        openCopyTaskModal(taskId);
         return;
       }
       if (target.dataset.action !== "done-delete-task") return;
@@ -4437,6 +4543,10 @@
           text: "",
           weight: 20,
           isResource: false
+        },
+        copyTask: {
+          taskId: null,
+          targetDate: getLocalDateString()
         },
         templateAutoPrompt: {
           templateId: null
