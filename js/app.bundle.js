@@ -3372,7 +3372,7 @@
     }
     function openForgotPasswordModal() {
       if (!elements.forgotPasswordModal || !elements.forgotPasswordEmail) {
-        authState.error = "Модальное окно восстановления пароля пока недоступно. Попробуйте позже.";
+        authState.error = "РњРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїР°СЂРѕР»СЏ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРЅРѕ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РїРѕР·Р¶Рµ.";
         app.renderers.renderAuthScreen();
         return;
       }
@@ -3436,13 +3436,13 @@
       const passwordConfirm = elements.authPasswordConfirm.value;
       if (authState.mode === "reset-password") {
         if (!password || !passwordConfirm) {
-          authState.error = "Р—Р°РїРѕР»РЅРё РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ Рё РµРіРѕ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ.";
+          authState.error = "Р вЂ”Р В°Р С—Р С•Р В»Р Р…Р С‘ Р Р…Р С•Р Р†РЎвЂ№Р в„– Р С—Р В°РЎР‚Р С•Р В»РЎРЉ Р С‘ Р ВµР С–Р С• Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ.";
           authState.status = "guest";
           app.renderers.renderAuthScreen();
           return;
         }
         if (password !== passwordConfirm) {
-          authState.error = "РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.";
+          authState.error = "Р СџР В°РЎР‚Р С•Р В»Р С‘ Р Р…Р Вµ РЎРѓР С•Р Р†Р С—Р В°Р Т‘Р В°РЎР‹РЎвЂљ.";
           authState.status = "guest";
           app.renderers.renderAuthScreen();
           return;
@@ -3459,7 +3459,7 @@
           authState.mode = "login";
           authState.resetToken = null;
           authState.status = "guest";
-          authState.notice = "РџР°СЂРѕР»СЊ РѕР±РЅРѕРІР»С‘РЅ. РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РІРѕР№С‚Рё СЃ РЅРѕРІС‹Рј РїР°СЂРѕР»РµРј.";
+          authState.notice = "Р СџР В°РЎР‚Р С•Р В»РЎРЉ Р С•Р В±Р Р…Р С•Р Р†Р В»РЎвЂР Р…. Р СћР ВµР С—Р ВµРЎР‚РЎРЉ Р СР С•Р В¶Р Р…Р С• Р Р†Р С•Р в„–РЎвЂљР С‘ РЎРѓ Р Р…Р С•Р Р†РЎвЂ№Р С Р С—Р В°РЎР‚Р С•Р В»Р ВµР С.";
           authState.error = "";
           resetAuthForm({ preserveEmail: false });
           if (typeof window !== "undefined") {
@@ -3468,19 +3468,19 @@
           app.renderers.renderAuthScreen();
         } catch (error) {
           authState.status = "guest";
-          authState.error = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕР±РЅРѕРІРёС‚СЊ РїР°СЂРѕР»СЊ. РџРѕРїСЂРѕР±СѓР№ РµС‰С‘ СЂР°Р· С‡СѓС‚СЊ РїРѕР·Р¶Рµ.";
+          authState.error = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С•Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р В°РЎР‚Р С•Р В»РЎРЉ. Р СџР С•Р С—РЎР‚Р С•Р В±РЎС“Р в„– Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· РЎвЂЎРЎС“РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ.";
           app.renderers.renderAuthScreen();
         }
         return;
       }
       if (!email || !password || authState.mode === "register" && !name) {
-        authState.error = "Р—Р°РїРѕР»РЅРё, РїРѕР¶Р°Р»СѓР№СЃС‚Р°, РІСЃРµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ.";
+        authState.error = "Р вЂ”Р В°Р С—Р С•Р В»Р Р…Р С‘, Р С—Р С•Р В¶Р В°Р В»РЎС“Р в„–РЎРѓРЎвЂљР В°, Р Р†РЎРѓР Вµ Р С•Р В±РЎРЏР В·Р В°РЎвЂљР ВµР В»РЎРЉР Р…РЎвЂ№Р Вµ Р С—Р С•Р В»РЎРЏ.";
         authState.status = "guest";
         app.renderers.renderAuthScreen();
         return;
       }
       if (authState.mode === "register" && password !== passwordConfirm) {
-        authState.error = "РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.";
+        authState.error = "Р СџР В°РЎР‚Р С•Р В»Р С‘ Р Р…Р Вµ РЎРѓР С•Р Р†Р С—Р В°Р Т‘Р В°РЎР‹РЎвЂљ.";
         authState.status = "guest";
         app.renderers.renderAuthScreen();
         return;
@@ -3495,7 +3495,7 @@
         await app.startAuthenticatedFlow(user);
       } catch (error) {
         authState.status = "guest";
-        authState.error = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РїСЂРѕРґРѕР»Р¶РёС‚СЊ. РџРѕРїСЂРѕР±СѓР№ РµС‰С‘ СЂР°Р· С‡СѓС‚СЊ РїРѕР·Р¶Рµ.";
+        authState.error = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ. Р СџР С•Р С—РЎР‚Р С•Р В±РЎС“Р в„– Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· РЎвЂЎРЎС“РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ.";
         app.renderers.renderAuthScreen();
       }
     }
@@ -3584,7 +3584,7 @@
         event.preventDefault();
         const email = elements.forgotPasswordEmail.value.trim();
         if (!email) {
-          elements.forgotPasswordError.textContent = "РЈРєР°Р¶Рё email РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.";
+          elements.forgotPasswordError.textContent = "Р Р€Р С”Р В°Р В¶Р С‘ email Р Т‘Р В»РЎРЏ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ.";
           elements.forgotPasswordError.classList.remove("hidden");
           return;
         }
@@ -3593,10 +3593,10 @@
         elements.forgotPasswordSubmitBtn.disabled = true;
         try {
           const result = await app.auth.forgotPassword({ email });
-          elements.forgotPasswordMessage.textContent = (result == null ? void 0 : result.message) || "Р•СЃР»Рё С‚Р°РєРѕР№ Р°РєРєР°СѓРЅС‚ СЃСѓС‰РµСЃС‚РІСѓРµС‚, РїРёСЃСЊРјРѕ СѓР¶Рµ РѕС‚РїСЂР°РІР»РµРЅРѕ.";
+          elements.forgotPasswordMessage.textContent = (result == null ? void 0 : result.message) || "Р вЂўРЎРѓР В»Р С‘ РЎвЂљР В°Р С”Р С•Р в„– Р В°Р С”Р С”Р В°РЎС“Р Р…РЎвЂљ РЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“Р ВµРЎвЂљ, Р С—Р С‘РЎРѓРЎРЉР СР С• РЎС“Р В¶Р Вµ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р В»Р ВµР Р…Р С•.";
           elements.forgotPasswordMessage.classList.remove("hidden");
         } catch (error) {
-          elements.forgotPasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕС‚РїСЂР°РІРёС‚СЊ РїРёСЃСЊРјРѕ РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.";
+          elements.forgotPasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р С‘РЎРѓРЎРЉР СР С• Р Т‘Р В»РЎРЏ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ.";
           elements.forgotPasswordError.classList.remove("hidden");
         } finally {
           elements.forgotPasswordSubmitBtn.disabled = false;
@@ -3609,7 +3609,7 @@
         const name = elements.accountProfileName.value.trim();
         const email = elements.accountProfileEmail.value.trim();
         if (!name || !email) {
-          elements.accountProfileError.textContent = "Р—Р°РїРѕР»РЅРё РёРјСЏ Рё email.";
+          elements.accountProfileError.textContent = "Заполни имя и email.";
           elements.accountProfileError.classList.remove("hidden");
           return;
         }
@@ -3619,10 +3619,10 @@
         try {
           const user = await app.auth.updateProfile({ name, email });
           authState.user = user;
-          elements.accountProfileMessage.textContent = "РџСЂРѕС„РёР»СЊ РѕР±РЅРѕРІР»С‘РЅ.";
+          elements.accountProfileMessage.textContent = "Профиль обновлён.";
           elements.accountProfileMessage.classList.remove("hidden");
         } catch (error) {
-          elements.accountProfileError.textContent = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕР±РЅРѕРІРёС‚СЊ РїСЂРѕС„РёР»СЊ.";
+          elements.accountProfileError.textContent = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается обновить профиль.";
           elements.accountProfileError.classList.remove("hidden");
         } finally {
           elements.accountProfileSubmitBtn.disabled = false;
@@ -3651,12 +3651,12 @@
         const newPassword = elements.newPasswordInput.value;
         const confirmPassword = elements.confirmNewPasswordInput.value;
         if (!currentPassword || !newPassword || !confirmPassword) {
-          elements.changePasswordError.textContent = "Р—Р°РїРѕР»РЅРё РІСЃРµ РїРѕР»СЏ РґР»СЏ СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ.";
+          elements.changePasswordError.textContent = "Заполни все поля для смены пароля.";
           elements.changePasswordError.classList.remove("hidden");
           return;
         }
         if (newPassword !== confirmPassword) {
-          elements.changePasswordError.textContent = "РќРѕРІС‹Рµ РїР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.";
+          elements.changePasswordError.textContent = "Новые пароли не совпадают.";
           elements.changePasswordError.classList.remove("hidden");
           return;
         }
@@ -3671,12 +3671,12 @@
           store.setSessionContext({ authenticated: false, userId: null });
           authState.user = null;
           authState.mode = "login";
-          authState.notice = "РџР°СЂРѕР»СЊ РёР·РјРµРЅС‘РЅ. Р’РѕР№РґРё Р·Р°РЅРѕРІРѕ СЃ РЅРѕРІС‹Рј РїР°СЂРѕР»РµРј.";
+          authState.notice = "Пароль изменён. Войди заново с новым паролем.";
           authState.status = "guest";
           resetAuthForm({ preserveEmail: false });
           app.screens.showAuthScreen();
         } catch (error) {
-          elements.changePasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ СЃРјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ.";
+          elements.changePasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается сменить пароль.";
           elements.changePasswordError.classList.remove("hidden");
         } finally {
           elements.changePasswordSubmitBtn.disabled = false;
@@ -3706,7 +3706,7 @@
       try {
         await app.auth.logout();
       } catch (error) {
-        runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РІС‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°.";
+        runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р Р†РЎвЂ№Р в„–РЎвЂљР С‘ Р С‘Р В· Р В°Р С”Р С”Р В°РЎС“Р Р…РЎвЂљР В°.";
       }
       store.setSessionContext({ authenticated: false, userId: null });
       authState.user = null;
@@ -3799,7 +3799,7 @@
           return;
         }
         if (!transcript) {
-          voiceState.voiceError = "РЇ РЅРёС‡РµРіРѕ РЅРµ СЂР°СЃСЃР»С‹С€Р°Р». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰С‘ СЂР°Р·.";
+          voiceState.voiceError = "Р Р‡ Р Р…Р С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ РЎР‚Р В°РЎРѓРЎРѓР В»РЎвЂ№РЎв‚¬Р В°Р В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·.";
           app.renderers.renderMainScreen();
           return;
         }
@@ -3809,7 +3809,7 @@
         const drafts = parseVoiceTranscript(transcript, getLocalDateString());
         voiceState.isProcessing = false;
         if (drafts.length === 0) {
-          openVoiceMessage("РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ СЃРѕР±СЂР°С‚СЊ РїРѕРЅСЏС‚РЅС‹Р№ С‡РµСЂРЅРѕРІРёРє. РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰С‘ СЂР°Р· РёР»Рё РґРѕР±Р°РІРёС‚СЊ Р·Р°РґР°С‡Сѓ С‚РµРєСЃС‚РѕРј.");
+          openVoiceMessage("Р СњР Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р С—Р С•Р Р…РЎРЏРЎвЂљР Р…РЎвЂ№Р в„– РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р В·Р В°Р Т‘Р В°РЎвЂЎРЎС“ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.");
           return;
         }
         openVoiceDraftModal(drafts, transcript);
@@ -3840,7 +3840,7 @@
           return;
         }
         if (!transcript) {
-          inboxState.error = "РЇ РЅРёС‡РµРіРѕ РЅРµ СЂР°СЃСЃР»С‹С€Р°Р». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РјС‹СЃР»СЊ С‚РµРєСЃС‚РѕРј.";
+          inboxState.error = "Р Р‡ Р Р…Р С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ РЎР‚Р В°РЎРѓРЎРѓР В»РЎвЂ№РЎв‚¬Р В°Р В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»РЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.";
           app.renderers.renderMainScreen();
           return;
         }
@@ -3849,7 +3849,7 @@
         const drafts = parseInboxTranscript(transcript);
         inboxState.isProcessing = false;
         if (drafts.length === 0) {
-          openInboxVoiceMessage("РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ СЃРѕР±СЂР°С‚СЊ РїРѕРЅСЏС‚РЅС‹Р№ С‡РµСЂРЅРѕРІРёРє РјС‹СЃР»РµР№. РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РјС‹СЃР»Рё С‚РµРєСЃС‚РѕРј.");
+          openInboxVoiceMessage("Р СњР Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р С—Р С•Р Р…РЎРЏРЎвЂљР Р…РЎвЂ№Р в„– РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р СРЎвЂ№РЎРѓР В»Р ВµР в„–. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»Р С‘ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.");
           return;
         }
         openInboxDraftModal(drafts);
@@ -4140,7 +4140,7 @@
       addTask(store, { text: runtime.currentAdvice, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
       const originalText = elements.adviceAddBtn.textContent;
-      elements.adviceAddBtn.textContent = "Добавлено";
+      elements.adviceAddBtn.textContent = "Р”РѕР±Р°РІР»РµРЅРѕ";
       elements.adviceAddBtn.style.backgroundColor = "var(--primary-color)";
       elements.adviceAddBtn.style.color = "white";
       setTimeout(() => {
@@ -4152,7 +4152,7 @@
     });
     elements.openVoiceBtn.addEventListener("click", () => {
       if (!voiceState.isSupported) {
-        openVoiceMessage("Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ РІ СЌС‚РѕРј Р±СЂР°СѓР·РµСЂРµ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРµРЅ. РњРѕР¶РЅРѕ РїСЂРѕРґРѕР»Р¶РёС‚СЊ РѕР±С‹С‡РЅС‹Рј С‚РµРєСЃС‚РѕРІС‹Рј РІРІРѕРґРѕРј.");
+        openVoiceMessage("Р вЂњР С•Р В»Р С•РЎРѓР С•Р Р†Р С•Р в„– Р Р†Р Р†Р С•Р Т‘ Р Р† РЎРЊРЎвЂљР С•Р С Р В±РЎР‚Р В°РЎС“Р В·Р ВµРЎР‚Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµР Т‘Р С•РЎРѓРЎвЂљРЎС“Р С—Р ВµР Р…. Р СљР С•Р В¶Р Р…Р С• Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ Р С•Р В±РЎвЂ№РЎвЂЎР Р…РЎвЂ№Р С РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р С Р Р†Р Р†Р С•Р Т‘Р С•Р С.");
         return;
       }
       if (voiceState.isListening) {
@@ -4174,7 +4174,7 @@
     });
     elements.openInboxVoiceBtn.addEventListener("click", () => {
       if (!inboxState.isSupported) {
-        openInboxVoiceMessage("Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ РІ СЌС‚РѕРј Р±СЂР°СѓР·РµСЂРµ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРµРЅ. РњРѕР¶РЅРѕ РїСЂРѕРґРѕР»Р¶РёС‚СЊ РѕР±С‹С‡РЅС‹Рј С‚РµРєСЃС‚РѕРІС‹Рј РІРІРѕРґРѕРј.");
+        openInboxVoiceMessage("Р вЂњР С•Р В»Р С•РЎРѓР С•Р Р†Р С•Р в„– Р Р†Р Р†Р С•Р Т‘ Р Р† РЎРЊРЎвЂљР С•Р С Р В±РЎР‚Р В°РЎС“Р В·Р ВµРЎР‚Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµР Т‘Р С•РЎРѓРЎвЂљРЎС“Р С—Р ВµР Р…. Р СљР С•Р В¶Р Р…Р С• Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ Р С•Р В±РЎвЂ№РЎвЂЎР Р…РЎвЂ№Р С РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р С Р Р†Р Р†Р С•Р Т‘Р С•Р С.");
         return;
       }
       if (inboxState.isListening) {
@@ -4197,7 +4197,7 @@
     elements.inboxVoiceConfirmBtn.addEventListener("click", () => {
       const drafts = inboxState.drafts.map((draft) => draft.text.trim()).filter(Boolean);
       if (drafts.length === 0) {
-        openInboxVoiceMessage("Р’ С‡РµСЂРЅРѕРІРёРєРµ РїРѕРєР° РЅРµС‚ РјС‹СЃР»РµР№, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ СЃРѕС…СЂР°РЅРёС‚СЊ.");
+        openInboxVoiceMessage("Р вЂ™ РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµРЎвЂљ Р СРЎвЂ№РЎРѓР В»Р ВµР в„–, Р С”Р С•РЎвЂљР С•РЎР‚РЎвЂ№Р Вµ Р СР С•Р В¶Р Р…Р С• РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р С‘РЎвЂљРЎРЉ.");
         return;
       }
       addInboxItems(store, drafts);
@@ -4214,7 +4214,7 @@
     elements.clearInboxBtn.addEventListener("click", () => {
       const inboxItems = store.getState().inboxItems || [];
       if (inboxItems.length === 0) return;
-      const shouldClear = window.confirm("РћС‡РёСЃС‚РёС‚СЊ РІСЃРµ РћР±Р»Р°РєРѕ РјС‹СЃР»РµР№? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ СЃРѕС…СЂР°РЅРµРЅРЅС‹Рµ РјС‹СЃР»Рё.");
+      const shouldClear = window.confirm("Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†РЎРѓР Вµ Р С›Р В±Р В»Р В°Р С”Р С• Р СРЎвЂ№РЎРѓР В»Р ВµР в„–? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р ВµР Р…Р Р…РЎвЂ№Р Вµ Р СРЎвЂ№РЎРѓР В»Р С‘.");
       if (!shouldClear) return;
       clearInboxItems(store);
       closeInboxSortModal();
@@ -4306,7 +4306,7 @@
       elements.archiveModal.classList.add("hidden");
     });
     elements.clearArchiveBtn.addEventListener("click", () => {
-      const shouldClear = window.confirm("РћС‡РёСЃС‚РёС‚СЊ РІРµСЃСЊ СЃРїРёСЃРѕРє В«РќР° РїРѕС‚РѕРјВ»? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ РѕС‚Р»РѕР¶РµРЅРЅС‹Рµ Р·Р°РґР°С‡Рё.");
+      const shouldClear = window.confirm("Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†Р ВµРЎРѓРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р’В«Р СњР В° Р С—Р С•РЎвЂљР С•Р СР’В»? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ Р С•РЎвЂљР В»Р С•Р В¶Р ВµР Р…Р Р…РЎвЂ№Р Вµ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘.");
       if (!shouldClear) return;
       clearDeferredTasks(store);
       app.renderers.renderArchive();
@@ -4317,7 +4317,7 @@
       elements.completedModal.classList.add("hidden");
     });
     elements.clearCompletedBtn.addEventListener("click", () => {
-      const shouldClear = window.confirm("РћС‡РёСЃС‚РёС‚СЊ РІРµСЃСЊ СЃРїРёСЃРѕРє В«РЎРґРµР»Р°РЅРѕВ»? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ Р·Р°РІРµСЂС€С‘РЅРЅС‹Рµ Р·Р°РґР°С‡Рё РёР· СЌС‚РѕРіРѕ СЂР°Р·РґРµР»Р°.");
+      const shouldClear = window.confirm("Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†Р ВµРЎРѓРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р’В«Р РЋР Т‘Р ВµР В»Р В°Р Р…Р С•Р’В»? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬РЎвЂР Р…Р Р…РЎвЂ№Р Вµ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘ Р С‘Р В· РЎРЊРЎвЂљР С•Р С–Р С• РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р В°.");
       if (!shouldClear) return;
       clearDoneTasks(store);
       app.renderers.renderCompleted();
@@ -4329,7 +4329,7 @@
         targetDate: draft.suggestedDate
       })).filter((draft) => draft.text);
       if (draftsToAdd.length === 0) {
-        openVoiceMessage("Р’ С‡РµСЂРЅРѕРІРёРєРµ РїРѕРєР° РЅРµС‚ Р·Р°РґР°С‡, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ РґРѕР±Р°РІРёС‚СЊ.");
+        openVoiceMessage("Р вЂ™ РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµРЎвЂљ Р В·Р В°Р Т‘Р В°РЎвЂЎ, Р С”Р С•РЎвЂљР С•РЎР‚РЎвЂ№Р Вµ Р СР С•Р В¶Р Р…Р С• Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ.");
         return;
       }
       draftsToAdd.forEach((draft) => {
@@ -4721,7 +4721,7 @@
       if (!target || target.dataset.action !== "inbox-voice-remove-draft") return;
       inboxState.drafts = inboxState.drafts.filter((draft) => draft.id !== target.dataset.draftId);
       if (inboxState.drafts.length === 0) {
-        openInboxVoiceMessage("Р§РµСЂРЅРѕРІРёРє РѕРїСѓСЃС‚РµР». РњРѕР¶РЅРѕ РЅР°РґРёРєС‚РѕРІР°С‚СЊ РјС‹СЃР»Рё РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РёС… С‚РµРєСЃС‚РѕРј.");
+        openInboxVoiceMessage("Р В§Р ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р С•Р С—РЎС“РЎРѓРЎвЂљР ВµР В». Р СљР С•Р В¶Р Р…Р С• Р Р…Р В°Р Т‘Р С‘Р С”РЎвЂљР С•Р Р†Р В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»Р С‘ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р С‘РЎвЂ¦ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.");
         return;
       }
       app.renderers.renderInboxVoiceModal();
@@ -4738,7 +4738,7 @@
       if (!target || target.dataset.action !== "voice-remove-draft") return;
       voiceState.voiceDraft = voiceState.voiceDraft.filter((draft) => draft.id !== target.dataset.draftId);
       if (voiceState.voiceDraft.length === 0) {
-        openVoiceMessage("Р§РµСЂРЅРѕРІРёРє РѕРїСѓСЃС‚РµР». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РЅР°РґРёРєС‚РѕРІР°С‚СЊ Р·Р°РґР°С‡Рё РµС‰С‘ СЂР°Р·.");
+        openVoiceMessage("Р В§Р ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р С•Р С—РЎС“РЎРѓРЎвЂљР ВµР В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р Р…Р В°Р Т‘Р С‘Р С”РЎвЂљР С•Р Р†Р В°РЎвЂљРЎРЉ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·.");
         return;
       }
       app.renderers.renderVoiceModal();
