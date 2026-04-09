@@ -40,6 +40,16 @@ import {
 } from '../domain/tasks.js';
 import { addResource, addResourceToDay, assignLowEnergyResource, deleteResource } from '../domain/resources.js';
 import {
+    EASY_PATTERN_SCENARIOS,
+    applyEasyPatternScenario,
+    dismissEasyPattern,
+    getEasyPatternTrigger,
+    getSuggestedEasyPatternResource,
+    markEasyPatternShown,
+    previewEasyPatternScenario,
+    shouldOfferEasyPattern,
+} from '../domain/easy-pattern.js';
+import {
     addAllTemplateTasksToDay,
     addTemplateTaskToDay,
     applyDailyTemplatesForDate,
@@ -182,41 +192,41 @@ function buildSuggestedBreakdownDrafts(taskText) {
     const lower = normalized.toLowerCase();
     let suggestions;
 
-    if (lower.includes('документ')) {
+    if (lower.includes('РґРѕРєСѓРјРµРЅС‚')) {
         suggestions = [
-            'Открыть список нужных документов',
-            'Подготовить или заполнить первую часть',
-            'Проверить и отправить документы',
+            'РћС‚РєСЂС‹С‚СЊ СЃРїРёСЃРѕРє РЅСѓР¶РЅС‹С… РґРѕРєСѓРјРµРЅС‚РѕРІ',
+            'РџРѕРґРіРѕС‚РѕРІРёС‚СЊ РёР»Рё Р·Р°РїРѕР»РЅРёС‚СЊ РїРµСЂРІСѓСЋ С‡Р°СЃС‚СЊ',
+            'РџСЂРѕРІРµСЂРёС‚СЊ Рё РѕС‚РїСЂР°РІРёС‚СЊ РґРѕРєСѓРјРµРЅС‚С‹',
         ];
-    } else if (lower.includes('уборк') || lower.includes('прибрат')) {
+    } else if (lower.includes('СѓР±РѕСЂРє') || lower.includes('РїСЂРёР±СЂР°С‚')) {
         suggestions = [
-            'Выбрать один маленький участок для уборки',
-            'Убрать только этот участок 10 минут',
-            'Вынести мусор или убрать вещи на место',
+            'Р’С‹Р±СЂР°С‚СЊ РѕРґРёРЅ РјР°Р»РµРЅСЊРєРёР№ СѓС‡Р°СЃС‚РѕРє РґР»СЏ СѓР±РѕСЂРєРё',
+            'РЈР±СЂР°С‚СЊ С‚РѕР»СЊРєРѕ СЌС‚РѕС‚ СѓС‡Р°СЃС‚РѕРє 10 РјРёРЅСѓС‚',
+            'Р’С‹РЅРµСЃС‚Рё РјСѓСЃРѕСЂ РёР»Рё СѓР±СЂР°С‚СЊ РІРµС‰Рё РЅР° РјРµСЃС‚Рѕ',
         ];
-    } else if (lower.includes('звон') || lower.includes('позвон')) {
+    } else if (lower.includes('Р·РІРѕРЅ') || lower.includes('РїРѕР·РІРѕРЅ')) {
         suggestions = [
-            'Открыть номер и подготовить пару фраз',
-            'Сделать короткий звонок',
-            'Записать итог звонка или следующий шаг',
+            'РћС‚РєСЂС‹С‚СЊ РЅРѕРјРµСЂ Рё РїРѕРґРіРѕС‚РѕРІРёС‚СЊ РїР°СЂСѓ С„СЂР°Р·',
+            'РЎРґРµР»Р°С‚СЊ РєРѕСЂРѕС‚РєРёР№ Р·РІРѕРЅРѕРє',
+            'Р—Р°РїРёСЃР°С‚СЊ РёС‚РѕРі Р·РІРѕРЅРєР° РёР»Рё СЃР»РµРґСѓСЋС‰РёР№ С€Р°Рі',
         ];
-    } else if (lower.includes('куп') || lower.includes('магаз')) {
+    } else if (lower.includes('РєСѓРї') || lower.includes('РјР°РіР°Р·')) {
         suggestions = [
-            'Составить короткий список покупок',
-            'Сходить или открыть доставку',
-            'Разложить покупки по местам',
+            'РЎРѕСЃС‚Р°РІРёС‚СЊ РєРѕСЂРѕС‚РєРёР№ СЃРїРёСЃРѕРє РїРѕРєСѓРїРѕРє',
+            'РЎС…РѕРґРёС‚СЊ РёР»Рё РѕС‚РєСЂС‹С‚СЊ РґРѕСЃС‚Р°РІРєСѓ',
+            'Р Р°Р·Р»РѕР¶РёС‚СЊ РїРѕРєСѓРїРєРё РїРѕ РјРµСЃС‚Р°Рј',
         ];
-    } else if (lower.includes('врач') || lower.includes('поликлиник')) {
+    } else if (lower.includes('РІСЂР°С‡') || lower.includes('РїРѕР»РёРєР»РёРЅРёРє')) {
         suggestions = [
-            'Найти контакты или запись к врачу',
-            'Сделать один короткий звонок или заявку',
-            'Записать дату, время или следующий шаг',
+            'РќР°Р№С‚Рё РєРѕРЅС‚Р°РєС‚С‹ РёР»Рё Р·Р°РїРёСЃСЊ Рє РІСЂР°С‡Сѓ',
+            'РЎРґРµР»Р°С‚СЊ РѕРґРёРЅ РєРѕСЂРѕС‚РєРёР№ Р·РІРѕРЅРѕРє РёР»Рё Р·Р°СЏРІРєСѓ',
+            'Р—Р°РїРёСЃР°С‚СЊ РґР°С‚Сѓ, РІСЂРµРјСЏ РёР»Рё СЃР»РµРґСѓСЋС‰РёР№ С€Р°Рі',
         ];
     } else {
         suggestions = [
-            `Подготовить всё нужное для: ${normalized}`,
-            `Сделать маленькую основную часть: ${normalized}`,
-            `Проверить и закрыть шаг по задаче: ${normalized}`,
+            `РџРѕРґРіРѕС‚РѕРІРёС‚СЊ РІСЃС‘ РЅСѓР¶РЅРѕРµ РґР»СЏ: ${normalized}`,
+            `РЎРґРµР»Р°С‚СЊ РјР°Р»РµРЅСЊРєСѓСЋ РѕСЃРЅРѕРІРЅСѓСЋ С‡Р°СЃС‚СЊ: ${normalized}`,
+            `РџСЂРѕРІРµСЂРёС‚СЊ Рё Р·Р°РєСЂС‹С‚СЊ С€Р°Рі РїРѕ Р·Р°РґР°С‡Рµ: ${normalized}`,
         ];
     }
 
@@ -231,6 +241,7 @@ export function bindAppEvents(app) {
     const breakdownState = runtime.breakdown;
     const editTaskState = runtime.editTask;
     const copyTaskState = runtime.copyTask;
+    const easyPatternState = runtime.easyPattern;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = 'tpl_4';
     const breakdownRememberLabel = elements.breakdownRememberRow?.querySelector('span');
@@ -363,19 +374,157 @@ export function bindAppEvents(app) {
         setTimeout(() => elements.copyTaskDate.focus(), 0);
     }
 
+    function resetEasyPatternState() {
+        easyPatternState.selectedScenario = null;
+        easyPatternState.trigger = null;
+        easyPatternState.preview = null;
+        easyPatternState.resourceSuggestionId = null;
+        easyPatternState.feedback = '';
+    }
+
+    function clearEasyPatternSelection({ keepFeedback = true } = {}) {
+        easyPatternState.selectedScenario = null;
+        easyPatternState.trigger = null;
+        easyPatternState.preview = null;
+        easyPatternState.resourceSuggestionId = null;
+        if (!keepFeedback) {
+            easyPatternState.feedback = '';
+        }
+    }
+
+    function selectEasyPatternScenario(scenario) {
+        const today = getLocalDateString();
+        const state = store.getState();
+        const trigger = getEasyPatternTrigger(state, today);
+        if (!trigger || !shouldOfferEasyPattern(state, today)) {
+            clearEasyPatternSelection({ keepFeedback: false });
+            app.renderers.renderMainScreen();
+            return;
+        }
+
+        let resourceSuggestionId = null;
+        if (scenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE) {
+            resourceSuggestionId = getSuggestedEasyPatternResource(state, today)?.id || null;
+        }
+
+        easyPatternState.selectedScenario = scenario;
+        easyPatternState.trigger = trigger;
+        easyPatternState.resourceSuggestionId = resourceSuggestionId;
+        easyPatternState.preview = previewEasyPatternScenario(state, scenario, today, {
+            resourceId: resourceSuggestionId,
+        });
+        easyPatternState.feedback = '';
+
+        if (!state.currentDayMeta?.easyPatternShown) {
+            markEasyPatternShown(store, today, trigger);
+        }
+
+        app.renderers.renderMainScreen();
+    }
+
+    function cycleEasyPatternResource() {
+        const today = getLocalDateString();
+        const state = store.getState();
+        const nextResource = getSuggestedEasyPatternResource(state, today, easyPatternState.resourceSuggestionId || null);
+        easyPatternState.resourceSuggestionId = nextResource?.id || null;
+        easyPatternState.preview = previewEasyPatternScenario(state, EASY_PATTERN_SCENARIOS.ADD_RESOURCE, today, {
+            resourceId: easyPatternState.resourceSuggestionId,
+        });
+        app.renderers.renderMainScreen();
+    }
+
+    function applySelectedEasyPatternScenario() {
+        const scenario = easyPatternState.selectedScenario;
+        if (!scenario) return;
+
+        const today = getLocalDateString();
+        const result = applyEasyPatternScenario(store, scenario, today, {
+            resourceId: easyPatternState.resourceSuggestionId || null,
+            trigger: easyPatternState.trigger || getEasyPatternTrigger(store.getState(), today),
+        });
+        if (!result) return;
+
+        clearEasyPatternSelection({ keepFeedback: true });
+        easyPatternState.feedback = scenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE
+            ? '\u0413\u043e\u0442\u043e\u0432\u043e. \u0414\u043e\u0431\u0430\u0432\u0438\u043b\u0438 \u043e\u0434\u043d\u0443 \u0442\u0438\u0445\u0443\u044e \u043e\u043f\u043e\u0440\u0443 \u043d\u0430 \u0441\u0435\u0433\u043e\u0434\u043d\u044f.'
+            : '\u0413\u043e\u0442\u043e\u0432\u043e. \u0422\u0435\u043f\u0435\u0440\u044c \u0434\u0435\u043d\u044c \u0432\u044b\u0433\u043b\u044f\u0434\u0438\u0442 \u0441\u043f\u043e\u043a\u043e\u0439\u043d\u0435\u0435.';
+
+        renderAllTaskViews();
+    }
+
+    function dismissTodayEasyPattern() {
+        const today = getLocalDateString();
+        dismissEasyPattern(store, today, easyPatternState.trigger || getEasyPatternTrigger(store.getState(), today));
+        clearEasyPatternSelection({ keepFeedback: false });
+        app.renderers.renderMainScreen();
+    }
+
     function closeAppMenu() {
         elements.appMenuPopover.classList.add('hidden');
         elements.openAppMenuBtn.setAttribute('aria-expanded', 'false');
     }
 
     function openAccountModal() {
-        const currentEmail = runtime.auth?.user?.email || 'Email пока недоступен';
-        elements.accountEmailValue.textContent = currentEmail;
+        const currentUser = runtime.auth?.user || null;
+        elements.accountProfileName.value = currentUser?.name || '';
+        elements.accountProfileEmail.value = currentUser?.email || '';
+        authState.accountProfile.status = 'idle';
+        authState.accountProfile.error = '';
+        authState.passwordChange.error = '';
+        authState.passwordChange.message = '';
+        elements.accountProfileError.textContent = '';
+        elements.accountProfileError.classList.add('hidden');
+        elements.accountProfileMessage.textContent = '';
+        elements.accountProfileMessage.classList.add('hidden');
         elements.accountModal.classList.remove('hidden');
     }
 
     function closeAccountModal() {
         elements.accountModal.classList.add('hidden');
+    }
+
+    function openForgotPasswordModal() {
+        if (!elements.forgotPasswordModal || !elements.forgotPasswordEmail) {
+            authState.error = 'Модальное окно восстановления пароля пока недоступно. Попробуйте позже.';
+            app.renderers.renderAuthScreen();
+            return;
+        }
+
+        authState.forgotPassword.status = 'idle';
+        authState.forgotPassword.error = '';
+        authState.forgotPassword.message = '';
+        elements.forgotPasswordEmail.value = elements.authEmail.value.trim();
+        elements.forgotPasswordError.textContent = '';
+        elements.forgotPasswordError.classList.add('hidden');
+        elements.forgotPasswordMessage.textContent = '';
+        elements.forgotPasswordMessage.classList.add('hidden');
+        elements.forgotPasswordModal.classList.remove('hidden');
+    }
+
+    function closeForgotPasswordModal() {
+        elements.forgotPasswordModal.classList.add('hidden');
+    }
+
+    function openChangePasswordModal() {
+        if (!elements.changePasswordModal || !elements.currentPasswordInput) {
+            return;
+        }
+
+        authState.passwordChange.status = 'idle';
+        authState.passwordChange.error = '';
+        authState.passwordChange.message = '';
+        elements.currentPasswordInput.value = '';
+        elements.newPasswordInput.value = '';
+        elements.confirmNewPasswordInput.value = '';
+        elements.changePasswordError.textContent = '';
+        elements.changePasswordError.classList.add('hidden');
+        elements.changePasswordMessage.textContent = '';
+        elements.changePasswordMessage.classList.add('hidden');
+        elements.changePasswordModal.classList.remove('hidden');
+    }
+
+    function closeChangePasswordModal() {
+        elements.changePasswordModal.classList.add('hidden');
     }
 
     function toggleAppMenu() {
@@ -388,21 +537,79 @@ export function bindAppEvents(app) {
         if (!preserveEmail) {
             elements.authEmail.value = '';
         }
+        elements.authName.value = '';
         elements.authPassword.value = '';
+        elements.authPasswordConfirm.value = '';
     }
 
     function switchAuthMode(mode) {
         authState.mode = mode === 'register' ? 'register' : 'login';
         authState.error = '';
+        authState.notice = '';
+        authState.resetToken = null;
         authState.status = 'guest';
         app.renderers.renderAuthScreen();
     }
 
     async function submitAuthForm() {
+        const name = elements.authName.value.trim();
         const email = elements.authEmail.value.trim();
         const password = elements.authPassword.value;
-        if (!email || !password) {
-            authState.error = 'Заполни, пожалуйста, email и пароль.';
+        const passwordConfirm = elements.authPasswordConfirm.value;
+
+        if (authState.mode === 'reset-password') {
+            if (!password || !passwordConfirm) {
+                authState.error = 'Р—Р°РїРѕР»РЅРё РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ Рё РµРіРѕ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ.';
+                authState.status = 'guest';
+                app.renderers.renderAuthScreen();
+                return;
+            }
+
+            if (password !== passwordConfirm) {
+                authState.error = 'РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.';
+                authState.status = 'guest';
+                app.renderers.renderAuthScreen();
+                return;
+            }
+
+            authState.status = 'submitting';
+            authState.error = '';
+            authState.notice = '';
+            app.renderers.renderAuthScreen();
+
+            try {
+                await app.auth.resetPassword({
+                    token: authState.resetToken,
+                    password,
+                });
+
+                authState.mode = 'login';
+                authState.resetToken = null;
+                authState.status = 'guest';
+                authState.notice = 'РџР°СЂРѕР»СЊ РѕР±РЅРѕРІР»С‘РЅ. РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РІРѕР№С‚Рё СЃ РЅРѕРІС‹Рј РїР°СЂРѕР»РµРј.';
+                authState.error = '';
+                resetAuthForm({ preserveEmail: false });
+                if (typeof window !== 'undefined') {
+                    window.history.replaceState({}, '', window.location.pathname);
+                }
+                app.renderers.renderAuthScreen();
+            } catch (error) {
+                authState.status = 'guest';
+                authState.error = error?.friendlyMessage || 'РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕР±РЅРѕРІРёС‚СЊ РїР°СЂРѕР»СЊ. РџРѕРїСЂРѕР±СѓР№ РµС‰С‘ СЂР°Р· С‡СѓС‚СЊ РїРѕР·Р¶Рµ.';
+                app.renderers.renderAuthScreen();
+            }
+            return;
+        }
+
+        if (!email || !password || (authState.mode === 'register' && !name)) {
+            authState.error = 'Р—Р°РїРѕР»РЅРё, РїРѕР¶Р°Р»СѓР№СЃС‚Р°, РІСЃРµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ.';
+            authState.status = 'guest';
+            app.renderers.renderAuthScreen();
+            return;
+        }
+
+        if (authState.mode === 'register' && password !== passwordConfirm) {
+            authState.error = 'РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.';
             authState.status = 'guest';
             app.renderers.renderAuthScreen();
             return;
@@ -410,18 +617,19 @@ export function bindAppEvents(app) {
 
         authState.status = 'submitting';
         authState.error = '';
+        authState.notice = '';
         app.renderers.renderAuthScreen();
 
         try {
             const user = authState.mode === 'register'
-                ? await app.auth.register({ email, password })
+                ? await app.auth.register({ name, email, password })
                 : await app.auth.login({ email, password });
 
             resetAuthForm();
             await app.startAuthenticatedFlow(user);
         } catch (error) {
             authState.status = 'guest';
-            authState.error = error?.friendlyMessage || 'Сейчас не получается продолжить. Попробуй ещё раз чуть позже.';
+            authState.error = error?.friendlyMessage || 'РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РїСЂРѕРґРѕР»Р¶РёС‚СЊ. РџРѕРїСЂРѕР±СѓР№ РµС‰С‘ СЂР°Р· С‡СѓС‚СЊ РїРѕР·Р¶Рµ.';
             app.renderers.renderAuthScreen();
         }
     }
@@ -507,6 +715,143 @@ export function bindAppEvents(app) {
         void submitAuthForm();
     });
 
+    if (elements.authForgotPasswordBtn) {
+        elements.authForgotPasswordBtn.addEventListener('click', () => {
+            openForgotPasswordModal();
+        });
+    }
+
+    if (elements.closeForgotPasswordBtn) {
+        elements.closeForgotPasswordBtn.addEventListener('click', () => {
+            closeForgotPasswordModal();
+        });
+    }
+
+    if (elements.forgotPasswordCancelBtn) {
+        elements.forgotPasswordCancelBtn.addEventListener('click', () => {
+            closeForgotPasswordModal();
+        });
+    }
+
+    if (elements.forgotPasswordForm) {
+        elements.forgotPasswordForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const email = elements.forgotPasswordEmail.value.trim();
+        if (!email) {
+            elements.forgotPasswordError.textContent = 'РЈРєР°Р¶Рё email РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.';
+            elements.forgotPasswordError.classList.remove('hidden');
+            return;
+        }
+
+        elements.forgotPasswordError.classList.add('hidden');
+        elements.forgotPasswordMessage.classList.add('hidden');
+        elements.forgotPasswordSubmitBtn.disabled = true;
+
+        try {
+            const result = await app.auth.forgotPassword({ email });
+            elements.forgotPasswordMessage.textContent = result?.message || 'Р•СЃР»Рё С‚Р°РєРѕР№ Р°РєРєР°СѓРЅС‚ СЃСѓС‰РµСЃС‚РІСѓРµС‚, РїРёСЃСЊРјРѕ СѓР¶Рµ РѕС‚РїСЂР°РІР»РµРЅРѕ.';
+            elements.forgotPasswordMessage.classList.remove('hidden');
+        } catch (error) {
+            elements.forgotPasswordError.textContent = error?.friendlyMessage || 'РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕС‚РїСЂР°РІРёС‚СЊ РїРёСЃСЊРјРѕ РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.';
+            elements.forgotPasswordError.classList.remove('hidden');
+        } finally {
+            elements.forgotPasswordSubmitBtn.disabled = false;
+        }
+        });
+    }
+
+    if (elements.accountProfileForm) {
+        elements.accountProfileForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const name = elements.accountProfileName.value.trim();
+        const email = elements.accountProfileEmail.value.trim();
+
+        if (!name || !email) {
+            elements.accountProfileError.textContent = 'Р—Р°РїРѕР»РЅРё РёРјСЏ Рё email.';
+            elements.accountProfileError.classList.remove('hidden');
+            return;
+        }
+
+        elements.accountProfileError.classList.add('hidden');
+        elements.accountProfileMessage.classList.add('hidden');
+        elements.accountProfileSubmitBtn.disabled = true;
+
+        try {
+            const user = await app.auth.updateProfile({ name, email });
+            authState.user = user;
+            elements.accountProfileMessage.textContent = 'РџСЂРѕС„РёР»СЊ РѕР±РЅРѕРІР»С‘РЅ.';
+            elements.accountProfileMessage.classList.remove('hidden');
+        } catch (error) {
+            elements.accountProfileError.textContent = error?.friendlyMessage || 'РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕР±РЅРѕРІРёС‚СЊ РїСЂРѕС„РёР»СЊ.';
+            elements.accountProfileError.classList.remove('hidden');
+        } finally {
+            elements.accountProfileSubmitBtn.disabled = false;
+        }
+        });
+    }
+
+    if (elements.openChangePasswordBtn) {
+        elements.openChangePasswordBtn.addEventListener('click', () => {
+            openChangePasswordModal();
+        });
+    }
+
+    if (elements.closeChangePasswordBtn) {
+        elements.closeChangePasswordBtn.addEventListener('click', () => {
+            closeChangePasswordModal();
+        });
+    }
+
+    if (elements.changePasswordCancelBtn) {
+        elements.changePasswordCancelBtn.addEventListener('click', () => {
+            closeChangePasswordModal();
+        });
+    }
+
+    if (elements.changePasswordForm) {
+        elements.changePasswordForm.addEventListener('submit', async event => {
+        event.preventDefault();
+        const currentPassword = elements.currentPasswordInput.value;
+        const newPassword = elements.newPasswordInput.value;
+        const confirmPassword = elements.confirmNewPasswordInput.value;
+
+        if (!currentPassword || !newPassword || !confirmPassword) {
+            elements.changePasswordError.textContent = 'Р—Р°РїРѕР»РЅРё РІСЃРµ РїРѕР»СЏ РґР»СЏ СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ.';
+            elements.changePasswordError.classList.remove('hidden');
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            elements.changePasswordError.textContent = 'РќРѕРІС‹Рµ РїР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.';
+            elements.changePasswordError.classList.remove('hidden');
+            return;
+        }
+
+        elements.changePasswordError.classList.add('hidden');
+        elements.changePasswordMessage.classList.add('hidden');
+        elements.changePasswordSubmitBtn.disabled = true;
+
+        try {
+            await app.auth.changePassword({ currentPassword, newPassword });
+            closeChangePasswordModal();
+            closeAccountModal();
+            resetEasyPatternState();
+            store.setSessionContext({ authenticated: false, userId: null });
+            authState.user = null;
+            authState.mode = 'login';
+            authState.notice = 'РџР°СЂРѕР»СЊ РёР·РјРµРЅС‘РЅ. Р’РѕР№РґРё Р·Р°РЅРѕРІРѕ СЃ РЅРѕРІС‹Рј РїР°СЂРѕР»РµРј.';
+            authState.status = 'guest';
+            resetAuthForm({ preserveEmail: false });
+            app.screens.showAuthScreen();
+        } catch (error) {
+            elements.changePasswordError.textContent = error?.friendlyMessage || 'РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ СЃРјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ.';
+            elements.changePasswordError.classList.remove('hidden');
+        } finally {
+            elements.changePasswordSubmitBtn.disabled = false;
+        }
+        });
+    }
+
     elements.appMenuPopover.addEventListener('click', event => {
         event.stopPropagation();
     });
@@ -531,11 +876,12 @@ export function bindAppEvents(app) {
 
     elements.accountLogoutBtn.addEventListener('click', async () => {
         closeAccountModal();
+        resetEasyPatternState();
 
         try {
             await app.auth.logout();
         } catch (error) {
-            runtime.auth.error = error?.friendlyMessage || 'Сейчас не получается выйти из аккаунта.';
+            runtime.auth.error = error?.friendlyMessage || 'РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РІС‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°.';
         }
 
         store.setSessionContext({ authenticated: false, userId: null });
@@ -595,6 +941,7 @@ export function bindAppEvents(app) {
     }
 
     function finalizeLowEnergyDecline() {
+        resetEasyPatternState();
         store.updateState(state => {
             state.currentDayMeta = {
                 ...state.currentDayMeta,
@@ -612,6 +959,7 @@ export function bindAppEvents(app) {
 
     function finalizeLowEnergyAcceptance() {
         const today = getLocalDateString();
+        resetEasyPatternState();
         applyLowEnergyDay(store, today);
         addAllTemplateTasksToDay(store, LOW_ENERGY_TEMPLATE_ID, today);
         assignLowEnergyResource(store, { today });
@@ -641,7 +989,7 @@ export function bindAppEvents(app) {
             }
 
             if (!transcript) {
-                voiceState.voiceError = 'Я ничего не расслышал. Можно попробовать ещё раз.';
+                voiceState.voiceError = 'РЇ РЅРёС‡РµРіРѕ РЅРµ СЂР°СЃСЃР»С‹С€Р°Р». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰С‘ СЂР°Р·.';
                 app.renderers.renderMainScreen();
                 return;
             }
@@ -654,7 +1002,7 @@ export function bindAppEvents(app) {
             voiceState.isProcessing = false;
 
             if (drafts.length === 0) {
-                openVoiceMessage('Не получилось собрать понятный черновик. Можно попробовать ещё раз или добавить задачу текстом.');
+                openVoiceMessage('РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ СЃРѕР±СЂР°С‚СЊ РїРѕРЅСЏС‚РЅС‹Р№ С‡РµСЂРЅРѕРІРёРє. РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰С‘ СЂР°Р· РёР»Рё РґРѕР±Р°РІРёС‚СЊ Р·Р°РґР°С‡Сѓ С‚РµРєСЃС‚РѕРј.');
                 return;
             }
 
@@ -689,7 +1037,7 @@ export function bindAppEvents(app) {
             }
 
             if (!transcript) {
-                inboxState.error = 'Я ничего не расслышал. Можно попробовать еще раз или записать мысль текстом.';
+                inboxState.error = 'РЇ РЅРёС‡РµРіРѕ РЅРµ СЂР°СЃСЃР»С‹С€Р°Р». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РјС‹СЃР»СЊ С‚РµРєСЃС‚РѕРј.';
                 app.renderers.renderMainScreen();
                 return;
             }
@@ -700,7 +1048,7 @@ export function bindAppEvents(app) {
             inboxState.isProcessing = false;
 
             if (drafts.length === 0) {
-                openInboxVoiceMessage('Не получилось собрать понятный черновик мыслей. Можно попробовать еще раз или записать мысли текстом.');
+                openInboxVoiceMessage('РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ СЃРѕР±СЂР°С‚СЊ РїРѕРЅСЏС‚РЅС‹Р№ С‡РµСЂРЅРѕРІРёРє РјС‹СЃР»РµР№. РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РјС‹СЃР»Рё С‚РµРєСЃС‚РѕРј.');
                 return;
             }
 
@@ -794,6 +1142,7 @@ export function bindAppEvents(app) {
 
     elements.startDayBtn.addEventListener('click', () => {
         const energyBudget = parseInt(elements.energyInput.value, 10);
+        resetEasyPatternState();
         store.updateState(state => {
             state.energyBudget = energyBudget;
             state.lastDate = getLocalDateString();
@@ -1034,7 +1383,7 @@ export function bindAppEvents(app) {
         app.renderers.renderMainScreen();
 
         const originalText = elements.adviceAddBtn.textContent;
-        elements.adviceAddBtn.textContent = 'Добавлено ✓';
+        elements.adviceAddBtn.textContent = 'Добавлено';
         elements.adviceAddBtn.style.backgroundColor = 'var(--primary-color)';
         elements.adviceAddBtn.style.color = 'white';
 
@@ -1048,7 +1397,7 @@ export function bindAppEvents(app) {
 
     elements.openVoiceBtn.addEventListener('click', () => {
         if (!voiceState.isSupported) {
-            openVoiceMessage('Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.');
+            openVoiceMessage('Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ РІ СЌС‚РѕРј Р±СЂР°СѓР·РµСЂРµ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРµРЅ. РњРѕР¶РЅРѕ РїСЂРѕРґРѕР»Р¶РёС‚СЊ РѕР±С‹С‡РЅС‹Рј С‚РµРєСЃС‚РѕРІС‹Рј РІРІРѕРґРѕРј.');
             return;
         }
 
@@ -1075,7 +1424,7 @@ export function bindAppEvents(app) {
 
     elements.openInboxVoiceBtn.addEventListener('click', () => {
         if (!inboxState.isSupported) {
-            openInboxVoiceMessage('Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.');
+            openInboxVoiceMessage('Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ РІ СЌС‚РѕРј Р±СЂР°СѓР·РµСЂРµ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРµРЅ. РњРѕР¶РЅРѕ РїСЂРѕРґРѕР»Р¶РёС‚СЊ РѕР±С‹С‡РЅС‹Рј С‚РµРєСЃС‚РѕРІС‹Рј РІРІРѕРґРѕРј.');
             return;
         }
 
@@ -1106,7 +1455,7 @@ export function bindAppEvents(app) {
             .filter(Boolean);
 
         if (drafts.length === 0) {
-            openInboxVoiceMessage('В черновике пока нет мыслей, которые можно сохранить.');
+            openInboxVoiceMessage('Р’ С‡РµСЂРЅРѕРІРёРєРµ РїРѕРєР° РЅРµС‚ РјС‹СЃР»РµР№, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ СЃРѕС…СЂР°РЅРёС‚СЊ.');
             return;
         }
 
@@ -1128,7 +1477,7 @@ export function bindAppEvents(app) {
         const inboxItems = store.getState().inboxItems || [];
         if (inboxItems.length === 0) return;
 
-        const shouldClear = window.confirm('Очистить все Облако мыслей? Это удалит все сохраненные мысли.');
+        const shouldClear = window.confirm('РћС‡РёСЃС‚РёС‚СЊ РІСЃРµ РћР±Р»Р°РєРѕ РјС‹СЃР»РµР№? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ СЃРѕС…СЂР°РЅРµРЅРЅС‹Рµ РјС‹СЃР»Рё.');
         if (!shouldClear) return;
 
         clearInboxItems(store);
@@ -1239,7 +1588,7 @@ export function bindAppEvents(app) {
     });
 
     elements.clearArchiveBtn.addEventListener('click', () => {
-        const shouldClear = window.confirm('Очистить весь список «На потом»? Это удалит все отложенные задачи.');
+        const shouldClear = window.confirm('РћС‡РёСЃС‚РёС‚СЊ РІРµСЃСЊ СЃРїРёСЃРѕРє В«РќР° РїРѕС‚РѕРјВ»? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ РѕС‚Р»РѕР¶РµРЅРЅС‹Рµ Р·Р°РґР°С‡Рё.');
         if (!shouldClear) return;
 
         clearDeferredTasks(store);
@@ -1253,7 +1602,7 @@ export function bindAppEvents(app) {
     });
 
     elements.clearCompletedBtn.addEventListener('click', () => {
-        const shouldClear = window.confirm('Очистить весь список «Сделано»? Это удалит все завершённые задачи из этого раздела.');
+        const shouldClear = window.confirm('РћС‡РёСЃС‚РёС‚СЊ РІРµСЃСЊ СЃРїРёСЃРѕРє В«РЎРґРµР»Р°РЅРѕВ»? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ Р·Р°РІРµСЂС€С‘РЅРЅС‹Рµ Р·Р°РґР°С‡Рё РёР· СЌС‚РѕРіРѕ СЂР°Р·РґРµР»Р°.');
         if (!shouldClear) return;
 
         clearDoneTasks(store);
@@ -1270,7 +1619,7 @@ export function bindAppEvents(app) {
             .filter(draft => draft.text);
 
         if (draftsToAdd.length === 0) {
-            openVoiceMessage('В черновике пока нет задач, которые можно добавить.');
+            openVoiceMessage('Р’ С‡РµСЂРЅРѕРІРёРєРµ РїРѕРєР° РЅРµС‚ Р·Р°РґР°С‡, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ РґРѕР±Р°РІРёС‚СЊ.');
             return;
         }
 
@@ -1761,7 +2110,7 @@ export function bindAppEvents(app) {
 
         inboxState.drafts = inboxState.drafts.filter(draft => draft.id !== target.dataset.draftId);
         if (inboxState.drafts.length === 0) {
-            openInboxVoiceMessage('Черновик опустел. Можно надиктовать мысли еще раз или записать их текстом.');
+            openInboxVoiceMessage('Р§РµСЂРЅРѕРІРёРє РѕРїСѓСЃС‚РµР». РњРѕР¶РЅРѕ РЅР°РґРёРєС‚РѕРІР°С‚СЊ РјС‹СЃР»Рё РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РёС… С‚РµРєСЃС‚РѕРј.');
             return;
         }
 
@@ -1784,7 +2133,7 @@ export function bindAppEvents(app) {
 
         voiceState.voiceDraft = voiceState.voiceDraft.filter(draft => draft.id !== target.dataset.draftId);
         if (voiceState.voiceDraft.length === 0) {
-            openVoiceMessage('Черновик опустел. Можно попробовать надиктовать задачи ещё раз.');
+            openVoiceMessage('Р§РµСЂРЅРѕРІРёРє РѕРїСѓСЃС‚РµР». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РЅР°РґРёРєС‚РѕРІР°С‚СЊ Р·Р°РґР°С‡Рё РµС‰С‘ СЂР°Р·.');
             return;
         }
 
@@ -1858,7 +2207,7 @@ export function bindAppEvents(app) {
             app.renderers.renderMainScreen();
 
             const originalText = target.textContent;
-            target.textContent = '✓';
+            target.textContent = 'OK';
             target.style.backgroundColor = 'var(--primary-color)';
             target.style.color = 'white';
             setTimeout(() => {
@@ -1925,7 +2274,7 @@ export function bindAppEvents(app) {
             app.renderers.renderMainScreen();
 
             const originalText = target.textContent;
-            target.textContent = '✓';
+            target.textContent = 'OK';
             target.style.backgroundColor = 'var(--primary-color)';
             target.style.color = 'white';
             setTimeout(() => {
@@ -1958,6 +2307,42 @@ export function bindAppEvents(app) {
         app.renderers.renderMainScreen();
     });
 
+    elements.easyPatternPanel.addEventListener('click', event => {
+        const target = closestActionTarget(event.target);
+        if (!target) return;
+
+        if (target.dataset.action === 'easy-pattern-select') {
+            selectEasyPatternScenario(target.dataset.scenario);
+            return;
+        }
+
+        if (target.dataset.action === 'easy-pattern-back') {
+            clearEasyPatternSelection({ keepFeedback: true });
+            app.renderers.renderMainScreen();
+            return;
+        }
+
+        if (target.dataset.action === 'easy-pattern-dismiss') {
+            dismissTodayEasyPattern();
+            return;
+        }
+
+        if (target.dataset.action === 'easy-pattern-cycle-resource') {
+            cycleEasyPatternResource();
+            return;
+        }
+
+        if (target.dataset.action === 'easy-pattern-confirm') {
+            applySelectedEasyPatternScenario();
+            return;
+        }
+
+        if (target.dataset.action === 'easy-pattern-clear-feedback') {
+            easyPatternState.feedback = '';
+            app.renderers.renderMainScreen();
+        }
+    });
+
     elements.weeklyContainer.addEventListener('click', event => {
         const target = closestActionTarget(event.target);
         if (!target || target.dataset.action !== 'open-weekly-task-modal') return;
@@ -1979,6 +2364,15 @@ export function bindAppEvents(app) {
     elements.weeklyContainer.addEventListener('click', event => {
         const target = closestActionTarget(event.target);
         if (!target?.dataset.taskId) return;
+
+        if (target.dataset.action === 'weekly-delete-task') {
+            deleteTask(store, target.dataset.taskId);
+            if (editTaskState.taskId === target.dataset.taskId) {
+                stopInlineEdit();
+            }
+            renderAllTaskViews();
+            return;
+        }
 
         if (target.dataset.action === 'edit-save-task') {
             saveInlineEdit();

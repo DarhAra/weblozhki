@@ -76,7 +76,16 @@ TRUST_PROXY=false
 SESSION_COOKIE_NAME=rtodo_sid
 SESSION_COOKIE_SAME_SITE=Lax
 SESSION_COOKIE_SECURE=false
-SESSION_TTL_HOURS=168
+SESSION_TTL_DAYS=30
+PASSWORD_RESET_TTL_MINUTES=30
+APP_BASE_URL=https://example.com
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=account@example.com
+SMTP_PASSWORD=change-me
+SMTP_FROM_EMAIL=no-reply@example.com
+SMTP_FROM_NAME=Мои ложки
 ```
 
 ## Чем отличаются `development` и `production`

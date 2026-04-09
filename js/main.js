@@ -128,6 +128,23 @@ export async function initApp({ elements }) {
                 mode: 'login',
                 user: null,
                 error: '',
+                notice: '',
+                resetToken: null,
+                forgotPassword: {
+                    status: 'idle',
+                    email: '',
+                    error: '',
+                    message: '',
+                },
+                accountProfile: {
+                    status: 'idle',
+                    error: '',
+                },
+                passwordChange: {
+                    status: 'idle',
+                    error: '',
+                    message: '',
+                },
             },
             voice: {
                 isSupported: false,
@@ -170,6 +187,13 @@ export async function initApp({ elements }) {
                 taskId: null,
                 targetDate: getLocalDateString(),
             },
+            easyPattern: {
+                selectedScenario: null,
+                trigger: null,
+                preview: null,
+                resourceSuggestionId: null,
+                feedback: '',
+            },
             templateAutoPrompt: {
                 templateId: null,
             },
@@ -200,6 +224,15 @@ export async function initApp({ elements }) {
     });
 
     app.screens.showAuthScreen();
+
+    if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const resetToken = params.get('resetToken');
+        if (resetToken) {
+            app.runtime.auth.mode = 'reset-password';
+            app.runtime.auth.resetToken = resetToken;
+        }
+    }
 
     try {
         const session = await auth.checkSession();

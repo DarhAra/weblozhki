@@ -10,6 +10,13 @@ import {
     getTodayTasks,
     shouldShowBreakdownAction,
 } from '../domain/tasks.js';
+import {
+    EASY_PATTERN_SCENARIOS,
+    getEasyPatternMessage,
+    getEasyPatternTrigger,
+    previewEasyPatternScenario,
+    shouldOfferEasyPattern,
+} from '../domain/easy-pattern.js';
 import { getInboxItems, getInboxSortDates } from '../domain/inbox.js';
 import { getMoodHistoryInsights, normalizeMoodHistory } from '../domain/history.js';
 
@@ -58,9 +65,11 @@ function renderInlineTaskEditor(task, editTaskState) {
         <div class="task-main inline-edit-main">
             <input class="inline-edit-input" type="text" value="${escapeHtml(editTaskState.text)}" data-action="edit-update-text" data-task-id="${task.id}">
         </div>
-        ${weightSelectHtml}
-        <button class="task-breakdown-btn" type="button" data-action="edit-save-task" data-task-id="${task.id}">Сохранить</button>
-        <button class="text-btn inline-edit-cancel" type="button" data-action="edit-cancel-task" data-task-id="${task.id}">Отмена</button>
+        <div class="inline-edit-actions">
+            ${weightSelectHtml}
+            <button class="task-breakdown-btn" type="button" data-action="edit-save-task" data-task-id="${task.id}">Сохранить</button>
+            <button class="text-btn inline-edit-cancel" type="button" data-action="edit-cancel-task" data-task-id="${task.id}">Отмена</button>
+        </div>
     `;
 }
 
@@ -185,33 +194,70 @@ export function createRenderers(app) {
             status: 'guest',
             mode: 'login',
             error: '',
+            notice: '',
         };
         const isRegisterMode = auth.mode === 'register';
+        const isResetMode = auth.mode === 'reset-password';
         const isChecking = auth.status === 'checking';
         const isSubmitting = auth.status === 'submitting';
         const isBusy = isChecking || isSubmitting;
 
-        elements.authTitle.textContent = isRegisterMode
-            ? 'Создать профиль'
-            : 'Вход в своё пространство';
-        elements.authSubtitle.textContent = isRegisterMode
-            ? 'Аккаунт нужен только для того, чтобы ваши данные жили в личном пространстве.'
-            : 'Здесь будут жить ваши задачи, ритм дня и история самочувствия.';
-        elements.authLoading.classList.toggle('hidden', !isChecking);
-        elements.authModeSwitcher.classList.toggle('hidden', isChecking);
-        elements.authLoginModeBtn.classList.toggle('is-active', !isRegisterMode);
-        elements.authRegisterModeBtn.classList.toggle('is-active', isRegisterMode);
-        elements.authEmail.disabled = isBusy;
-        elements.authPassword.disabled = isBusy;
-        elements.authSubmitBtn.disabled = isBusy;
+        elements.authTitle.textContent = isResetMode
+            ? 'Придумай новый пароль'
+            : isRegisterMode
+                ? 'Создать аккаунт'
+                : 'Вход в аккаунт';
+        elements.authSubtitle.textContent = isResetMode
+            ? 'Ссылка уже открыта. Остаётся только задать новый пароль для своего аккаунта.'
+            : isRegisterMode
+                ? 'Полноценный аккаунт хранит твои личные данные, настройки и историю только для тебя.'
+                : 'Войдите один раз, и приложение будет помнить ваш аккаунт между визитами.';
+        elements.authLoading?.classList.toggle('hidden', !isChecking);
+        elements.authModeSwitcher?.classList.toggle('hidden', isChecking || isResetMode);
+        elements.authLoginModeBtn?.classList.toggle('is-active', !isRegisterMode && !isResetMode);
+        elements.authRegisterModeBtn?.classList.toggle('is-active', isRegisterMode);
+        elements.authNameField?.classList.toggle('hidden', !isRegisterMode);
+        elements.authPasswordConfirmField?.classList.toggle('hidden', !isRegisterMode && !isResetMode);
+        elements.authForgotPasswordBtn?.classList.toggle('hidden', isRegisterMode || isResetMode);
+        if (elements.authName) {
+            elements.authName.disabled = isBusy || !isRegisterMode;
+            elements.authName.required = isRegisterMode;
+        }
+        if (elements.authEmail) {
+            elements.authEmail.disabled = isBusy || isResetMode;
+        }
+        if (elements.authPassword) {
+            elements.authPassword.disabled = isBusy;
+            elements.authPassword.autocomplete = isRegisterMode || isResetMode ? 'new-password' : 'current-password';
+        }
+        if (elements.authPasswordConfirm) {
+            elements.authPasswordConfirm.disabled = isBusy || (!isRegisterMode && !isResetMode);
+            elements.authPasswordConfirm.required = isRegisterMode || isResetMode;
+        }
+        if (elements.authSubmitBtn) {
+            elements.authSubmitBtn.disabled = isBusy;
+        }
         elements.authSubmitBtn.textContent = isChecking
             ? 'Проверяем вход...'
             : isSubmitting
-                ? (isRegisterMode ? 'Создаём аккаунт...' : 'Входим...')
-                : (isRegisterMode ? 'Создать аккаунт' : 'Войти');
-        elements.authPassword.autocomplete = isRegisterMode ? 'new-password' : 'current-password';
-        elements.authError.textContent = auth.error || '';
-        elements.authError.classList.toggle('hidden', !auth.error);
+                ? (isResetMode
+                    ? 'Сохраняем пароль...'
+                    : isRegisterMode
+                        ? 'Создаём аккаунт...'
+                        : 'Входим...')
+                : (isResetMode
+                    ? 'Сохранить новый пароль'
+                    : isRegisterMode
+                        ? 'Создать аккаунт'
+                        : 'Войти');
+        if (elements.authNotice) {
+            elements.authNotice.textContent = auth.notice || '';
+            elements.authNotice.classList.toggle('hidden', !auth.notice);
+        }
+        if (elements.authError) {
+            elements.authError.textContent = auth.error || '';
+            elements.authError.classList.toggle('hidden', !auth.error);
+        }
     }
 
     function renderVoiceUi() {
@@ -476,6 +522,98 @@ export function createRenderers(app) {
         }
     }
 
+    function getEasyPatternScenarioLabel(scenario) {
+        if (scenario === EASY_PATTERN_SCENARIOS.SIMPLIFY_DAY) {
+            return '\u041e\u0431\u043b\u0435\u0433\u0447\u0438\u0442\u044c \u0434\u0435\u043d\u044c';
+        }
+
+        if (scenario === EASY_PATTERN_SCENARIOS.KEEP_MAIN) {
+            return '\u041e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0433\u043b\u0430\u0432\u043d\u043e\u0435';
+        }
+
+        return '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0435\u0441\u0443\u0440\u0441';
+    }
+
+    function renderEasyPatternPanel(state, isSosView) {
+        const today = getLocalDateString();
+        const easyPattern = runtime.easyPattern || {};
+        const trigger = easyPattern.trigger || getEasyPatternTrigger(state, today);
+        const hasFeedback = Boolean(easyPattern.feedback);
+        const canOfferPattern =
+            !isSosView
+            && !state.currentDayMeta?.lowEnergyDayApplied
+            && shouldOfferEasyPattern(state, today);
+        const shouldShow = hasFeedback || canOfferPattern;
+
+        elements.easyPatternPanel.classList.toggle('hidden', !shouldShow);
+        if (!shouldShow) {
+            elements.easyPatternPanel.innerHTML = '';
+            return;
+        }
+
+        if (hasFeedback) {
+            elements.easyPatternPanel.innerHTML = `
+                <div class="easy-pattern-card easy-pattern-card-feedback">
+                    <div class="easy-pattern-header">
+                        <span class="easy-pattern-kicker">\u041c\u044f\u0433\u043a\u043e\u0435 \u0443\u043f\u0440\u043e\u0449\u0435\u043d\u0438\u0435</span>
+                    </div>
+                    <p class="easy-pattern-message">${easyPattern.feedback}</p>
+                    <div class="easy-pattern-actions">
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-clear-feedback">\u0425\u043e\u0440\u043e\u0448\u043e</button>
+                    </div>
+                </div>
+            `;
+            return;
+        }
+
+        const selectedScenario = easyPattern.selectedScenario || null;
+        const preview = selectedScenario
+            ? (easyPattern.preview || previewEasyPatternScenario(state, selectedScenario, today, {
+                resourceId: easyPattern.resourceSuggestionId || null,
+            }))
+            : null;
+        const resourcePreviewText = preview?.resource
+            ? escapeHtml(preview.resource.text)
+            : '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u043d\u0430\u0448\u043b\u043e\u0441\u044c \u0441\u0432\u043e\u0431\u043e\u0434\u043d\u043e\u0439 \u0440\u0430\u0434\u043e\u0441\u0442\u0438 \u0431\u0435\u0437 \u0434\u0443\u0431\u043b\u044f.';
+
+        elements.easyPatternPanel.innerHTML = `
+            <div class="easy-pattern-card">
+                <div class="easy-pattern-header">
+                    <span class="easy-pattern-kicker">\u041c\u044f\u0433\u043a\u0430\u044f \u043f\u043e\u043c\u043e\u0449\u044c \u043d\u0430 \u0441\u0435\u0433\u043e\u0434\u043d\u044f</span>
+                </div>
+                <p class="easy-pattern-message">${getEasyPatternMessage(trigger)}</p>
+                ${selectedScenario ? `
+                    <div class="easy-pattern-preview">
+                        <div class="easy-pattern-preview-title">${getEasyPatternScenarioLabel(selectedScenario)}</div>
+                        ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE
+                ? `
+                                <div class="easy-pattern-preview-line">\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u0441\u044f: ${preview?.addCount || 0} \u0440\u0435\u0441\u0443\u0440\u0441</div>
+                                <div class="easy-pattern-preview-resource">${resourcePreviewText}</div>
+                            `
+                : `
+                                <div class="easy-pattern-preview-line">\u041e\u0441\u0442\u0430\u043d\u0435\u0442\u0441\u044f: ${preview?.keepCount || 0} \u0437\u0430\u0434\u0430\u0447</div>
+                                <div class="easy-pattern-preview-line">\u041f\u0435\u0440\u0435\u043d\u0435\u0441\u0451\u0442\u0441\u044f: ${preview?.moveCount || 0} \u0437\u0430\u0434\u0430\u0447</div>
+                            `}
+                    </div>
+                    <div class="easy-pattern-actions">
+                        ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? `
+                            <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-cycle-resource" ${preview?.isAvailable ? '' : 'disabled'}>\u0414\u0440\u0443\u0433\u043e\u0435</button>
+                        ` : ''}
+                        <button class="primary-btn easy-pattern-btn" type="button" data-action="easy-pattern-confirm" ${preview?.isAvailable ? '' : 'disabled'}>${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? '\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c' : '\u041f\u0440\u0438\u043c\u0435\u043d\u0438\u0442\u044c'}</button>
+                        <button class="text-btn easy-pattern-text-btn" type="button" data-action="easy-pattern-back">\u041d\u0430\u0437\u0430\u0434</button>
+                    </div>
+                ` : `
+                    <div class="easy-pattern-actions easy-pattern-actions-grid">
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-select" data-scenario="${EASY_PATTERN_SCENARIOS.SIMPLIFY_DAY}">\u041e\u0431\u043b\u0435\u0433\u0447\u0438\u0442\u044c \u0434\u0435\u043d\u044c</button>
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-select" data-scenario="${EASY_PATTERN_SCENARIOS.KEEP_MAIN}">\u041e\u0441\u0442\u0430\u0432\u0438\u0442\u044c \u0433\u043b\u0430\u0432\u043d\u043e\u0435</button>
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-select" data-scenario="${EASY_PATTERN_SCENARIOS.ADD_RESOURCE}">\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u044c \u0440\u0435\u0441\u0443\u0440\u0441</button>
+                        <button class="text-btn easy-pattern-text-btn" type="button" data-action="easy-pattern-dismiss">\u041d\u0435 \u0441\u0435\u0439\u0447\u0430\u0441</button>
+                    </div>
+                `}
+            </div>
+        `;
+    }
+
     function renderMainScreen() {
         const state = store.getState();
         const todayTasks = getTodayTasks(state);
@@ -507,6 +645,7 @@ export function createRenderers(app) {
         }
 
         renderLowEnergyPanel(state, todayTasks, isSosView);
+        renderEasyPatternPanel(state, isSosView);
         renderInboxUi();
         renderPersistenceStatus();
 
@@ -686,7 +825,10 @@ export function createRenderers(app) {
                 taskEl.dataset.taskId = task.id;
                 taskEl.innerHTML = `
                     <div class="weekly-task-text">${escapeHtml(task.text)}</div>
-                    <div class="weekly-task-weight">${task.weight}</div>
+                    <div class="weekly-task-actions">
+                        <div class="weekly-task-weight">${task.weight}</div>
+                        <button class="delete-btn weekly-task-delete-btn" title="Удалить задачу" data-action="weekly-delete-task" data-task-id="${task.id}">&times;</button>
+                    </div>
                 `;
                 tasksContainer.appendChild(taskEl);
             });

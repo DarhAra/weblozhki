@@ -37,6 +37,42 @@ function resolveDatabasePath(rootDir, configuredPath) {
     return path.join(rootDir, configuredPath);
 }
 
+function hasColumn(db, tableName, columnName) {
+    const columns = db.prepare(`PRAGMA table_info(${tableName})`).all();
+    return columns.some(column => column.name === columnName);
+}
+
+function ensureUserColumns(db) {
+    const userColumns = [
+        ['name', "TEXT NOT NULL DEFAULT ''"],
+        ['updated_at', "TEXT NOT NULL DEFAULT ''"],
+        ['password_changed_at', "TEXT NOT NULL DEFAULT ''"],
+    ];
+
+    userColumns.forEach(([columnName, definition]) => {
+        if (!hasColumn(db, 'users', columnName)) {
+            db.exec(`ALTER TABLE users ADD COLUMN ${columnName} ${definition}`);
+        }
+    });
+
+    db.prepare(`
+        UPDATE users
+        SET
+            name = CASE
+                WHEN trim(COALESCE(name, '')) = '' THEN substr(email, 1, instr(email, '@') - 1)
+                ELSE name
+            END,
+            updated_at = CASE
+                WHEN trim(COALESCE(updated_at, '')) = '' THEN created_at
+                ELSE updated_at
+            END,
+            password_changed_at = CASE
+                WHEN trim(COALESCE(password_changed_at, '')) = '' THEN created_at
+                ELSE password_changed_at
+            END
+    `).run();
+}
+
 function initSchema(db) {
     db.pragma('foreign_keys = ON');
 
@@ -46,7 +82,10 @@ function initSchema(db) {
             email TEXT NOT NULL UNIQUE,
             password_salt TEXT NOT NULL,
             password_hash TEXT NOT NULL,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            name TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT '',
+            password_changed_at TEXT NOT NULL DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS user_states (
@@ -61,7 +100,35 @@ function initSchema(db) {
             state_json TEXT NOT NULL,
             updated_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS sessions (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            expires_at TEXT NOT NULL,
+            revoked_at TEXT,
+            user_agent TEXT NOT NULL DEFAULT '',
+            ip_hash TEXT NOT NULL DEFAULT '',
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS password_reset_tokens (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            token_hash TEXT NOT NULL UNIQUE,
+            expires_at TEXT NOT NULL,
+            used_at TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
+        CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
     `);
+
+    ensureUserColumns(db);
 }
 
 function migrateLegacyJsonFiles(db, paths) {
@@ -70,8 +137,26 @@ function migrateLegacyJsonFiles(db, paths) {
         const legacyUsers = readJsonFile(paths.userFile);
         if (Array.isArray(legacyUsers)) {
             const insertUser = db.prepare(`
-                INSERT OR IGNORE INTO users (id, email, password_salt, password_hash, created_at)
-                VALUES (@id, @email, @password_salt, @password_hash, @created_at)
+                INSERT OR IGNORE INTO users (
+                    id,
+                    email,
+                    password_salt,
+                    password_hash,
+                    created_at,
+                    name,
+                    updated_at,
+                    password_changed_at
+                )
+                VALUES (
+                    @id,
+                    @email,
+                    @password_salt,
+                    @password_hash,
+                    @created_at,
+                    @name,
+                    @updated_at,
+                    @password_changed_at
+                )
             `);
 
             const transaction = db.transaction(users => {
@@ -86,6 +171,9 @@ function migrateLegacyJsonFiles(db, paths) {
                         password_salt: user.passwordSalt,
                         password_hash: user.passwordHash,
                         created_at: user.createdAt,
+                        name: typeof user.name === 'string' ? user.name : '',
+                        updated_at: user.updatedAt || user.createdAt,
+                        password_changed_at: user.passwordChangedAt || user.createdAt,
                     });
                 });
             });

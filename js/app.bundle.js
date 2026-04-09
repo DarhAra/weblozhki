@@ -35,14 +35,47 @@
       authForm: doc.getElementById("auth-form"),
       authLoginModeBtn: doc.getElementById("auth-login-mode-btn"),
       authRegisterModeBtn: doc.getElementById("auth-register-mode-btn"),
+      authNameField: doc.getElementById("auth-name-field"),
+      authName: doc.getElementById("auth-name"),
       authEmail: doc.getElementById("auth-email"),
       authPassword: doc.getElementById("auth-password"),
+      authPasswordConfirmField: doc.getElementById("auth-password-confirm-field"),
+      authPasswordConfirm: doc.getElementById("auth-password-confirm"),
+      authNotice: doc.getElementById("auth-notice"),
+      authForgotPasswordBtn: doc.getElementById("auth-forgot-password-btn"),
       authError: doc.getElementById("auth-error"),
       authSubmitBtn: doc.getElementById("auth-submit-btn"),
+      forgotPasswordModal: doc.getElementById("forgot-password-modal"),
+      closeForgotPasswordBtn: doc.getElementById("close-forgot-password-btn"),
+      forgotPasswordForm: doc.getElementById("forgot-password-form"),
+      forgotPasswordEmail: doc.getElementById("forgot-password-email"),
+      forgotPasswordError: doc.getElementById("forgot-password-error"),
+      forgotPasswordMessage: doc.getElementById("forgot-password-message"),
+      forgotPasswordSubmitBtn: doc.getElementById("forgot-password-submit-btn"),
+      forgotPasswordCancelBtn: doc.getElementById("forgot-password-cancel-btn"),
+      accountNameValue: doc.getElementById("account-name-value"),
+      accountCreatedValue: doc.getElementById("account-created-value"),
+      accountProfileForm: doc.getElementById("account-profile-form"),
+      accountProfileName: doc.getElementById("account-profile-name"),
+      accountProfileEmail: doc.getElementById("account-profile-email"),
+      accountProfileError: doc.getElementById("account-profile-error"),
+      accountProfileMessage: doc.getElementById("account-profile-message"),
+      accountProfileSubmitBtn: doc.getElementById("account-profile-submit-btn"),
+      openChangePasswordBtn: doc.getElementById("open-change-password-btn"),
       accountEmailValue: doc.getElementById("account-email-value"),
       openAccountBtn: doc.getElementById("open-account-btn"),
       closeAccountBtn: doc.getElementById("close-account-btn"),
       accountLogoutBtn: doc.getElementById("account-logout-btn"),
+      changePasswordModal: doc.getElementById("change-password-modal"),
+      closeChangePasswordBtn: doc.getElementById("close-change-password-btn"),
+      changePasswordForm: doc.getElementById("change-password-form"),
+      currentPasswordInput: doc.getElementById("current-password-input"),
+      newPasswordInput: doc.getElementById("new-password-input"),
+      confirmNewPasswordInput: doc.getElementById("confirm-new-password-input"),
+      changePasswordError: doc.getElementById("change-password-error"),
+      changePasswordMessage: doc.getElementById("change-password-message"),
+      changePasswordSubmitBtn: doc.getElementById("change-password-submit-btn"),
+      changePasswordCancelBtn: doc.getElementById("change-password-cancel-btn"),
       energyInput: doc.getElementById("energy-input"),
       energyDisplay: doc.getElementById("energy-display"),
       startDayBtn: doc.getElementById("start-day-btn"),
@@ -60,6 +93,7 @@
       balanceMessageContainer: doc.getElementById("balance-message-container"),
       balanceMessageAvatar: doc.getElementById("balance-message-avatar"),
       balanceMessage: doc.getElementById("balance-message"),
+      easyPatternPanel: doc.getElementById("easy-pattern-panel"),
       openSosBtn: doc.getElementById("open-sos-btn"),
       sosView: doc.getElementById("sos-view"),
       sosViewCaption: doc.getElementById("sos-view-caption"),
@@ -214,6 +248,10 @@
       date,
       usedSos: false,
       sosDestination: null,
+      easyPatternDismissed: false,
+      easyPatternShown: false,
+      easyPatternApplied: false,
+      easyPatternLastTrigger: null,
       lowEnergyPromptHandled: false,
       lowEnergyDayApplied: false,
       lowEnergyKeptTaskId: null,
@@ -1323,6 +1361,232 @@
     return assignedTask;
   }
 
+  // js/domain/easy-pattern.js
+  var EASY_PATTERN_SCENARIOS = {
+    SIMPLIFY_DAY: "simplify-day",
+    KEEP_MAIN: "keep-main",
+    ADD_RESOURCE: "add-resource"
+  };
+  var NOTICEABLE_LOW_ENERGY_LOAD = 20;
+  var RESOURCE_SCENARIO = EASY_PATTERN_SCENARIOS.ADD_RESOURCE;
+  function isBreakdownParentHidden2(task) {
+    return Boolean((task == null ? void 0 : task.isBreakdownParent) && (task == null ? void 0 : task.isHiddenFromMainList));
+  }
+  function refreshBreakdownGroup2(parentTask, state) {
+    if (!(parentTask == null ? void 0 : parentTask.isBreakdownParent) || !Array.isArray(parentTask.breakdownChildIds)) {
+      return;
+    }
+    let currentVisibleStepId = null;
+    parentTask.breakdownChildIds.forEach((childId) => {
+      const childTask = state.tasks.find((task) => task.id === childId);
+      if (!childTask) return;
+      const isEligibleCurrentStep = !childTask.completed && getTaskStorageStatus(childTask) === TASK_STORAGE.ACTIVE;
+      if (!isEligibleCurrentStep || currentVisibleStepId) {
+        childTask.isCurrentBreakdownStep = false;
+        return;
+      }
+      childTask.isCurrentBreakdownStep = true;
+      currentVisibleStepId = childTask.id;
+    });
+  }
+  function refreshAllBreakdownGroups2(state) {
+    state.tasks.filter((task) => task.isBreakdownParent).forEach((parentTask) => refreshBreakdownGroup2(parentTask, state));
+  }
+  function getSortedOpenRegularTodayTasks(state, today = getLocalDateString()) {
+    const todayTaskIds = getOpenRegularTodayTasks(state, today).map((task) => task.id);
+    const taskOrder = new Map(todayTaskIds.map((id, index) => [id, index]));
+    return [...getOpenRegularTodayTasks(state, today)].sort((left, right) => {
+      var _a, _b;
+      const weightDiff = (left.weight || 0) - (right.weight || 0);
+      if (weightDiff !== 0) {
+        return weightDiff;
+      }
+      return ((_a = taskOrder.get(left.id)) != null ? _a : Number.MAX_SAFE_INTEGER) - ((_b = taskOrder.get(right.id)) != null ? _b : Number.MAX_SAFE_INTEGER);
+    });
+  }
+  function getTaskIdsToKeep(state, scenario, today = getLocalDateString()) {
+    const sortedTasks = getSortedOpenRegularTodayTasks(state, today);
+    if (sortedTasks.length === 0) {
+      return [];
+    }
+    if (scenario === EASY_PATTERN_SCENARIOS.SIMPLIFY_DAY) {
+      return sortedTasks.slice(0, sortedTasks.length >= 2 ? 2 : 1).map((task) => task.id);
+    }
+    if (scenario === EASY_PATTERN_SCENARIOS.KEEP_MAIN) {
+      return sortedTasks.slice(0, 3).map((task) => task.id);
+    }
+    return [];
+  }
+  function getOpenRegularTodaySummary(state, today = getLocalDateString()) {
+    const openTasks = getOpenRegularTodayTasks(state, today);
+    const plannedWeight = openTasks.reduce((sum, task) => sum + (task.weight || 0), 0);
+    return {
+      openTasks,
+      openCount: openTasks.length,
+      plannedWeight
+    };
+  }
+  function getEasyPatternTrigger(state, today = getLocalDateString()) {
+    if (!state || state.lastDate !== today || state.energyBudget === null) {
+      return null;
+    }
+    const currentDayMeta = state.currentDayMeta || {};
+    if (currentDayMeta.date !== today) {
+      return null;
+    }
+    if (currentDayMeta.easyPatternDismissed || currentDayMeta.easyPatternApplied || currentDayMeta.lowEnergyDayApplied) {
+      return null;
+    }
+    const { openCount, plannedWeight } = getOpenRegularTodaySummary(state, today);
+    if (openCount === 0) {
+      return null;
+    }
+    if (plannedWeight > state.energyBudget) {
+      return "overload";
+    }
+    if (state.energyBudget <= 30 && plannedWeight >= NOTICEABLE_LOW_ENERGY_LOAD) {
+      return "low-energy";
+    }
+    return null;
+  }
+  function shouldOfferEasyPattern(state, today = getLocalDateString()) {
+    return Boolean(getEasyPatternTrigger(state, today));
+  }
+  function getEasyPatternMessage(trigger) {
+    if (trigger === "low-energy") {
+      return "Похоже, сил сегодня немного. Можно мягко упростить день, чтобы он не давил.";
+    }
+    return "Сегодня план выглядит плотно. Если хочешь, я помогу оставить только посильное.";
+  }
+  function getSuggestedEasyPatternResource(state, today = getLocalDateString(), currentResourceId = null) {
+    if (!state || !Array.isArray(state.resources) || state.resources.length === 0) {
+      return null;
+    }
+    const busyResourceTexts = new Set(
+      getTodayTasks(state, today).filter((task) => task.isResource && getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE).map((task) => task.text)
+    );
+    const availableResources = state.resources.filter((resource) => !busyResourceTexts.has(resource.text));
+    if (availableResources.length === 0) {
+      return null;
+    }
+    if (!currentResourceId) {
+      return availableResources[0];
+    }
+    const currentIndex = availableResources.findIndex((resource) => resource.id === currentResourceId);
+    if (currentIndex === -1) {
+      return availableResources[0];
+    }
+    return availableResources[(currentIndex + 1) % availableResources.length];
+  }
+  function previewEasyPatternScenario(state, scenario, today = getLocalDateString(), options = {}) {
+    if (scenario === RESOURCE_SCENARIO) {
+      const resource = getSuggestedEasyPatternResource(state, today, options.resourceId || null);
+      return {
+        scenario,
+        keepCount: 0,
+        moveCount: 0,
+        addCount: resource ? 1 : 0,
+        resource,
+        isAvailable: Boolean(resource)
+      };
+    }
+    const openTasks = getOpenRegularTodayTasks(state, today);
+    const keepIds = new Set(getTaskIdsToKeep(state, scenario, today));
+    const keepCount = openTasks.filter((task) => keepIds.has(task.id)).length;
+    return {
+      scenario,
+      keepCount,
+      moveCount: Math.max(openTasks.length - keepCount, 0),
+      addCount: 0,
+      resource: null,
+      isAvailable: openTasks.length > 0
+    };
+  }
+  function markEasyPatternMeta(currentDayMeta, today, changes = {}) {
+    return {
+      ...currentDayMeta,
+      date: today,
+      ...changes
+    };
+  }
+  function dismissEasyPattern(store, today = getLocalDateString(), trigger = null) {
+    store.updateState((state) => {
+      var _a;
+      state.currentDayMeta = markEasyPatternMeta(state.currentDayMeta, today, {
+        easyPatternDismissed: true,
+        easyPatternShown: true,
+        easyPatternApplied: false,
+        easyPatternLastTrigger: trigger || ((_a = state.currentDayMeta) == null ? void 0 : _a.easyPatternLastTrigger) || null
+      });
+    });
+  }
+  function markEasyPatternShown(store, today = getLocalDateString(), trigger = null) {
+    store.updateState((state) => {
+      var _a;
+      state.currentDayMeta = markEasyPatternMeta(state.currentDayMeta, today, {
+        easyPatternShown: true,
+        easyPatternLastTrigger: trigger || ((_a = state.currentDayMeta) == null ? void 0 : _a.easyPatternLastTrigger) || null
+      });
+    });
+  }
+  function applyEasyPatternScenario(store, scenario, today = getLocalDateString(), options = {}) {
+    if (scenario === RESOURCE_SCENARIO) {
+      const state = store.getState();
+      const resource = getSuggestedEasyPatternResource(state, today, options.resourceId || null);
+      if (!resource) {
+        return null;
+      }
+      const createdTask = addResourceToDay(store, resource.id);
+      store.updateState((stateAfterResource) => {
+        var _a;
+        stateAfterResource.currentDayMeta = markEasyPatternMeta(stateAfterResource.currentDayMeta, today, {
+          easyPatternApplied: true,
+          easyPatternDismissed: true,
+          easyPatternShown: true,
+          easyPatternLastTrigger: options.trigger || ((_a = stateAfterResource.currentDayMeta) == null ? void 0 : _a.easyPatternLastTrigger) || null
+        });
+      });
+      return {
+        scenario,
+        keptTaskIds: [],
+        movedTaskIds: [],
+        resourceId: resource.id,
+        resourceTaskId: (createdTask == null ? void 0 : createdTask.id) || null
+      };
+    }
+    const keepIds = new Set(getTaskIdsToKeep(store.getState(), scenario, today));
+    const movedTaskIds = [];
+    store.updateState((state) => {
+      var _a;
+      state.tasks.forEach((task) => {
+        const shouldMoveToDeferred = getTaskStorageStatus(task) === TASK_STORAGE.ACTIVE && task.targetDate === today && !task.completed && !task.isResource && !isBreakdownParentHidden2(task) && !keepIds.has(task.id);
+        if (!shouldMoveToDeferred) {
+          return;
+        }
+        task.archivedFromDate = today;
+        task.targetDate = null;
+        task.completed = false;
+        task.storageStatus = TASK_STORAGE.DEFERRED;
+        task.isArchived = true;
+        movedTaskIds.push(task.id);
+      });
+      refreshAllBreakdownGroups2(state);
+      state.currentDayMeta = markEasyPatternMeta(state.currentDayMeta, today, {
+        easyPatternApplied: true,
+        easyPatternDismissed: true,
+        easyPatternShown: true,
+        easyPatternLastTrigger: options.trigger || ((_a = state.currentDayMeta) == null ? void 0 : _a.easyPatternLastTrigger) || null
+      });
+    });
+    return {
+      scenario,
+      keptTaskIds: [...keepIds],
+      movedTaskIds,
+      resourceId: null,
+      resourceTaskId: null
+    };
+  }
+
   // js/domain/inbox.js
   function createInboxId() {
     return `inbox_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
@@ -1465,9 +1729,11 @@
         <div class="task-main inline-edit-main">
             <input class="inline-edit-input" type="text" value="${escapeHtml(editTaskState.text)}" data-action="edit-update-text" data-task-id="${task.id}">
         </div>
-        ${weightSelectHtml}
-        <button class="task-breakdown-btn" type="button" data-action="edit-save-task" data-task-id="${task.id}">Сохранить</button>
-        <button class="text-btn inline-edit-cancel" type="button" data-action="edit-cancel-task" data-task-id="${task.id}">Отмена</button>
+        <div class="inline-edit-actions">
+            ${weightSelectHtml}
+            <button class="task-breakdown-btn" type="button" data-action="edit-save-task" data-task-id="${task.id}">Сохранить</button>
+            <button class="text-btn inline-edit-cancel" type="button" data-action="edit-cancel-task" data-task-id="${task.id}">Отмена</button>
+        </div>
     `;
   }
   function renderTaskElement(task, editTaskState = null) {
@@ -1560,28 +1826,54 @@
       elements.storageStatus.title = isServerMode ? "Данные читаются и сохраняются через локальный сервер." : "Сервер сейчас недоступен, поэтому приложение временно работает через localStorage.";
     }
     function renderAuthScreen() {
+      var _a, _b, _c, _d, _e, _f, _g;
       const auth = runtime.auth || {
         status: "guest",
         mode: "login",
-        error: ""
+        error: "",
+        notice: ""
       };
       const isRegisterMode = auth.mode === "register";
+      const isResetMode = auth.mode === "reset-password";
       const isChecking = auth.status === "checking";
       const isSubmitting = auth.status === "submitting";
       const isBusy = isChecking || isSubmitting;
-      elements.authTitle.textContent = isRegisterMode ? "Создать профиль" : "Вход в своё пространство";
-      elements.authSubtitle.textContent = isRegisterMode ? "Аккаунт нужен только для того, чтобы ваши данные жили в личном пространстве." : "Здесь будут жить ваши задачи, ритм дня и история самочувствия.";
-      elements.authLoading.classList.toggle("hidden", !isChecking);
-      elements.authModeSwitcher.classList.toggle("hidden", isChecking);
-      elements.authLoginModeBtn.classList.toggle("is-active", !isRegisterMode);
-      elements.authRegisterModeBtn.classList.toggle("is-active", isRegisterMode);
-      elements.authEmail.disabled = isBusy;
-      elements.authPassword.disabled = isBusy;
-      elements.authSubmitBtn.disabled = isBusy;
-      elements.authSubmitBtn.textContent = isChecking ? "Проверяем вход..." : isSubmitting ? isRegisterMode ? "Создаём аккаунт..." : "Входим..." : isRegisterMode ? "Создать аккаунт" : "Войти";
-      elements.authPassword.autocomplete = isRegisterMode ? "new-password" : "current-password";
-      elements.authError.textContent = auth.error || "";
-      elements.authError.classList.toggle("hidden", !auth.error);
+      elements.authTitle.textContent = isResetMode ? "Придумай новый пароль" : isRegisterMode ? "Создать аккаунт" : "Вход в аккаунт";
+      elements.authSubtitle.textContent = isResetMode ? "Ссылка уже открыта. Остаётся только задать новый пароль для своего аккаунта." : isRegisterMode ? "Полноценный аккаунт хранит твои личные данные, настройки и историю только для тебя." : "Войдите один раз, и приложение будет помнить ваш аккаунт между визитами.";
+      (_a = elements.authLoading) == null ? void 0 : _a.classList.toggle("hidden", !isChecking);
+      (_b = elements.authModeSwitcher) == null ? void 0 : _b.classList.toggle("hidden", isChecking || isResetMode);
+      (_c = elements.authLoginModeBtn) == null ? void 0 : _c.classList.toggle("is-active", !isRegisterMode && !isResetMode);
+      (_d = elements.authRegisterModeBtn) == null ? void 0 : _d.classList.toggle("is-active", isRegisterMode);
+      (_e = elements.authNameField) == null ? void 0 : _e.classList.toggle("hidden", !isRegisterMode);
+      (_f = elements.authPasswordConfirmField) == null ? void 0 : _f.classList.toggle("hidden", !isRegisterMode && !isResetMode);
+      (_g = elements.authForgotPasswordBtn) == null ? void 0 : _g.classList.toggle("hidden", isRegisterMode || isResetMode);
+      if (elements.authName) {
+        elements.authName.disabled = isBusy || !isRegisterMode;
+        elements.authName.required = isRegisterMode;
+      }
+      if (elements.authEmail) {
+        elements.authEmail.disabled = isBusy || isResetMode;
+      }
+      if (elements.authPassword) {
+        elements.authPassword.disabled = isBusy;
+        elements.authPassword.autocomplete = isRegisterMode || isResetMode ? "new-password" : "current-password";
+      }
+      if (elements.authPasswordConfirm) {
+        elements.authPasswordConfirm.disabled = isBusy || !isRegisterMode && !isResetMode;
+        elements.authPasswordConfirm.required = isRegisterMode || isResetMode;
+      }
+      if (elements.authSubmitBtn) {
+        elements.authSubmitBtn.disabled = isBusy;
+      }
+      elements.authSubmitBtn.textContent = isChecking ? "Проверяем вход..." : isSubmitting ? isResetMode ? "Сохраняем пароль..." : isRegisterMode ? "Создаём аккаунт..." : "Входим..." : isResetMode ? "Сохранить новый пароль" : isRegisterMode ? "Создать аккаунт" : "Войти";
+      if (elements.authNotice) {
+        elements.authNotice.textContent = auth.notice || "";
+        elements.authNotice.classList.toggle("hidden", !auth.notice);
+      }
+      if (elements.authError) {
+        elements.authError.textContent = auth.error || "";
+        elements.authError.classList.toggle("hidden", !auth.error);
+      }
     }
     function renderVoiceUi() {
       const voice = runtime.voice;
@@ -1807,6 +2099,82 @@
         elements.lowEnergyResourceText.textContent = resourceTask.text;
       }
     }
+    function getEasyPatternScenarioLabel(scenario) {
+      if (scenario === EASY_PATTERN_SCENARIOS.SIMPLIFY_DAY) {
+        return "Облегчить день";
+      }
+      if (scenario === EASY_PATTERN_SCENARIOS.KEEP_MAIN) {
+        return "Оставить главное";
+      }
+      return "Добавить ресурс";
+    }
+    function renderEasyPatternPanel(state, isSosView) {
+      var _a;
+      const today = getLocalDateString();
+      const easyPattern = runtime.easyPattern || {};
+      const trigger = easyPattern.trigger || getEasyPatternTrigger(state, today);
+      const hasFeedback = Boolean(easyPattern.feedback);
+      const canOfferPattern = !isSosView && !((_a = state.currentDayMeta) == null ? void 0 : _a.lowEnergyDayApplied) && shouldOfferEasyPattern(state, today);
+      const shouldShow = hasFeedback || canOfferPattern;
+      elements.easyPatternPanel.classList.toggle("hidden", !shouldShow);
+      if (!shouldShow) {
+        elements.easyPatternPanel.innerHTML = "";
+        return;
+      }
+      if (hasFeedback) {
+        elements.easyPatternPanel.innerHTML = `
+                <div class="easy-pattern-card easy-pattern-card-feedback">
+                    <div class="easy-pattern-header">
+                        <span class="easy-pattern-kicker">Мягкое упрощение</span>
+                    </div>
+                    <p class="easy-pattern-message">${easyPattern.feedback}</p>
+                    <div class="easy-pattern-actions">
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-clear-feedback">Хорошо</button>
+                    </div>
+                </div>
+            `;
+        return;
+      }
+      const selectedScenario = easyPattern.selectedScenario || null;
+      const preview = selectedScenario ? easyPattern.preview || previewEasyPatternScenario(state, selectedScenario, today, {
+        resourceId: easyPattern.resourceSuggestionId || null
+      }) : null;
+      const resourcePreviewText = (preview == null ? void 0 : preview.resource) ? escapeHtml(preview.resource.text) : "Сейчас не нашлось свободной радости без дубля.";
+      elements.easyPatternPanel.innerHTML = `
+            <div class="easy-pattern-card">
+                <div class="easy-pattern-header">
+                    <span class="easy-pattern-kicker">Мягкая помощь на сегодня</span>
+                </div>
+                <p class="easy-pattern-message">${getEasyPatternMessage(trigger)}</p>
+                ${selectedScenario ? `
+                    <div class="easy-pattern-preview">
+                        <div class="easy-pattern-preview-title">${getEasyPatternScenarioLabel(selectedScenario)}</div>
+                        ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? `
+                                <div class="easy-pattern-preview-line">Добавится: ${(preview == null ? void 0 : preview.addCount) || 0} ресурс</div>
+                                <div class="easy-pattern-preview-resource">${resourcePreviewText}</div>
+                            ` : `
+                                <div class="easy-pattern-preview-line">Останется: ${(preview == null ? void 0 : preview.keepCount) || 0} задач</div>
+                                <div class="easy-pattern-preview-line">Перенесётся: ${(preview == null ? void 0 : preview.moveCount) || 0} задач</div>
+                            `}
+                    </div>
+                    <div class="easy-pattern-actions">
+                        ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? `
+                            <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-cycle-resource" ${(preview == null ? void 0 : preview.isAvailable) ? "" : "disabled"}>Другое</button>
+                        ` : ""}
+                        <button class="primary-btn easy-pattern-btn" type="button" data-action="easy-pattern-confirm" ${(preview == null ? void 0 : preview.isAvailable) ? "" : "disabled"}>${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? "Добавить" : "Применить"}</button>
+                        <button class="text-btn easy-pattern-text-btn" type="button" data-action="easy-pattern-back">Назад</button>
+                    </div>
+                ` : `
+                    <div class="easy-pattern-actions easy-pattern-actions-grid">
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-select" data-scenario="${EASY_PATTERN_SCENARIOS.SIMPLIFY_DAY}">Облегчить день</button>
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-select" data-scenario="${EASY_PATTERN_SCENARIOS.KEEP_MAIN}">Оставить главное</button>
+                        <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-select" data-scenario="${EASY_PATTERN_SCENARIOS.ADD_RESOURCE}">Добавить ресурс</button>
+                        <button class="text-btn easy-pattern-text-btn" type="button" data-action="easy-pattern-dismiss">Не сейчас</button>
+                    </div>
+                `}
+            </div>
+        `;
+    }
     function renderMainScreen() {
       var _a;
       const state = store.getState();
@@ -1833,6 +2201,7 @@
         elements.selfCareList.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px; text-align: center; padding: 8px;">Добавьте ресурс из «Моих радостей» ☕</div>';
       }
       renderLowEnergyPanel(state, todayTasks, isSosView);
+      renderEasyPatternPanel(state, isSosView);
       renderInboxUi();
       renderPersistenceStatus();
       elements.balanceSection.classList.toggle("hidden", isSosView);
@@ -1986,7 +2355,10 @@
           taskEl.dataset.taskId = task.id;
           taskEl.innerHTML = `
                     <div class="weekly-task-text">${escapeHtml(task.text)}</div>
-                    <div class="weekly-task-weight">${task.weight}</div>
+                    <div class="weekly-task-actions">
+                        <div class="weekly-task-weight">${task.weight}</div>
+                        <button class="delete-btn weekly-task-delete-btn" title="Удалить задачу" data-action="weekly-delete-task" data-task-id="${task.id}">&times;</button>
+                    </div>
                 `;
           tasksContainer.appendChild(taskEl);
         });
@@ -2223,6 +2595,8 @@
       elements.archiveModal.classList.add("hidden");
       elements.completedModal.classList.add("hidden");
       elements.accountModal.classList.add("hidden");
+      elements.forgotPasswordModal.classList.add("hidden");
+      elements.changePasswordModal.classList.add("hidden");
       elements.templatesModal.classList.add("hidden");
       elements.templateAutoModal.classList.add("hidden");
       elements.breakdownIntroModal.classList.add("hidden");
@@ -2784,6 +3158,7 @@
     const breakdownState = runtime.breakdown;
     const editTaskState = runtime.editTask;
     const copyTaskState = runtime.copyTask;
+    const easyPatternState = runtime.easyPattern;
     const templateAutoPrompt = runtime.templateAutoPrompt;
     const LOW_ENERGY_TEMPLATE_ID = "tpl_4";
     const breakdownRememberLabel = (_a = elements.breakdownRememberRow) == null ? void 0 : _a.querySelector("span");
@@ -2902,18 +3277,136 @@
       elements.copyTaskModal.classList.remove("hidden");
       setTimeout(() => elements.copyTaskDate.focus(), 0);
     }
+    function resetEasyPatternState() {
+      easyPatternState.selectedScenario = null;
+      easyPatternState.trigger = null;
+      easyPatternState.preview = null;
+      easyPatternState.resourceSuggestionId = null;
+      easyPatternState.feedback = "";
+    }
+    function clearEasyPatternSelection({ keepFeedback = true } = {}) {
+      easyPatternState.selectedScenario = null;
+      easyPatternState.trigger = null;
+      easyPatternState.preview = null;
+      easyPatternState.resourceSuggestionId = null;
+      if (!keepFeedback) {
+        easyPatternState.feedback = "";
+      }
+    }
+    function selectEasyPatternScenario(scenario) {
+      var _a2, _b;
+      const today = getLocalDateString();
+      const state = store.getState();
+      const trigger = getEasyPatternTrigger(state, today);
+      if (!trigger || !shouldOfferEasyPattern(state, today)) {
+        clearEasyPatternSelection({ keepFeedback: false });
+        app.renderers.renderMainScreen();
+        return;
+      }
+      let resourceSuggestionId = null;
+      if (scenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE) {
+        resourceSuggestionId = ((_a2 = getSuggestedEasyPatternResource(state, today)) == null ? void 0 : _a2.id) || null;
+      }
+      easyPatternState.selectedScenario = scenario;
+      easyPatternState.trigger = trigger;
+      easyPatternState.resourceSuggestionId = resourceSuggestionId;
+      easyPatternState.preview = previewEasyPatternScenario(state, scenario, today, {
+        resourceId: resourceSuggestionId
+      });
+      easyPatternState.feedback = "";
+      if (!((_b = state.currentDayMeta) == null ? void 0 : _b.easyPatternShown)) {
+        markEasyPatternShown(store, today, trigger);
+      }
+      app.renderers.renderMainScreen();
+    }
+    function cycleEasyPatternResource() {
+      const today = getLocalDateString();
+      const state = store.getState();
+      const nextResource = getSuggestedEasyPatternResource(state, today, easyPatternState.resourceSuggestionId || null);
+      easyPatternState.resourceSuggestionId = (nextResource == null ? void 0 : nextResource.id) || null;
+      easyPatternState.preview = previewEasyPatternScenario(state, EASY_PATTERN_SCENARIOS.ADD_RESOURCE, today, {
+        resourceId: easyPatternState.resourceSuggestionId
+      });
+      app.renderers.renderMainScreen();
+    }
+    function applySelectedEasyPatternScenario() {
+      const scenario = easyPatternState.selectedScenario;
+      if (!scenario) return;
+      const today = getLocalDateString();
+      const result = applyEasyPatternScenario(store, scenario, today, {
+        resourceId: easyPatternState.resourceSuggestionId || null,
+        trigger: easyPatternState.trigger || getEasyPatternTrigger(store.getState(), today)
+      });
+      if (!result) return;
+      clearEasyPatternSelection({ keepFeedback: true });
+      easyPatternState.feedback = scenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? "Готово. Добавили одну тихую опору на сегодня." : "Готово. Теперь день выглядит спокойнее.";
+      renderAllTaskViews();
+    }
+    function dismissTodayEasyPattern() {
+      const today = getLocalDateString();
+      dismissEasyPattern(store, today, easyPatternState.trigger || getEasyPatternTrigger(store.getState(), today));
+      clearEasyPatternSelection({ keepFeedback: false });
+      app.renderers.renderMainScreen();
+    }
     function closeAppMenu() {
       elements.appMenuPopover.classList.add("hidden");
       elements.openAppMenuBtn.setAttribute("aria-expanded", "false");
     }
     function openAccountModal() {
-      var _a2, _b;
-      const currentEmail = ((_b = (_a2 = runtime.auth) == null ? void 0 : _a2.user) == null ? void 0 : _b.email) || "Email пока недоступен";
-      elements.accountEmailValue.textContent = currentEmail;
+      var _a2;
+      const currentUser = ((_a2 = runtime.auth) == null ? void 0 : _a2.user) || null;
+      elements.accountProfileName.value = (currentUser == null ? void 0 : currentUser.name) || "";
+      elements.accountProfileEmail.value = (currentUser == null ? void 0 : currentUser.email) || "";
+      authState.accountProfile.status = "idle";
+      authState.accountProfile.error = "";
+      authState.passwordChange.error = "";
+      authState.passwordChange.message = "";
+      elements.accountProfileError.textContent = "";
+      elements.accountProfileError.classList.add("hidden");
+      elements.accountProfileMessage.textContent = "";
+      elements.accountProfileMessage.classList.add("hidden");
       elements.accountModal.classList.remove("hidden");
     }
     function closeAccountModal() {
       elements.accountModal.classList.add("hidden");
+    }
+    function openForgotPasswordModal() {
+      if (!elements.forgotPasswordModal || !elements.forgotPasswordEmail) {
+        authState.error = "Модальное окно восстановления пароля пока недоступно. Попробуйте позже.";
+        app.renderers.renderAuthScreen();
+        return;
+      }
+      authState.forgotPassword.status = "idle";
+      authState.forgotPassword.error = "";
+      authState.forgotPassword.message = "";
+      elements.forgotPasswordEmail.value = elements.authEmail.value.trim();
+      elements.forgotPasswordError.textContent = "";
+      elements.forgotPasswordError.classList.add("hidden");
+      elements.forgotPasswordMessage.textContent = "";
+      elements.forgotPasswordMessage.classList.add("hidden");
+      elements.forgotPasswordModal.classList.remove("hidden");
+    }
+    function closeForgotPasswordModal() {
+      elements.forgotPasswordModal.classList.add("hidden");
+    }
+    function openChangePasswordModal() {
+      if (!elements.changePasswordModal || !elements.currentPasswordInput) {
+        return;
+      }
+      authState.passwordChange.status = "idle";
+      authState.passwordChange.error = "";
+      authState.passwordChange.message = "";
+      elements.currentPasswordInput.value = "";
+      elements.newPasswordInput.value = "";
+      elements.confirmNewPasswordInput.value = "";
+      elements.changePasswordError.textContent = "";
+      elements.changePasswordError.classList.add("hidden");
+      elements.changePasswordMessage.textContent = "";
+      elements.changePasswordMessage.classList.add("hidden");
+      elements.changePasswordModal.classList.remove("hidden");
+    }
+    function closeChangePasswordModal() {
+      elements.changePasswordModal.classList.add("hidden");
     }
     function toggleAppMenu() {
       const shouldOpen = elements.appMenuPopover.classList.contains("hidden");
@@ -2924,33 +3417,85 @@
       if (!preserveEmail) {
         elements.authEmail.value = "";
       }
+      elements.authName.value = "";
       elements.authPassword.value = "";
+      elements.authPasswordConfirm.value = "";
     }
     function switchAuthMode(mode) {
       authState.mode = mode === "register" ? "register" : "login";
       authState.error = "";
+      authState.notice = "";
+      authState.resetToken = null;
       authState.status = "guest";
       app.renderers.renderAuthScreen();
     }
     async function submitAuthForm() {
+      const name = elements.authName.value.trim();
       const email = elements.authEmail.value.trim();
       const password = elements.authPassword.value;
-      if (!email || !password) {
-        authState.error = "Заполни, пожалуйста, email и пароль.";
+      const passwordConfirm = elements.authPasswordConfirm.value;
+      if (authState.mode === "reset-password") {
+        if (!password || !passwordConfirm) {
+          authState.error = "Р—Р°РїРѕР»РЅРё РЅРѕРІС‹Р№ РїР°СЂРѕР»СЊ Рё РµРіРѕ РїРѕРґС‚РІРµСЂР¶РґРµРЅРёРµ.";
+          authState.status = "guest";
+          app.renderers.renderAuthScreen();
+          return;
+        }
+        if (password !== passwordConfirm) {
+          authState.error = "РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.";
+          authState.status = "guest";
+          app.renderers.renderAuthScreen();
+          return;
+        }
+        authState.status = "submitting";
+        authState.error = "";
+        authState.notice = "";
+        app.renderers.renderAuthScreen();
+        try {
+          await app.auth.resetPassword({
+            token: authState.resetToken,
+            password
+          });
+          authState.mode = "login";
+          authState.resetToken = null;
+          authState.status = "guest";
+          authState.notice = "РџР°СЂРѕР»СЊ РѕР±РЅРѕРІР»С‘РЅ. РўРµРїРµСЂСЊ РјРѕР¶РЅРѕ РІРѕР№С‚Рё СЃ РЅРѕРІС‹Рј РїР°СЂРѕР»РµРј.";
+          authState.error = "";
+          resetAuthForm({ preserveEmail: false });
+          if (typeof window !== "undefined") {
+            window.history.replaceState({}, "", window.location.pathname);
+          }
+          app.renderers.renderAuthScreen();
+        } catch (error) {
+          authState.status = "guest";
+          authState.error = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕР±РЅРѕРІРёС‚СЊ РїР°СЂРѕР»СЊ. РџРѕРїСЂРѕР±СѓР№ РµС‰С‘ СЂР°Р· С‡СѓС‚СЊ РїРѕР·Р¶Рµ.";
+          app.renderers.renderAuthScreen();
+        }
+        return;
+      }
+      if (!email || !password || authState.mode === "register" && !name) {
+        authState.error = "Р—Р°РїРѕР»РЅРё, РїРѕР¶Р°Р»СѓР№СЃС‚Р°, РІСЃРµ РѕР±СЏР·Р°С‚РµР»СЊРЅС‹Рµ РїРѕР»СЏ.";
+        authState.status = "guest";
+        app.renderers.renderAuthScreen();
+        return;
+      }
+      if (authState.mode === "register" && password !== passwordConfirm) {
+        authState.error = "РџР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.";
         authState.status = "guest";
         app.renderers.renderAuthScreen();
         return;
       }
       authState.status = "submitting";
       authState.error = "";
+      authState.notice = "";
       app.renderers.renderAuthScreen();
       try {
-        const user = authState.mode === "register" ? await app.auth.register({ email, password }) : await app.auth.login({ email, password });
+        const user = authState.mode === "register" ? await app.auth.register({ name, email, password }) : await app.auth.login({ email, password });
         resetAuthForm();
         await app.startAuthenticatedFlow(user);
       } catch (error) {
         authState.status = "guest";
-        authState.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается продолжить. Попробуй ещё раз чуть позже.";
+        authState.error = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РїСЂРѕРґРѕР»Р¶РёС‚СЊ. РџРѕРїСЂРѕР±СѓР№ РµС‰С‘ СЂР°Р· С‡СѓС‚СЊ РїРѕР·Р¶Рµ.";
         app.renderers.renderAuthScreen();
       }
     }
@@ -3019,6 +3564,125 @@
       event.preventDefault();
       void submitAuthForm();
     });
+    if (elements.authForgotPasswordBtn) {
+      elements.authForgotPasswordBtn.addEventListener("click", () => {
+        openForgotPasswordModal();
+      });
+    }
+    if (elements.closeForgotPasswordBtn) {
+      elements.closeForgotPasswordBtn.addEventListener("click", () => {
+        closeForgotPasswordModal();
+      });
+    }
+    if (elements.forgotPasswordCancelBtn) {
+      elements.forgotPasswordCancelBtn.addEventListener("click", () => {
+        closeForgotPasswordModal();
+      });
+    }
+    if (elements.forgotPasswordForm) {
+      elements.forgotPasswordForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const email = elements.forgotPasswordEmail.value.trim();
+        if (!email) {
+          elements.forgotPasswordError.textContent = "РЈРєР°Р¶Рё email РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.";
+          elements.forgotPasswordError.classList.remove("hidden");
+          return;
+        }
+        elements.forgotPasswordError.classList.add("hidden");
+        elements.forgotPasswordMessage.classList.add("hidden");
+        elements.forgotPasswordSubmitBtn.disabled = true;
+        try {
+          const result = await app.auth.forgotPassword({ email });
+          elements.forgotPasswordMessage.textContent = (result == null ? void 0 : result.message) || "Р•СЃР»Рё С‚Р°РєРѕР№ Р°РєРєР°СѓРЅС‚ СЃСѓС‰РµСЃС‚РІСѓРµС‚, РїРёСЃСЊРјРѕ СѓР¶Рµ РѕС‚РїСЂР°РІР»РµРЅРѕ.";
+          elements.forgotPasswordMessage.classList.remove("hidden");
+        } catch (error) {
+          elements.forgotPasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕС‚РїСЂР°РІРёС‚СЊ РїРёСЃСЊРјРѕ РґР»СЏ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ.";
+          elements.forgotPasswordError.classList.remove("hidden");
+        } finally {
+          elements.forgotPasswordSubmitBtn.disabled = false;
+        }
+      });
+    }
+    if (elements.accountProfileForm) {
+      elements.accountProfileForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const name = elements.accountProfileName.value.trim();
+        const email = elements.accountProfileEmail.value.trim();
+        if (!name || !email) {
+          elements.accountProfileError.textContent = "Р—Р°РїРѕР»РЅРё РёРјСЏ Рё email.";
+          elements.accountProfileError.classList.remove("hidden");
+          return;
+        }
+        elements.accountProfileError.classList.add("hidden");
+        elements.accountProfileMessage.classList.add("hidden");
+        elements.accountProfileSubmitBtn.disabled = true;
+        try {
+          const user = await app.auth.updateProfile({ name, email });
+          authState.user = user;
+          elements.accountProfileMessage.textContent = "РџСЂРѕС„РёР»СЊ РѕР±РЅРѕРІР»С‘РЅ.";
+          elements.accountProfileMessage.classList.remove("hidden");
+        } catch (error) {
+          elements.accountProfileError.textContent = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РѕР±РЅРѕРІРёС‚СЊ РїСЂРѕС„РёР»СЊ.";
+          elements.accountProfileError.classList.remove("hidden");
+        } finally {
+          elements.accountProfileSubmitBtn.disabled = false;
+        }
+      });
+    }
+    if (elements.openChangePasswordBtn) {
+      elements.openChangePasswordBtn.addEventListener("click", () => {
+        openChangePasswordModal();
+      });
+    }
+    if (elements.closeChangePasswordBtn) {
+      elements.closeChangePasswordBtn.addEventListener("click", () => {
+        closeChangePasswordModal();
+      });
+    }
+    if (elements.changePasswordCancelBtn) {
+      elements.changePasswordCancelBtn.addEventListener("click", () => {
+        closeChangePasswordModal();
+      });
+    }
+    if (elements.changePasswordForm) {
+      elements.changePasswordForm.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const currentPassword = elements.currentPasswordInput.value;
+        const newPassword = elements.newPasswordInput.value;
+        const confirmPassword = elements.confirmNewPasswordInput.value;
+        if (!currentPassword || !newPassword || !confirmPassword) {
+          elements.changePasswordError.textContent = "Р—Р°РїРѕР»РЅРё РІСЃРµ РїРѕР»СЏ РґР»СЏ СЃРјРµРЅС‹ РїР°СЂРѕР»СЏ.";
+          elements.changePasswordError.classList.remove("hidden");
+          return;
+        }
+        if (newPassword !== confirmPassword) {
+          elements.changePasswordError.textContent = "РќРѕРІС‹Рµ РїР°СЂРѕР»Рё РЅРµ СЃРѕРІРїР°РґР°СЋС‚.";
+          elements.changePasswordError.classList.remove("hidden");
+          return;
+        }
+        elements.changePasswordError.classList.add("hidden");
+        elements.changePasswordMessage.classList.add("hidden");
+        elements.changePasswordSubmitBtn.disabled = true;
+        try {
+          await app.auth.changePassword({ currentPassword, newPassword });
+          closeChangePasswordModal();
+          closeAccountModal();
+          resetEasyPatternState();
+          store.setSessionContext({ authenticated: false, userId: null });
+          authState.user = null;
+          authState.mode = "login";
+          authState.notice = "РџР°СЂРѕР»СЊ РёР·РјРµРЅС‘РЅ. Р’РѕР№РґРё Р·Р°РЅРѕРІРѕ СЃ РЅРѕРІС‹Рј РїР°СЂРѕР»РµРј.";
+          authState.status = "guest";
+          resetAuthForm({ preserveEmail: false });
+          app.screens.showAuthScreen();
+        } catch (error) {
+          elements.changePasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ СЃРјРµРЅРёС‚СЊ РїР°СЂРѕР»СЊ.";
+          elements.changePasswordError.classList.remove("hidden");
+        } finally {
+          elements.changePasswordSubmitBtn.disabled = false;
+        }
+      });
+    }
     elements.appMenuPopover.addEventListener("click", (event) => {
       event.stopPropagation();
     });
@@ -3038,10 +3702,11 @@
     });
     elements.accountLogoutBtn.addEventListener("click", async () => {
       closeAccountModal();
+      resetEasyPatternState();
       try {
         await app.auth.logout();
       } catch (error) {
-        runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается выйти из аккаунта.";
+        runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "РЎРµР№С‡Р°СЃ РЅРµ РїРѕР»СѓС‡Р°РµС‚СЃСЏ РІС‹Р№С‚Рё РёР· Р°РєРєР°СѓРЅС‚Р°.";
       }
       store.setSessionContext({ authenticated: false, userId: null });
       authState.user = null;
@@ -3090,6 +3755,7 @@
       elements.lowEnergyModal.classList.remove("hidden");
     }
     function finalizeLowEnergyDecline() {
+      resetEasyPatternState();
       store.updateState((state) => {
         state.currentDayMeta = {
           ...state.currentDayMeta,
@@ -3106,6 +3772,7 @@
     }
     function finalizeLowEnergyAcceptance() {
       const today = getLocalDateString();
+      resetEasyPatternState();
       applyLowEnergyDay(store, today);
       addAllTemplateTasksToDay(store, LOW_ENERGY_TEMPLATE_ID, today);
       assignLowEnergyResource(store, { today });
@@ -3132,7 +3799,7 @@
           return;
         }
         if (!transcript) {
-          voiceState.voiceError = "Я ничего не расслышал. Можно попробовать ещё раз.";
+          voiceState.voiceError = "РЇ РЅРёС‡РµРіРѕ РЅРµ СЂР°СЃСЃР»С‹С€Р°Р». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰С‘ СЂР°Р·.";
           app.renderers.renderMainScreen();
           return;
         }
@@ -3142,7 +3809,7 @@
         const drafts = parseVoiceTranscript(transcript, getLocalDateString());
         voiceState.isProcessing = false;
         if (drafts.length === 0) {
-          openVoiceMessage("Не получилось собрать понятный черновик. Можно попробовать ещё раз или добавить задачу текстом.");
+          openVoiceMessage("РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ СЃРѕР±СЂР°С‚СЊ РїРѕРЅСЏС‚РЅС‹Р№ С‡РµСЂРЅРѕРІРёРє. РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰С‘ СЂР°Р· РёР»Рё РґРѕР±Р°РІРёС‚СЊ Р·Р°РґР°С‡Сѓ С‚РµРєСЃС‚РѕРј.");
           return;
         }
         openVoiceDraftModal(drafts, transcript);
@@ -3173,7 +3840,7 @@
           return;
         }
         if (!transcript) {
-          inboxState.error = "Я ничего не расслышал. Можно попробовать еще раз или записать мысль текстом.";
+          inboxState.error = "РЇ РЅРёС‡РµРіРѕ РЅРµ СЂР°СЃСЃР»С‹С€Р°Р». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РјС‹СЃР»СЊ С‚РµРєСЃС‚РѕРј.";
           app.renderers.renderMainScreen();
           return;
         }
@@ -3182,7 +3849,7 @@
         const drafts = parseInboxTranscript(transcript);
         inboxState.isProcessing = false;
         if (drafts.length === 0) {
-          openInboxVoiceMessage("Не получилось собрать понятный черновик мыслей. Можно попробовать еще раз или записать мысли текстом.");
+          openInboxVoiceMessage("РќРµ РїРѕР»СѓС‡РёР»РѕСЃСЊ СЃРѕР±СЂР°С‚СЊ РїРѕРЅСЏС‚РЅС‹Р№ С‡РµСЂРЅРѕРІРёРє РјС‹СЃР»РµР№. РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РјС‹СЃР»Рё С‚РµРєСЃС‚РѕРј.");
           return;
         }
         openInboxDraftModal(drafts);
@@ -3270,6 +3937,7 @@
     });
     elements.startDayBtn.addEventListener("click", () => {
       const energyBudget = parseInt(elements.energyInput.value, 10);
+      resetEasyPatternState();
       store.updateState((state) => {
         state.energyBudget = energyBudget;
         state.lastDate = getLocalDateString();
@@ -3472,7 +4140,7 @@
       addTask(store, { text: runtime.currentAdvice, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
       const originalText = elements.adviceAddBtn.textContent;
-      elements.adviceAddBtn.textContent = "Добавлено ✓";
+      elements.adviceAddBtn.textContent = "Добавлено";
       elements.adviceAddBtn.style.backgroundColor = "var(--primary-color)";
       elements.adviceAddBtn.style.color = "white";
       setTimeout(() => {
@@ -3484,7 +4152,7 @@
     });
     elements.openVoiceBtn.addEventListener("click", () => {
       if (!voiceState.isSupported) {
-        openVoiceMessage("Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.");
+        openVoiceMessage("Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ РІ СЌС‚РѕРј Р±СЂР°СѓР·РµСЂРµ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРµРЅ. РњРѕР¶РЅРѕ РїСЂРѕРґРѕР»Р¶РёС‚СЊ РѕР±С‹С‡РЅС‹Рј С‚РµРєСЃС‚РѕРІС‹Рј РІРІРѕРґРѕРј.");
         return;
       }
       if (voiceState.isListening) {
@@ -3506,7 +4174,7 @@
     });
     elements.openInboxVoiceBtn.addEventListener("click", () => {
       if (!inboxState.isSupported) {
-        openInboxVoiceMessage("Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.");
+        openInboxVoiceMessage("Р“РѕР»РѕСЃРѕРІРѕР№ РІРІРѕРґ РІ СЌС‚РѕРј Р±СЂР°СѓР·РµСЂРµ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРµРЅ. РњРѕР¶РЅРѕ РїСЂРѕРґРѕР»Р¶РёС‚СЊ РѕР±С‹С‡РЅС‹Рј С‚РµРєСЃС‚РѕРІС‹Рј РІРІРѕРґРѕРј.");
         return;
       }
       if (inboxState.isListening) {
@@ -3529,7 +4197,7 @@
     elements.inboxVoiceConfirmBtn.addEventListener("click", () => {
       const drafts = inboxState.drafts.map((draft) => draft.text.trim()).filter(Boolean);
       if (drafts.length === 0) {
-        openInboxVoiceMessage("В черновике пока нет мыслей, которые можно сохранить.");
+        openInboxVoiceMessage("Р’ С‡РµСЂРЅРѕРІРёРєРµ РїРѕРєР° РЅРµС‚ РјС‹СЃР»РµР№, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ СЃРѕС…СЂР°РЅРёС‚СЊ.");
         return;
       }
       addInboxItems(store, drafts);
@@ -3546,7 +4214,7 @@
     elements.clearInboxBtn.addEventListener("click", () => {
       const inboxItems = store.getState().inboxItems || [];
       if (inboxItems.length === 0) return;
-      const shouldClear = window.confirm("Очистить все Облако мыслей? Это удалит все сохраненные мысли.");
+      const shouldClear = window.confirm("РћС‡РёСЃС‚РёС‚СЊ РІСЃРµ РћР±Р»Р°РєРѕ РјС‹СЃР»РµР№? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ СЃРѕС…СЂР°РЅРµРЅРЅС‹Рµ РјС‹СЃР»Рё.");
       if (!shouldClear) return;
       clearInboxItems(store);
       closeInboxSortModal();
@@ -3638,7 +4306,7 @@
       elements.archiveModal.classList.add("hidden");
     });
     elements.clearArchiveBtn.addEventListener("click", () => {
-      const shouldClear = window.confirm("Очистить весь список «На потом»? Это удалит все отложенные задачи.");
+      const shouldClear = window.confirm("РћС‡РёСЃС‚РёС‚СЊ РІРµСЃСЊ СЃРїРёСЃРѕРє В«РќР° РїРѕС‚РѕРјВ»? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ РѕС‚Р»РѕР¶РµРЅРЅС‹Рµ Р·Р°РґР°С‡Рё.");
       if (!shouldClear) return;
       clearDeferredTasks(store);
       app.renderers.renderArchive();
@@ -3649,7 +4317,7 @@
       elements.completedModal.classList.add("hidden");
     });
     elements.clearCompletedBtn.addEventListener("click", () => {
-      const shouldClear = window.confirm("Очистить весь список «Сделано»? Это удалит все завершённые задачи из этого раздела.");
+      const shouldClear = window.confirm("РћС‡РёСЃС‚РёС‚СЊ РІРµСЃСЊ СЃРїРёСЃРѕРє В«РЎРґРµР»Р°РЅРѕВ»? Р­С‚Рѕ СѓРґР°Р»РёС‚ РІСЃРµ Р·Р°РІРµСЂС€С‘РЅРЅС‹Рµ Р·Р°РґР°С‡Рё РёР· СЌС‚РѕРіРѕ СЂР°Р·РґРµР»Р°.");
       if (!shouldClear) return;
       clearDoneTasks(store);
       app.renderers.renderCompleted();
@@ -3661,7 +4329,7 @@
         targetDate: draft.suggestedDate
       })).filter((draft) => draft.text);
       if (draftsToAdd.length === 0) {
-        openVoiceMessage("В черновике пока нет задач, которые можно добавить.");
+        openVoiceMessage("Р’ С‡РµСЂРЅРѕРІРёРєРµ РїРѕРєР° РЅРµС‚ Р·Р°РґР°С‡, РєРѕС‚РѕСЂС‹Рµ РјРѕР¶РЅРѕ РґРѕР±Р°РІРёС‚СЊ.");
         return;
       }
       draftsToAdd.forEach((draft) => {
@@ -4053,7 +4721,7 @@
       if (!target || target.dataset.action !== "inbox-voice-remove-draft") return;
       inboxState.drafts = inboxState.drafts.filter((draft) => draft.id !== target.dataset.draftId);
       if (inboxState.drafts.length === 0) {
-        openInboxVoiceMessage("Черновик опустел. Можно надиктовать мысли еще раз или записать их текстом.");
+        openInboxVoiceMessage("Р§РµСЂРЅРѕРІРёРє РѕРїСѓСЃС‚РµР». РњРѕР¶РЅРѕ РЅР°РґРёРєС‚РѕРІР°С‚СЊ РјС‹СЃР»Рё РµС‰Рµ СЂР°Р· РёР»Рё Р·Р°РїРёСЃР°С‚СЊ РёС… С‚РµРєСЃС‚РѕРј.");
         return;
       }
       app.renderers.renderInboxVoiceModal();
@@ -4070,7 +4738,7 @@
       if (!target || target.dataset.action !== "voice-remove-draft") return;
       voiceState.voiceDraft = voiceState.voiceDraft.filter((draft) => draft.id !== target.dataset.draftId);
       if (voiceState.voiceDraft.length === 0) {
-        openVoiceMessage("Черновик опустел. Можно попробовать надиктовать задачи ещё раз.");
+        openVoiceMessage("Р§РµСЂРЅРѕРІРёРє РѕРїСѓСЃС‚РµР». РњРѕР¶РЅРѕ РїРѕРїСЂРѕР±РѕРІР°С‚СЊ РЅР°РґРёРєС‚РѕРІР°С‚СЊ Р·Р°РґР°С‡Рё РµС‰С‘ СЂР°Р·.");
         return;
       }
       app.renderers.renderVoiceModal();
@@ -4124,7 +4792,7 @@
         addResourceToDay(store, resourceId);
         app.renderers.renderMainScreen();
         const originalText = target.textContent;
-        target.textContent = "✓";
+        target.textContent = "OK";
         target.style.backgroundColor = "var(--primary-color)";
         target.style.color = "white";
         setTimeout(() => {
@@ -4180,7 +4848,7 @@
         });
         app.renderers.renderMainScreen();
         const originalText = target.textContent;
-        target.textContent = "✓";
+        target.textContent = "OK";
         target.style.backgroundColor = "var(--primary-color)";
         target.style.color = "white";
         setTimeout(() => {
@@ -4208,6 +4876,35 @@
       addTask(store, { text: suggestion, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
     });
+    elements.easyPatternPanel.addEventListener("click", (event) => {
+      const target = closestActionTarget(event.target);
+      if (!target) return;
+      if (target.dataset.action === "easy-pattern-select") {
+        selectEasyPatternScenario(target.dataset.scenario);
+        return;
+      }
+      if (target.dataset.action === "easy-pattern-back") {
+        clearEasyPatternSelection({ keepFeedback: true });
+        app.renderers.renderMainScreen();
+        return;
+      }
+      if (target.dataset.action === "easy-pattern-dismiss") {
+        dismissTodayEasyPattern();
+        return;
+      }
+      if (target.dataset.action === "easy-pattern-cycle-resource") {
+        cycleEasyPatternResource();
+        return;
+      }
+      if (target.dataset.action === "easy-pattern-confirm") {
+        applySelectedEasyPatternScenario();
+        return;
+      }
+      if (target.dataset.action === "easy-pattern-clear-feedback") {
+        easyPatternState.feedback = "";
+        app.renderers.renderMainScreen();
+      }
+    });
     elements.weeklyContainer.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
       if (!target || target.dataset.action !== "open-weekly-task-modal") return;
@@ -4225,6 +4922,14 @@
     elements.weeklyContainer.addEventListener("click", (event) => {
       const target = closestActionTarget(event.target);
       if (!(target == null ? void 0 : target.dataset.taskId)) return;
+      if (target.dataset.action === "weekly-delete-task") {
+        deleteTask(store, target.dataset.taskId);
+        if (editTaskState.taskId === target.dataset.taskId) {
+          stopInlineEdit();
+        }
+        renderAllTaskViews();
+        return;
+      }
       if (target.dataset.action === "edit-save-task") {
         saveInlineEdit();
         return;
@@ -4290,6 +4995,10 @@
   var API_AUTH_LOGIN_URL = "/api/auth/login";
   var API_AUTH_REGISTER_URL = "/api/auth/register";
   var API_AUTH_LOGOUT_URL = "/api/auth/logout";
+  var API_AUTH_FORGOT_PASSWORD_URL = "/api/auth/forgot-password";
+  var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
+  var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
+  var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
   async function readJsonResponse(response) {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
@@ -4306,6 +5015,9 @@
     if (errorCode === "EMAIL_EXISTS") {
       return "Этот email уже используется.";
     }
+    if (errorCode === "INVALID_NAME") {
+      return "Укажите имя длиной от 2 до 80 символов.";
+    }
     if (errorCode === "INVALID_PASSWORD") {
       return "Пароль должен быть не короче 6 символов.";
     }
@@ -4314,6 +5026,9 @@
     }
     if (errorCode === "AUTH_FAILED" || errorCode === "INVALID_CREDENTIALS") {
       return "Не получилось войти. Проверь email и пароль.";
+    }
+    if (errorCode === "PASSWORD_RESET_TOKEN_INVALID") {
+      return "Ссылка для восстановления уже недействительна. Запросите новую.";
     }
     return fallbackMessage;
   }
@@ -4369,7 +5084,7 @@
       );
       return (payload == null ? void 0 : payload.user) || null;
     }
-    async function register({ email, password }) {
+    async function register({ name, email, password }) {
       const payload = await requestJson(
         API_AUTH_REGISTER_URL,
         {
@@ -4378,7 +5093,7 @@
             "Content-Type": "application/json",
             Accept: "application/json"
           },
-          body: JSON.stringify({ email, password })
+          body: JSON.stringify({ name, email, password })
         },
         "Сейчас не получается создать аккаунт. Попробуй ещё раз чуть позже."
       );
@@ -4396,11 +5111,85 @@
         "Сейчас не получается выйти из аккаунта. Попробуй ещё раз чуть позже."
       );
     }
+    async function forgotPassword({ email }) {
+      return requestJson(
+        API_AUTH_FORGOT_PASSWORD_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ email })
+        },
+        "Сейчас не получается отправить письмо для восстановления."
+      );
+    }
+    async function resetPassword({ token, password }) {
+      return requestJson(
+        API_AUTH_RESET_PASSWORD_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ token, password })
+        },
+        "Сейчас не получается сменить пароль. Попробуй ещё раз чуть позже."
+      );
+    }
+    async function getProfile() {
+      const payload = await requestJson(
+        API_ACCOUNT_PROFILE_URL,
+        {
+          headers: {
+            Accept: "application/json"
+          }
+        },
+        "Сейчас не получается открыть данные аккаунта."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function updateProfile({ name, email }) {
+      const payload = await requestJson(
+        API_ACCOUNT_PROFILE_URL,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ name, email })
+        },
+        "Сейчас не получается обновить профиль."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function changePassword({ currentPassword, newPassword }) {
+      return requestJson(
+        API_ACCOUNT_CHANGE_PASSWORD_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ currentPassword, newPassword })
+        },
+        "Сейчас не получается сменить пароль."
+      );
+    }
     return {
       checkSession,
       login,
       register,
-      logout
+      logout,
+      forgotPassword,
+      resetPassword,
+      getProfile,
+      updateProfile,
+      changePassword
     };
   }
 
@@ -4505,7 +5294,24 @@
           status: "checking",
           mode: "login",
           user: null,
-          error: ""
+          error: "",
+          notice: "",
+          resetToken: null,
+          forgotPassword: {
+            status: "idle",
+            email: "",
+            error: "",
+            message: ""
+          },
+          accountProfile: {
+            status: "idle",
+            error: ""
+          },
+          passwordChange: {
+            status: "idle",
+            error: "",
+            message: ""
+          }
         },
         voice: {
           isSupported: false,
@@ -4548,6 +5354,13 @@
           taskId: null,
           targetDate: getLocalDateString()
         },
+        easyPattern: {
+          selectedScenario: null,
+          trigger: null,
+          preview: null,
+          resourceSuggestionId: null,
+          feedback: ""
+        },
         templateAutoPrompt: {
           templateId: null
         },
@@ -4576,6 +5389,14 @@
       app.renderers.renderPersistenceStatus();
     });
     app.screens.showAuthScreen();
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const resetToken = params.get("resetToken");
+      if (resetToken) {
+        app.runtime.auth.mode = "reset-password";
+        app.runtime.auth.resetToken = resetToken;
+      }
+    }
     try {
       const session = await auth.checkSession();
       if (!session.authenticated || !session.user) {

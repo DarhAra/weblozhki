@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ru">
 
 <head>
@@ -23,10 +23,6 @@
                     <button id="auth-register-mode-btn" class="auth-mode-btn" type="button">Создать аккаунт</button>
                 </div>
                 <form id="auth-form" class="auth-form">
-                    <label id="auth-name-field" class="auth-field hidden">
-                        <span>Имя</span>
-                        <input id="auth-name" type="text" autocomplete="name" placeholder="Как к вам обращаться">
-                    </label>
                     <label class="auth-field">
                         <span>Email</span>
                         <input id="auth-email" type="email" autocomplete="email" placeholder="you@example.com" required>
@@ -35,14 +31,8 @@
                         <span>Пароль</span>
                         <input id="auth-password" type="password" autocomplete="current-password" placeholder="Не короче 6 символов" required>
                     </label>
-                    <label id="auth-password-confirm-field" class="auth-field hidden">
-                        <span>Повторите пароль</span>
-                        <input id="auth-password-confirm" type="password" autocomplete="new-password" placeholder="Повторите пароль">
-                    </label>
-                    <p id="auth-notice" class="auth-notice hidden"></p>
                     <p id="auth-error" class="auth-error hidden"></p>
                     <button id="auth-submit-btn" class="primary-btn auth-submit-btn" type="submit">Войти</button>
-                    <button id="auth-forgot-password-btn" class="text-btn auth-link-btn" type="button">Забыли пароль?</button>
                 </form>
                 <p class="auth-footnote">Данные будут храниться в личном пространстве пользователя.</p>
             </div>
@@ -424,76 +414,14 @@
                     <button id="close-account-btn" class="close-btn">&times;</button>
                 </div>
                 <div class="modal-body">
-                    <p class="modal-subtitle">Здесь можно обновить только те данные, которые действительно нужны для вашего аккаунта.</p>
-                    <form id="account-profile-form" class="auth-form account-profile-form">
-                        <label class="auth-field">
-                            <span>Имя</span>
-                            <input id="account-profile-name" type="text" autocomplete="name" placeholder="Как к вам обращаться" required>
-                        </label>
-                        <label class="auth-field">
-                            <span>Email</span>
-                            <input id="account-profile-email" type="email" autocomplete="email" placeholder="you@example.com" required>
-                        </label>
-                        <p id="account-profile-message" class="auth-notice hidden"></p>
-                        <p id="account-profile-error" class="auth-error hidden"></p>
-                        <button id="account-profile-submit-btn" class="primary-btn auth-submit-btn" type="submit">Сохранить изменения</button>
-                    </form>
+                    <p class="modal-subtitle">Здесь можно спокойно посмотреть, под каким аккаунтом сейчас открыто приложение.</p>
+                    <div class="account-email-card">
+                        <div class="account-email-label">Текущий email</div>
+                        <div id="account-email-value" class="account-email-value"></div>
+                    </div>
                     <div class="account-actions">
-                        <button id="open-change-password-btn" class="secondary-btn" type="button">Сменить пароль</button>
                         <button id="account-logout-btn" class="secondary-btn account-logout-btn" type="button">Выйти</button>
                     </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="forgot-password-modal" class="modal hidden">
-            <div class="modal-content account-modal-card">
-                <div class="modal-header">
-                    <h3>Восстановление пароля</h3>
-                    <button id="close-forgot-password-btn" class="close-btn">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p class="modal-subtitle">Введите email аккаунта. Если он существует, мы отправим ссылку для восстановления.</p>
-                    <form id="forgot-password-form" class="auth-form">
-                        <label class="auth-field">
-                            <span>Email</span>
-                            <input id="forgot-password-email" type="email" autocomplete="email" placeholder="you@example.com" required>
-                        </label>
-                        <p id="forgot-password-message" class="auth-notice hidden"></p>
-                        <p id="forgot-password-error" class="auth-error hidden"></p>
-                        <button id="forgot-password-submit-btn" class="primary-btn auth-submit-btn" type="submit">Отправить ссылку</button>
-                        <button id="forgot-password-cancel-btn" class="secondary-btn" type="button">Отмена</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-
-        <div id="change-password-modal" class="modal hidden">
-            <div class="modal-content account-modal-card">
-                <div class="modal-header">
-                    <h3>Сменить пароль</h3>
-                    <button id="close-change-password-btn" class="close-btn">&times;</button>
-                </div>
-                <div class="modal-body">
-                    <p class="modal-subtitle">Укажите текущий пароль и придумайте новый.</p>
-                    <form id="change-password-form" class="auth-form">
-                        <label class="auth-field">
-                            <span>Текущий пароль</span>
-                            <input id="current-password-input" type="password" autocomplete="current-password" required>
-                        </label>
-                        <label class="auth-field">
-                            <span>Новый пароль</span>
-                            <input id="new-password-input" type="password" autocomplete="new-password" placeholder="Не короче 6 символов" required>
-                        </label>
-                        <label class="auth-field">
-                            <span>Повторите новый пароль</span>
-                            <input id="confirm-new-password-input" type="password" autocomplete="new-password" placeholder="Повторите новый пароль" required>
-                        </label>
-                        <p id="change-password-message" class="auth-notice hidden"></p>
-                        <p id="change-password-error" class="auth-error hidden"></p>
-                        <button id="change-password-submit-btn" class="primary-btn auth-submit-btn" type="submit">Обновить пароль</button>
-                        <button id="change-password-cancel-btn" class="secondary-btn" type="button">Отмена</button>
-                    </form>
                 </div>
             </div>
         </div>

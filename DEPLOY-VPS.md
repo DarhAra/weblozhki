@@ -113,7 +113,16 @@ TRUST_PROXY=true
 SESSION_COOKIE_NAME=rtodo_sid
 SESSION_COOKIE_SAME_SITE=Lax
 SESSION_COOKIE_SECURE=true
-SESSION_TTL_HOURS=168
+SESSION_TTL_DAYS=30
+PASSWORD_RESET_TTL_MINUTES=30
+APP_BASE_URL=https://example.com
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=account@example.com
+SMTP_PASSWORD=change-me
+SMTP_FROM_EMAIL=no-reply@example.com
+SMTP_FROM_NAME=Мои ложки
 ```
 
 ## Шаг 7. Установить зависимости и собрать проект
@@ -262,3 +271,28 @@ pm2 restart resource-todo
 - `data/app.db` не отправляется в GitHub.
 - SQLite и in-memory сессии подходят для первого VPS, но это ещё не финальная архитектура для большого количества пользователей.
 - Если сервер один, такой вариант вполне годится для первого публичного запуска.
+
+
+## SMTP for Password Recovery
+
+To make password recovery work on the VPS, fill real SMTP settings in `.env`:
+
+```env
+APP_BASE_URL=https://your-domain.ru
+SMTP_HOST=smtp.your-domain.ru
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=no-reply@your-domain.ru
+SMTP_PASSWORD=your-mail-password
+SMTP_FROM_EMAIL=no-reply@your-domain.ru
+SMTP_FROM_NAME=Мои ложки
+```
+
+Then restart the application:
+
+```bash
+npm run build
+pm2 restart resource-todo
+```
+
+Check: open the "Forgot password?" form, send a test email to yourself, and verify that the link opens your domain.
