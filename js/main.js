@@ -9,6 +9,11 @@ import { getOverdueTasks } from './domain/tasks.js';
 import { buildMoodHistoryEntry, createCurrentDayMeta, upsertMoodHistoryEntry } from './domain/history.js';
 import { applyDailyTemplatesForDate } from './domain/templates.js';
 import { createAuthService } from './services/auth.js';
+import {
+    clearOfflineAuthSnapshot,
+    readOfflineAuthSnapshot,
+    saveOfflineAuthSnapshot,
+} from './services/offline-auth.js';
 
 const builtinAdvices = [
     'Выпить стакан чистой воды',
@@ -129,6 +134,8 @@ export async function initApp({ elements }) {
                 user: null,
                 error: '',
                 notice: '',
+                isOfflineAuthenticated: false,
+                hasPendingOfflineChanges: false,
                 resetToken: null,
                 forgotPassword: {
                     status: 'idle',
@@ -200,6 +207,7 @@ export async function initApp({ elements }) {
             persistenceStatus: store.getPersistenceStatus?.() || {
                 mode: 'local-fallback',
                 message: '',
+                hasPendingOfflineChanges: false,
             },
         },
     };
@@ -207,19 +215,25 @@ export async function initApp({ elements }) {
     app.renderers = createRenderers(app);
     app.onboarding = createOnboardingController(app);
     app.screens = createScreens(app);
-    app.startAuthenticatedFlow = async user => {
+    app.startAuthenticatedFlow = async (user, options = {}) => {
+        const isOfflineAuthenticated = Boolean(options.isOfflineAuthenticated);
         app.runtime.auth.user = user || null;
         app.runtime.auth.status = 'authenticated';
         app.runtime.auth.error = '';
+        app.runtime.auth.isOfflineAuthenticated = isOfflineAuthenticated;
         store.setSessionContext({
             authenticated: true,
             userId: user?.id || null,
         });
+        if (!isOfflineAuthenticated && user) {
+            saveOfflineAuthSnapshot(user);
+        }
         return startAuthenticatedFlow(app);
     };
     bindAppEvents(app);
     store.setPersistenceStatusListener?.(status => {
         app.runtime.persistenceStatus = status;
+        app.runtime.auth.hasPendingOfflineChanges = Boolean(status?.hasPendingOfflineChanges);
         app.renderers.renderPersistenceStatus();
     });
 
@@ -232,15 +246,43 @@ export async function initApp({ elements }) {
             app.runtime.auth.mode = 'reset-password';
             app.runtime.auth.resetToken = resetToken;
         }
+
+        window.addEventListener('online', async () => {
+            const syncSucceeded = await store.syncPendingState?.();
+            if (syncSucceeded && app.runtime.auth.isOfflineAuthenticated) {
+                try {
+                    const session = await auth.checkSession();
+                    if (session?.authenticated && session.user) {
+                        app.runtime.auth.user = session.user;
+                        app.runtime.auth.isOfflineAuthenticated = false;
+                        saveOfflineAuthSnapshot(session.user);
+                    }
+                } catch {
+                    // Keep the offline session until the server session is available again.
+                }
+            }
+
+            app.runtime.persistenceStatus = store.getPersistenceStatus?.() || app.runtime.persistenceStatus;
+            app.renderers.renderPersistenceStatus();
+            app.renderers.renderMainScreen();
+        });
+
+        window.addEventListener('offline', () => {
+            app.runtime.persistenceStatus = store.getPersistenceStatus?.() || app.runtime.persistenceStatus;
+            app.renderers.renderPersistenceStatus();
+            app.renderers.renderMainScreen();
+        });
     }
 
     try {
         const session = await auth.checkSession();
         if (!session.authenticated || !session.user) {
+            clearOfflineAuthSnapshot();
             app.runtime.auth.mode = 'login';
             app.runtime.auth.status = 'guest';
             app.runtime.auth.user = null;
             app.runtime.auth.error = '';
+            app.runtime.auth.isOfflineAuthenticated = false;
             store.setSessionContext({ authenticated: false, userId: null });
             app.screens.showAuthScreen();
             return app;
@@ -248,10 +290,30 @@ export async function initApp({ elements }) {
 
         await app.startAuthenticatedFlow(session.user);
     } catch (error) {
+        const offlineSnapshot = error?.isNetworkError ? readOfflineAuthSnapshot() : null;
+        if (offlineSnapshot) {
+            const offlineUser = {
+                id: offlineSnapshot.userId,
+                name: offlineSnapshot.name,
+                email: offlineSnapshot.email,
+                createdAt: offlineSnapshot.lastAuthenticatedAt,
+            };
+
+            app.runtime.auth.mode = 'login';
+            app.runtime.auth.status = 'authenticated';
+            app.runtime.auth.user = offlineUser;
+            app.runtime.auth.error = '';
+            app.runtime.auth.notice = '';
+            app.runtime.auth.isOfflineAuthenticated = true;
+            await app.startAuthenticatedFlow(offlineUser, { isOfflineAuthenticated: true });
+            return app;
+        }
+
         app.runtime.auth.mode = 'login';
         app.runtime.auth.status = 'guest';
         app.runtime.auth.user = null;
         app.runtime.auth.error = error?.friendlyMessage || 'Сейчас не получается проверить вход. Попробуй чуть позже.';
+        app.runtime.auth.isOfflineAuthenticated = false;
         store.setSessionContext({ authenticated: false, userId: null });
         app.screens.showAuthScreen();
     }

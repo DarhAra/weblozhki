@@ -240,6 +240,10 @@ input[type=range]::-webkit-slider-runnable-track {
     border-radius: 30px;
     font-size: 16px;
     font-weight: 500;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     transition: background-color 0.2s, transform 0.1s;
 }
@@ -260,6 +264,10 @@ input[type=range]::-webkit-slider-runnable-track {
     border-radius: 30px;
     font-size: 16px;
     font-weight: 500;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
     transition: background-color 0.2s, transform 0.1s;
 }
@@ -429,98 +437,99 @@ header h2 {
 }
 
 .easy-pattern-panel {
-    margin-bottom: 24px;
+    width: auto;
+    margin-top: 0;
+    margin-left: auto;
+    flex: 0 0 auto;
 }
 
 .easy-pattern-card {
-    background: linear-gradient(135deg, #fffaf6 0%, #f8f5ef 100%);
-    border: 1px solid #eadfd2;
-    border-radius: 18px;
-    padding: 18px 18px 16px;
-    box-shadow: 0 6px 18px rgba(136, 108, 97, 0.08);
-}
-
-.easy-pattern-card-feedback {
-    background: linear-gradient(135deg, #f6fbf6 0%, #f2f7f1 100%);
-    border-color: #d7e6d4;
-}
-
-.easy-pattern-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 6px 8px;
+    flex-wrap: nowrap;
+    width: auto;
 }
 
-.easy-pattern-kicker {
-    color: #8f766c;
-    font-size: 12px;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    font-weight: 600;
+.easy-pattern-card-feedback {
+    justify-content: flex-end;
 }
 
-.easy-pattern-message {
-    margin: 0 0 14px;
-    color: var(--text-primary);
-    line-height: 1.55;
-}
-
-.easy-pattern-preview {
-    background: rgba(255, 255, 255, 0.74);
-    border: 1px solid rgba(198, 182, 170, 0.65);
-    border-radius: 14px;
-    padding: 12px 14px;
-    margin-bottom: 14px;
-}
-
-.easy-pattern-preview-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: var(--text-primary);
-    margin-bottom: 8px;
-}
-
-.easy-pattern-preview-line {
-    font-size: 14px;
+.easy-pattern-inline-note {
     color: var(--text-secondary);
-    line-height: 1.45;
-}
-
-.easy-pattern-preview-line + .easy-pattern-preview-line {
-    margin-top: 4px;
-}
-
-.easy-pattern-preview-resource {
-    margin-top: 8px;
-    font-size: 14px;
-    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1.25;
+    flex: 0 1 auto;
+    white-space: nowrap;
 }
 
 .easy-pattern-actions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
+    flex-wrap: nowrap;
+    gap: 4px;
     align-items: center;
+    justify-content: flex-start;
+    flex: 0 1 auto;
 }
 
 .easy-pattern-actions-grid .easy-pattern-btn {
-    flex: 1 1 180px;
+    flex: 0 0 auto;
 }
 
 .easy-pattern-btn {
-    padding: 10px 16px;
-    font-size: 14px;
+    padding: 6px 12px;
+    font-size: 13px;
+    min-height: 32px;
+    border-radius: 999px;
+    line-height: 1.1;
 }
 
 .easy-pattern-text-btn {
-    padding: 8px 4px;
+    padding: 6px 10px;
     color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.1;
+}
+
+.easy-pattern-actions .easy-pattern-btn.secondary-btn,
+.easy-pattern-actions .easy-pattern-btn.primary-btn {
+    padding: 6px 12px;
+    font-size: 13px;
+    min-height: 32px;
+    border-radius: 999px;
+}
+
+.easy-pattern-actions .easy-pattern-text-btn.text-btn {
+    padding: 6px 10px;
+    font-size: 13px;
+    min-height: 32px;
 }
 
 .easy-pattern-text-btn:hover {
     color: var(--text-primary);
+}
+
+@media (max-width: 820px) {
+    .easy-pattern-panel {
+        width: 100%;
+        margin-top: 8px;
+        margin-left: 0;
+    }
+
+    .easy-pattern-card {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .easy-pattern-inline-note {
+        white-space: normal;
+    }
+
+    .easy-pattern-actions {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
 }
 
 .sos-view-card {
@@ -1270,6 +1279,26 @@ header h2 {
     max-width: 460px;
 }
 
+.account-modal-card .modal-header {
+    align-items: flex-start;
+    margin-bottom: 18px;
+}
+
+.account-modal-card .modal-header h3 {
+    line-height: 1.2;
+}
+
+.account-modal-card .modal-body {
+    display: flex;
+    flex-direction: column;
+}
+
+.account-modal-card .modal-subtitle {
+    margin-top: 0;
+    margin-bottom: 20px;
+    line-height: 1.55;
+}
+
 .copy-task-modal-card {
     max-width: 460px;
 }
@@ -1353,6 +1382,29 @@ header h2 {
 .account-actions .secondary-btn {
     width: 100%;
     min-width: 0;
+}
+
+.account-profile-form {
+    margin-top: 0;
+    gap: 16px;
+}
+
+.account-profile-form .auth-field {
+    gap: 7px;
+}
+
+.account-profile-form .auth-submit-btn {
+    margin-top: 6px;
+}
+
+.account-profile-form .auth-notice,
+.account-profile-form .auth-error {
+    margin-top: -2px;
+}
+
+.account-modal-card .auth-form > .secondary-btn,
+.account-modal-card .auth-form > .primary-btn {
+    width: 100%;
 }
 
 .voice-helper-message {
@@ -1593,6 +1645,23 @@ header h2 {
     background: #faf7ef;
     border-color: #eadfc5;
     color: #8b7a54;
+}
+
+.storage-status-pill.is-offline {
+    background: #f6f1fb;
+    border-color: #dfd2f1;
+    color: #6e5a8d;
+}
+
+.offline-banner {
+    margin: 4px 0 18px;
+    padding: 12px 14px;
+    border-radius: 16px;
+    border: 1px solid #eadfc5;
+    background: #fff8ea;
+    color: #7d6b45;
+    font-size: 14px;
+    line-height: 1.5;
 }
 
 .app-helper-avatar {
@@ -2394,8 +2463,8 @@ header h2 {
 
 .balance-message-container {
     display: flex;
-    align-items: flex-start;
-    gap: 8px;
+    align-items: center;
+    gap: 10px;
     background: #fffdf5;
     border: 1px solid #ffeedb;
     padding: 12px;
@@ -2414,11 +2483,13 @@ header h2 {
 
 .balance-message-container .balance-message {
     text-align: left;
-    max-width: 100%;
+    max-width: 420px;
+    flex: 0 1 420px;
+    min-width: 0;
 }
 
 .balance-message-container {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
 }
 
 .add-break-btn {
@@ -2479,6 +2550,16 @@ header h2 {
         transform: none;
     }
 
+    .balance-message-container {
+        align-items: flex-start;
+        flex-wrap: wrap;
+    }
+
+    .balance-message-container .balance-message {
+        max-width: 100%;
+        flex-basis: auto;
+    }
+
     .auth-card {
         padding: 28px 20px;
         border-radius: 22px;
@@ -2497,8 +2578,4 @@ header h2 {
 .auth-link-btn {
     align-self: flex-start;
     padding: 0;
-}
-
-.account-profile-form {
-    margin-top: 16px;
 }

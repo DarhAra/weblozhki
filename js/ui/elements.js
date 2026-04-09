@@ -83,6 +83,7 @@ export function collectElements(doc = document) {
         appHelperAvatar: doc.getElementById('app-helper-avatar'),
         openAppMenuBtn: doc.getElementById('open-app-menu-btn'),
         appMenuPopover: doc.getElementById('app-menu-popover'),
+        offlineBanner: doc.getElementById('offline-banner'),
         balanceSection: doc.getElementById('balance-section'),
         usedEnergyEl: doc.getElementById('used-energy'),
         totalEnergyEl: doc.getElementById('total-energy'),

@@ -179,14 +179,18 @@ export function createRenderers(app) {
 
         const status = runtime.persistenceStatus || store.getPersistenceStatus?.() || { mode: 'local-fallback' };
         const isServerMode = status.mode === 'server';
+        const isOfflineAuthenticated = status.mode === 'offline-authenticated';
         elements.storageStatus.textContent = isServerMode
             ? 'Сохранение: сервер'
-            : 'Сохранение: локально';
+            : isOfflineAuthenticated
+                ? 'Офлайн-режим'
+                : 'Сохранение: локально';
         elements.storageStatus.classList.toggle('is-server', isServerMode);
         elements.storageStatus.classList.toggle('is-local', !isServerMode);
-        elements.storageStatus.title = isServerMode
-            ? 'Данные читаются и сохраняются через локальный сервер.'
-            : 'Сервер сейчас недоступен, поэтому приложение временно работает через localStorage.';
+        elements.storageStatus.classList.toggle('is-offline', isOfflineAuthenticated);
+        elements.storageStatus.title = status.message || (isServerMode
+            ? 'Данные синхронизированы с сервером.'
+            : 'Изменения пока сохраняются только на этом устройстве.');
     }
 
     function renderAuthScreen() {
@@ -548,22 +552,18 @@ export function createRenderers(app) {
         elements.easyPatternPanel.classList.toggle('hidden', !shouldShow);
         if (!shouldShow) {
             elements.easyPatternPanel.innerHTML = '';
-            return;
+            return { visible: false, message: '' };
         }
 
         if (hasFeedback) {
             elements.easyPatternPanel.innerHTML = `
                 <div class="easy-pattern-card easy-pattern-card-feedback">
-                    <div class="easy-pattern-header">
-                        <span class="easy-pattern-kicker">\u041c\u044f\u0433\u043a\u043e\u0435 \u0443\u043f\u0440\u043e\u0449\u0435\u043d\u0438\u0435</span>
-                    </div>
-                    <p class="easy-pattern-message">${easyPattern.feedback}</p>
                     <div class="easy-pattern-actions">
                         <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-clear-feedback">\u0425\u043e\u0440\u043e\u0448\u043e</button>
                     </div>
                 </div>
             `;
-            return;
+            return { visible: true, message: easyPattern.feedback };
         }
 
         const selectedScenario = easyPattern.selectedScenario || null;
@@ -575,26 +575,17 @@ export function createRenderers(app) {
         const resourcePreviewText = preview?.resource
             ? escapeHtml(preview.resource.text)
             : '\u0421\u0435\u0439\u0447\u0430\u0441 \u043d\u0435 \u043d\u0430\u0448\u043b\u043e\u0441\u044c \u0441\u0432\u043e\u0431\u043e\u0434\u043d\u043e\u0439 \u0440\u0430\u0434\u043e\u0441\u0442\u0438 \u0431\u0435\u0437 \u0434\u0443\u0431\u043b\u044f.';
+        const selectionSummary = selectedScenario
+            ? selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE
+                ? `${getEasyPatternScenarioLabel(selectedScenario)}: ${resourcePreviewText}`
+                : `${getEasyPatternScenarioLabel(selectedScenario)}: останется ${preview?.keepCount || 0}, перенесётся ${preview?.moveCount || 0}`
+            : '';
+        const helperMessage = getEasyPatternMessage(trigger);
 
         elements.easyPatternPanel.innerHTML = `
             <div class="easy-pattern-card">
-                <div class="easy-pattern-header">
-                    <span class="easy-pattern-kicker">\u041c\u044f\u0433\u043a\u0430\u044f \u043f\u043e\u043c\u043e\u0449\u044c \u043d\u0430 \u0441\u0435\u0433\u043e\u0434\u043d\u044f</span>
-                </div>
-                <p class="easy-pattern-message">${getEasyPatternMessage(trigger)}</p>
+                ${selectedScenario ? `<div class="easy-pattern-inline-note">${selectionSummary}</div>` : ''}
                 ${selectedScenario ? `
-                    <div class="easy-pattern-preview">
-                        <div class="easy-pattern-preview-title">${getEasyPatternScenarioLabel(selectedScenario)}</div>
-                        ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE
-                ? `
-                                <div class="easy-pattern-preview-line">\u0414\u043e\u0431\u0430\u0432\u0438\u0442\u0441\u044f: ${preview?.addCount || 0} \u0440\u0435\u0441\u0443\u0440\u0441</div>
-                                <div class="easy-pattern-preview-resource">${resourcePreviewText}</div>
-                            `
-                : `
-                                <div class="easy-pattern-preview-line">\u041e\u0441\u0442\u0430\u043d\u0435\u0442\u0441\u044f: ${preview?.keepCount || 0} \u0437\u0430\u0434\u0430\u0447</div>
-                                <div class="easy-pattern-preview-line">\u041f\u0435\u0440\u0435\u043d\u0435\u0441\u0451\u0442\u0441\u044f: ${preview?.moveCount || 0} \u0437\u0430\u0434\u0430\u0447</div>
-                            `}
-                    </div>
                     <div class="easy-pattern-actions">
                         ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? `
                             <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-cycle-resource" ${preview?.isAvailable ? '' : 'disabled'}>\u0414\u0440\u0443\u0433\u043e\u0435</button>
@@ -612,6 +603,7 @@ export function createRenderers(app) {
                 `}
             </div>
         `;
+        return { visible: true, message: helperMessage };
     }
 
     function renderMainScreen() {
@@ -645,9 +637,14 @@ export function createRenderers(app) {
         }
 
         renderLowEnergyPanel(state, todayTasks, isSosView);
-        renderEasyPatternPanel(state, isSosView);
+        const easyPatternInfo = renderEasyPatternPanel(state, isSosView);
         renderInboxUi();
         renderPersistenceStatus();
+        if (elements.offlineBanner) {
+            const shouldShowOfflineBanner = runtime.persistenceStatus?.mode && runtime.persistenceStatus.mode !== 'server';
+            elements.offlineBanner.textContent = runtime.persistenceStatus?.message || '';
+            elements.offlineBanner.classList.toggle('hidden', !shouldShowOfflineBanner || !runtime.persistenceStatus?.message);
+        }
 
         elements.balanceSection.classList.toggle('hidden', isSosView);
         elements.addTaskForm.classList.toggle('hidden', isSosView);
@@ -678,29 +675,23 @@ export function createRenderers(app) {
         elements.totalEnergyEl.textContent = total;
 
         const percentage = Math.min((usedEnergy / total) * 100, 100);
+        const shouldShowHelperStrip = usedEnergy > total || easyPatternInfo.visible;
         if (usedEnergy > total) {
             elements.progressBar.style.width = '100%';
             elements.progressBar.classList.add('overloaded');
-            elements.balanceMessageContainer.classList.remove('hidden');
-            elements.balanceMessage.innerHTML = 'Сегодня плотный график.<br>Позаботься о себе.';
-
-            let addBreakBtn = document.getElementById('add-break-btn');
-            if (!addBreakBtn) {
-                addBreakBtn = document.createElement('button');
-                addBreakBtn.id = 'add-break-btn';
-                addBreakBtn.className = 'add-break-btn';
-                addBreakBtn.textContent = '☕ Добавить паузу';
-                addBreakBtn.dataset.action = 'add-break';
-                elements.balanceMessageContainer.appendChild(addBreakBtn);
-            }
         } else {
             elements.progressBar.style.width = `${percentage}%`;
             elements.progressBar.classList.remove('overloaded');
-            elements.balanceMessageContainer.classList.add('hidden');
             const existingBtn = document.getElementById('add-break-btn');
             if (existingBtn) {
                 existingBtn.remove();
             }
+        }
+        elements.balanceMessageContainer.classList.toggle('hidden', !shouldShowHelperStrip);
+        if (shouldShowHelperStrip) {
+            elements.balanceMessage.textContent = easyPatternInfo.visible
+                ? easyPatternInfo.message
+                : 'Сегодня плотный график. Позаботься о себе.';
         }
 
         renderVoiceUi();

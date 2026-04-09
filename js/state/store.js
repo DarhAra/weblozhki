@@ -85,6 +85,11 @@ function getDefaultState() {
             { id: 'res_3', text: 'Прогулка 15 минут' },
         ],
         templates: [],
+        syncMeta: {
+            lastServerSyncAt: null,
+            lastLocalMutationAt: null,
+            hasPendingOfflineChanges: false,
+        },
     };
 }
 
@@ -160,6 +165,28 @@ function ensureTemplateMigrations(state) {
     });
 }
 
+function ensureSyncMetaDefaults(state) {
+    if (!state.syncMeta || typeof state.syncMeta !== 'object') {
+        state.syncMeta = {};
+    }
+
+    if (typeof state.syncMeta.lastServerSyncAt !== 'string') {
+        state.syncMeta.lastServerSyncAt = null;
+    }
+
+    if (typeof state.syncMeta.lastLocalMutationAt !== 'string') {
+        state.syncMeta.lastLocalMutationAt = null;
+    }
+
+    if (typeof state.syncMeta.hasPendingOfflineChanges !== 'boolean') {
+        state.syncMeta.hasPendingOfflineChanges = false;
+    }
+}
+
+function cloneStateSnapshot(nextState) {
+    return JSON.parse(JSON.stringify(nextState));
+}
+
 function normalizeLoadedState(rawState, previousState = getDefaultState()) {
     const today = getLocalDateString();
     const nextState = { ...previousState, ...rawState };
@@ -169,6 +196,7 @@ function normalizeLoadedState(rawState, previousState = getDefaultState()) {
     if (!Array.isArray(nextState.resources)) nextState.resources = [];
     nextState.moodHistory = normalizeMoodHistory(nextState.moodHistory);
     ensurePreferenceDefaults(nextState);
+    ensureSyncMetaDefaults(nextState);
 
     if (!Array.isArray(nextState.templates) || nextState.templates.length === 0) {
         nextState.templates = getDefaultTemplates();
@@ -277,7 +305,8 @@ export function createStore() {
     };
     let persistenceStatus = {
         mode: 'local-fallback',
-        message: 'Сейчас работаем локально. Сервер недоступен.',
+        message: 'Сохранение: локально, сеть недоступна.',
+        hasPendingOfflineChanges: false,
     };
     let persistenceStatusListener = null;
     let saveChain = Promise.resolve();
@@ -288,6 +317,7 @@ export function createStore() {
 
     function setState(nextState) {
         state = nextState;
+        ensureSyncMetaDefaults(state);
         return state;
     }
 
@@ -320,13 +350,19 @@ export function createStore() {
     function updatePersistenceStatus(nextStatus) {
         const nextMode = nextStatus?.mode || 'local-fallback';
         const nextMessage = nextStatus?.message || '';
-        if (persistenceStatus.mode === nextMode && persistenceStatus.message === nextMessage) {
+        const nextPending = Boolean(nextStatus?.hasPendingOfflineChanges);
+        if (
+            persistenceStatus.mode === nextMode
+            && persistenceStatus.message === nextMessage
+            && Boolean(persistenceStatus.hasPendingOfflineChanges) === nextPending
+        ) {
             return;
         }
 
         persistenceStatus = {
             mode: nextMode,
             message: nextMessage,
+            hasPendingOfflineChanges: nextPending,
         };
 
         if (typeof persistenceStatusListener === 'function') {
@@ -340,6 +376,30 @@ export function createStore() {
 
     function getLocalSavedState() {
         return localStorage.getItem(getStorageKey());
+    }
+
+    function markLocalMutation(nextState = state) {
+        ensureSyncMetaDefaults(nextState);
+        nextState.syncMeta.lastLocalMutationAt = new Date().toISOString();
+        nextState.syncMeta.hasPendingOfflineChanges = true;
+    }
+
+    function markServerSyncSuccess(syncTarget, syncedAt = new Date().toISOString()) {
+        ensureSyncMetaDefaults(syncTarget);
+        syncTarget.syncMeta.lastServerSyncAt = syncedAt;
+        syncTarget.syncMeta.hasPendingOfflineChanges = false;
+
+        ensureSyncMetaDefaults(state);
+        state.syncMeta.lastServerSyncAt = syncedAt;
+        if (state.syncMeta.lastLocalMutationAt === syncTarget.syncMeta.lastLocalMutationAt) {
+            state.syncMeta.hasPendingOfflineChanges = false;
+        }
+    }
+
+    function getOfflineStatusMessage() {
+        return sessionContext.authenticated
+            ? 'Офлайн-режим: данные сохраняются на этом устройстве и будут синхронизированы позже.'
+            : 'Сохранение: локально, сеть недоступна.';
     }
 
     async function fetchServerState() {
@@ -386,24 +446,62 @@ export function createStore() {
         return response.json().catch(() => null);
     }
 
+    async function syncPendingState() {
+        if (!sessionContext.authenticated) {
+            return false;
+        }
+
+        const snapshot = cloneStateSnapshot(state);
+        ensureSyncMetaDefaults(snapshot);
+
+        try {
+            if (snapshot.syncMeta.hasPendingOfflineChanges) {
+                await postServerState(snapshot);
+                markServerSyncSuccess(snapshot);
+                saveStateToLocal(state);
+            } else {
+                await fetchServerState();
+            }
+
+            updatePersistenceStatus({
+                mode: 'server',
+                message: 'Сохранение: сервер',
+                hasPendingOfflineChanges: Boolean(state.syncMeta?.hasPendingOfflineChanges),
+            });
+            return true;
+        } catch (error) {
+            updatePersistenceStatus({
+                mode: sessionContext.authenticated ? 'offline-authenticated' : 'local-fallback',
+                message: getOfflineStatusMessage(),
+                hasPendingOfflineChanges: Boolean(state.syncMeta?.hasPendingOfflineChanges),
+            });
+            return false;
+        }
+    }
+
     function saveState(nextState = state) {
         saveStateToLocal(nextState);
+        const stateSnapshot = cloneStateSnapshot(nextState);
 
         saveChain = saveChain
             .catch(() => undefined)
             .then(async () => {
                 try {
-                    await postServerState(nextState);
+                    await postServerState(stateSnapshot);
+                    markServerSyncSuccess(stateSnapshot);
+                    saveStateToLocal(state);
                     updatePersistenceStatus({
                         mode: 'server',
-                        message: 'Данные читаются и сохраняются через локальный сервер.',
+                        message: 'Сохранение: сервер',
+                        hasPendingOfflineChanges: Boolean(state.syncMeta?.hasPendingOfflineChanges),
                     });
                 } catch (error) {
                     console.warn('Failed to save state to server, using local fallback', error);
                     saveStateToLocal(nextState);
                     updatePersistenceStatus({
-                        mode: 'local-fallback',
-                        message: 'Сейчас работаем локально. Сервер недоступен.',
+                        mode: sessionContext.authenticated ? 'offline-authenticated' : 'local-fallback',
+                        message: getOfflineStatusMessage(),
+                        hasPendingOfflineChanges: true,
                     });
                 }
             });
@@ -414,6 +512,7 @@ export function createStore() {
     function updateState(mutator, options = { save: true }) {
         mutator(state);
         if (options.save !== false) {
+            markLocalMutation(state);
             void saveState();
         }
         return state;
@@ -422,34 +521,72 @@ export function createStore() {
     async function loadState(options = {}) {
         const localSaved = getLocalSavedState();
         const allowLegacyGuestBootstrap = options.allowLegacyGuestBootstrap !== false;
+        let normalizedLocalState = null;
+
+        if (localSaved) {
+            try {
+                normalizedLocalState = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
+            } catch (localParseError) {
+                console.error('Failed to parse local state', localParseError);
+            }
+        }
 
         try {
             const serverState = await fetchServerState();
+
+            if (normalizedLocalState?.syncMeta?.hasPendingOfflineChanges) {
+                state = normalizedLocalState;
+                saveStateToLocal(state);
+
+                try {
+                    await postServerState(state);
+                    markServerSyncSuccess(state);
+                    saveStateToLocal(state);
+                    updatePersistenceStatus({
+                        mode: 'server',
+                        message: 'Сохранение: сервер',
+                        hasPendingOfflineChanges: false,
+                    });
+                } catch (migrationError) {
+                    console.warn('Failed to sync pending local state to server', migrationError);
+                    updatePersistenceStatus({
+                        mode: 'offline-authenticated',
+                        message: getOfflineStatusMessage(),
+                        hasPendingOfflineChanges: true,
+                    });
+                }
+                return state;
+            }
 
             if (serverState) {
                 state = normalizeLoadedState(serverState, createDefaultStateWithTemplates());
                 saveStateToLocal(state);
                 updatePersistenceStatus({
                     mode: 'server',
-                    message: 'Данные читаются и сохраняются через локальный сервер.',
+                    message: 'Сохранение: сервер',
+                    hasPendingOfflineChanges: Boolean(state.syncMeta?.hasPendingOfflineChanges),
                 });
                 return state;
             }
 
-            if (localSaved) {
-                state = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
+            if (normalizedLocalState) {
+                state = normalizedLocalState;
                 saveStateToLocal(state);
                 try {
                     await postServerState(state);
+                    markServerSyncSuccess(state);
+                    saveStateToLocal(state);
                     updatePersistenceStatus({
                         mode: 'server',
-                        message: 'Данные читаются и сохраняются через локальный сервер.',
+                        message: 'Сохранение: сервер',
+                        hasPendingOfflineChanges: false,
                     });
                 } catch (migrationError) {
                     console.warn('Failed to migrate local state to server', migrationError);
                     updatePersistenceStatus({
-                        mode: 'local-fallback',
-                        message: 'Сейчас работаем локально. Сервер недоступен.',
+                        mode: sessionContext.authenticated ? 'offline-authenticated' : 'local-fallback',
+                        message: getOfflineStatusMessage(),
+                        hasPendingOfflineChanges: Boolean(state.syncMeta?.hasPendingOfflineChanges),
                     });
                 }
                 return state;
@@ -464,7 +601,8 @@ export function createStore() {
                 state = createDefaultStateWithTemplates();
                 updatePersistenceStatus({
                     mode: 'server',
-                    message: 'Данные читаются и сохраняются через локальный сервер.',
+                    message: 'Сохранение: сервер',
+                    hasPendingOfflineChanges: false,
                 });
                 return state;
             }
@@ -472,26 +610,25 @@ export function createStore() {
             state = createDefaultStateWithTemplates();
             updatePersistenceStatus({
                 mode: 'server',
-                message: 'Данные читаются и сохраняются через локальный сервер.',
+                message: 'Сохранение: сервер',
+                hasPendingOfflineChanges: false,
             });
             return state;
         } catch (serverError) {
             console.warn('Failed to load state from server, using local fallback', serverError);
 
-            if (localSaved) {
-                try {
-                    state = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
-                } catch (localError) {
-                    console.error('Failed to load local state', localError);
-                    state = createDefaultStateWithTemplates();
-                }
+            if (normalizedLocalState) {
+                state = normalizedLocalState;
             } else {
                 state = createDefaultStateWithTemplates();
             }
 
             updatePersistenceStatus({
-                mode: 'local-fallback',
-                message: 'Сейчас работаем локально. Сервер недоступен.',
+                mode: sessionContext.authenticated ? 'offline-authenticated' : 'local-fallback',
+                message: sessionContext.authenticated
+                    ? 'Офлайн-режим: данные сохраняются на этом устройстве.'
+                    : 'Сохранение: локально, сеть недоступна.',
+                hasPendingOfflineChanges: Boolean(state.syncMeta?.hasPendingOfflineChanges),
             });
             return state;
         }
@@ -506,5 +643,6 @@ export function createStore() {
         saveState,
         updateState,
         loadState,
+        syncPendingState,
     };
 }

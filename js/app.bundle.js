@@ -86,6 +86,7 @@
       appHelperAvatar: doc.getElementById("app-helper-avatar"),
       openAppMenuBtn: doc.getElementById("open-app-menu-btn"),
       appMenuPopover: doc.getElementById("app-menu-popover"),
+      offlineBanner: doc.getElementById("offline-banner"),
       balanceSection: doc.getElementById("balance-section"),
       usedEnergyEl: doc.getElementById("used-energy"),
       totalEnergyEl: doc.getElementById("total-energy"),
@@ -921,7 +922,12 @@
         { id: "res_2", text: "10 минут соцсетей" },
         { id: "res_3", text: "Прогулка 15 минут" }
       ],
-      templates: []
+      templates: [],
+      syncMeta: {
+        lastServerSyncAt: null,
+        lastLocalMutationAt: null,
+        hasPendingOfflineChanges: false
+      }
     };
   }
   function createDefaultStateWithTemplates() {
@@ -983,6 +989,23 @@
       }
     });
   }
+  function ensureSyncMetaDefaults(state) {
+    if (!state.syncMeta || typeof state.syncMeta !== "object") {
+      state.syncMeta = {};
+    }
+    if (typeof state.syncMeta.lastServerSyncAt !== "string") {
+      state.syncMeta.lastServerSyncAt = null;
+    }
+    if (typeof state.syncMeta.lastLocalMutationAt !== "string") {
+      state.syncMeta.lastLocalMutationAt = null;
+    }
+    if (typeof state.syncMeta.hasPendingOfflineChanges !== "boolean") {
+      state.syncMeta.hasPendingOfflineChanges = false;
+    }
+  }
+  function cloneStateSnapshot(nextState) {
+    return JSON.parse(JSON.stringify(nextState));
+  }
   function normalizeLoadedState(rawState, previousState = getDefaultState()) {
     const today = getLocalDateString();
     const nextState = { ...previousState, ...rawState };
@@ -991,6 +1014,7 @@
     if (!Array.isArray(nextState.resources)) nextState.resources = [];
     nextState.moodHistory = normalizeMoodHistory(nextState.moodHistory);
     ensurePreferenceDefaults(nextState);
+    ensureSyncMetaDefaults(nextState);
     if (!Array.isArray(nextState.templates) || nextState.templates.length === 0) {
       nextState.templates = getDefaultTemplates();
     } else {
@@ -1074,7 +1098,8 @@
     };
     let persistenceStatus = {
       mode: "local-fallback",
-      message: "Сейчас работаем локально. Сервер недоступен."
+      message: "Сохранение: локально, сеть недоступна.",
+      hasPendingOfflineChanges: false
     };
     let persistenceStatusListener = null;
     let saveChain = Promise.resolve();
@@ -1083,6 +1108,7 @@
     }
     function setState(nextState) {
       state = nextState;
+      ensureSyncMetaDefaults(state);
       return state;
     }
     function getPersistenceStatus() {
@@ -1109,12 +1135,14 @@
     function updatePersistenceStatus(nextStatus) {
       const nextMode = (nextStatus == null ? void 0 : nextStatus.mode) || "local-fallback";
       const nextMessage = (nextStatus == null ? void 0 : nextStatus.message) || "";
-      if (persistenceStatus.mode === nextMode && persistenceStatus.message === nextMessage) {
+      const nextPending = Boolean(nextStatus == null ? void 0 : nextStatus.hasPendingOfflineChanges);
+      if (persistenceStatus.mode === nextMode && persistenceStatus.message === nextMessage && Boolean(persistenceStatus.hasPendingOfflineChanges) === nextPending) {
         return;
       }
       persistenceStatus = {
         mode: nextMode,
-        message: nextMessage
+        message: nextMessage,
+        hasPendingOfflineChanges: nextPending
       };
       if (typeof persistenceStatusListener === "function") {
         persistenceStatusListener({ ...persistenceStatus });
@@ -1125,6 +1153,24 @@
     }
     function getLocalSavedState() {
       return localStorage.getItem(getStorageKey());
+    }
+    function markLocalMutation(nextState = state) {
+      ensureSyncMetaDefaults(nextState);
+      nextState.syncMeta.lastLocalMutationAt = (/* @__PURE__ */ new Date()).toISOString();
+      nextState.syncMeta.hasPendingOfflineChanges = true;
+    }
+    function markServerSyncSuccess(syncTarget, syncedAt = (/* @__PURE__ */ new Date()).toISOString()) {
+      ensureSyncMetaDefaults(syncTarget);
+      syncTarget.syncMeta.lastServerSyncAt = syncedAt;
+      syncTarget.syncMeta.hasPendingOfflineChanges = false;
+      ensureSyncMetaDefaults(state);
+      state.syncMeta.lastServerSyncAt = syncedAt;
+      if (state.syncMeta.lastLocalMutationAt === syncTarget.syncMeta.lastLocalMutationAt) {
+        state.syncMeta.hasPendingOfflineChanges = false;
+      }
+    }
+    function getOfflineStatusMessage() {
+      return sessionContext.authenticated ? "Офлайн-режим: данные сохраняются на этом устройстве и будут синхронизированы позже." : "Сохранение: локально, сеть недоступна.";
     }
     async function fetchServerState() {
       const response = await fetch(API_STATE_URL, {
@@ -1161,21 +1207,57 @@
       }
       return response.json().catch(() => null);
     }
+    async function syncPendingState() {
+      var _a, _b;
+      if (!sessionContext.authenticated) {
+        return false;
+      }
+      const snapshot = cloneStateSnapshot(state);
+      ensureSyncMetaDefaults(snapshot);
+      try {
+        if (snapshot.syncMeta.hasPendingOfflineChanges) {
+          await postServerState(snapshot);
+          markServerSyncSuccess(snapshot);
+          saveStateToLocal(state);
+        } else {
+          await fetchServerState();
+        }
+        updatePersistenceStatus({
+          mode: "server",
+          message: "Сохранение: сервер",
+          hasPendingOfflineChanges: Boolean((_a = state.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges)
+        });
+        return true;
+      } catch (error) {
+        updatePersistenceStatus({
+          mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
+          message: getOfflineStatusMessage(),
+          hasPendingOfflineChanges: Boolean((_b = state.syncMeta) == null ? void 0 : _b.hasPendingOfflineChanges)
+        });
+        return false;
+      }
+    }
     function saveState(nextState = state) {
       saveStateToLocal(nextState);
+      const stateSnapshot = cloneStateSnapshot(nextState);
       saveChain = saveChain.catch(() => void 0).then(async () => {
+        var _a;
         try {
-          await postServerState(nextState);
+          await postServerState(stateSnapshot);
+          markServerSyncSuccess(stateSnapshot);
+          saveStateToLocal(state);
           updatePersistenceStatus({
             mode: "server",
-            message: "Данные читаются и сохраняются через локальный сервер."
+            message: "Сохранение: сервер",
+            hasPendingOfflineChanges: Boolean((_a = state.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges)
           });
         } catch (error) {
           console.warn("Failed to save state to server, using local fallback", error);
           saveStateToLocal(nextState);
           updatePersistenceStatus({
-            mode: "local-fallback",
-            message: "Сейчас работаем локально. Сервер недоступен."
+            mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
+            message: getOfflineStatusMessage(),
+            hasPendingOfflineChanges: true
           });
         }
       });
@@ -1184,38 +1266,75 @@
     function updateState(mutator, options = { save: true }) {
       mutator(state);
       if (options.save !== false) {
+        markLocalMutation(state);
         void saveState();
       }
       return state;
     }
     async function loadState(options = {}) {
+      var _a, _b, _c, _d;
       const localSaved = getLocalSavedState();
       const allowLegacyGuestBootstrap = options.allowLegacyGuestBootstrap !== false;
+      let normalizedLocalState = null;
+      if (localSaved) {
+        try {
+          normalizedLocalState = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
+        } catch (localParseError) {
+          console.error("Failed to parse local state", localParseError);
+        }
+      }
       try {
         const serverState = await fetchServerState();
+        if ((_a = normalizedLocalState == null ? void 0 : normalizedLocalState.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges) {
+          state = normalizedLocalState;
+          saveStateToLocal(state);
+          try {
+            await postServerState(state);
+            markServerSyncSuccess(state);
+            saveStateToLocal(state);
+            updatePersistenceStatus({
+              mode: "server",
+              message: "Сохранение: сервер",
+              hasPendingOfflineChanges: false
+            });
+          } catch (migrationError) {
+            console.warn("Failed to sync pending local state to server", migrationError);
+            updatePersistenceStatus({
+              mode: "offline-authenticated",
+              message: getOfflineStatusMessage(),
+              hasPendingOfflineChanges: true
+            });
+          }
+          return state;
+        }
         if (serverState) {
           state = normalizeLoadedState(serverState, createDefaultStateWithTemplates());
           saveStateToLocal(state);
           updatePersistenceStatus({
             mode: "server",
-            message: "Данные читаются и сохраняются через локальный сервер."
+            message: "Сохранение: сервер",
+            hasPendingOfflineChanges: Boolean((_b = state.syncMeta) == null ? void 0 : _b.hasPendingOfflineChanges)
           });
           return state;
         }
-        if (localSaved) {
-          state = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
+        if (normalizedLocalState) {
+          state = normalizedLocalState;
           saveStateToLocal(state);
           try {
             await postServerState(state);
+            markServerSyncSuccess(state);
+            saveStateToLocal(state);
             updatePersistenceStatus({
               mode: "server",
-              message: "Данные читаются и сохраняются через локальный сервер."
+              message: "Сохранение: сервер",
+              hasPendingOfflineChanges: false
             });
           } catch (migrationError) {
             console.warn("Failed to migrate local state to server", migrationError);
             updatePersistenceStatus({
-              mode: "local-fallback",
-              message: "Сейчас работаем локально. Сервер недоступен."
+              mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
+              message: getOfflineStatusMessage(),
+              hasPendingOfflineChanges: Boolean((_c = state.syncMeta) == null ? void 0 : _c.hasPendingOfflineChanges)
             });
           }
           return state;
@@ -1224,31 +1343,29 @@
           state = createDefaultStateWithTemplates();
           updatePersistenceStatus({
             mode: "server",
-            message: "Данные читаются и сохраняются через локальный сервер."
+            message: "Сохранение: сервер",
+            hasPendingOfflineChanges: false
           });
           return state;
         }
         state = createDefaultStateWithTemplates();
         updatePersistenceStatus({
           mode: "server",
-          message: "Данные читаются и сохраняются через локальный сервер."
+          message: "Сохранение: сервер",
+          hasPendingOfflineChanges: false
         });
         return state;
       } catch (serverError) {
         console.warn("Failed to load state from server, using local fallback", serverError);
-        if (localSaved) {
-          try {
-            state = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
-          } catch (localError) {
-            console.error("Failed to load local state", localError);
-            state = createDefaultStateWithTemplates();
-          }
+        if (normalizedLocalState) {
+          state = normalizedLocalState;
         } else {
           state = createDefaultStateWithTemplates();
         }
         updatePersistenceStatus({
-          mode: "local-fallback",
-          message: "Сейчас работаем локально. Сервер недоступен."
+          mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
+          message: sessionContext.authenticated ? "Офлайн-режим: данные сохраняются на этом устройстве." : "Сохранение: локально, сеть недоступна.",
+          hasPendingOfflineChanges: Boolean((_d = state.syncMeta) == null ? void 0 : _d.hasPendingOfflineChanges)
         });
         return state;
       }
@@ -1261,7 +1378,8 @@
       setPersistenceStatusListener,
       saveState,
       updateState,
-      loadState
+      loadState,
+      syncPendingState
     };
   }
 
@@ -1820,10 +1938,12 @@
       }
       const status = runtime.persistenceStatus || ((_a = store.getPersistenceStatus) == null ? void 0 : _a.call(store)) || { mode: "local-fallback" };
       const isServerMode = status.mode === "server";
-      elements.storageStatus.textContent = isServerMode ? "Сохранение: сервер" : "Сохранение: локально";
+      const isOfflineAuthenticated = status.mode === "offline-authenticated";
+      elements.storageStatus.textContent = isServerMode ? "Сохранение: сервер" : isOfflineAuthenticated ? "Офлайн-режим" : "Сохранение: локально";
       elements.storageStatus.classList.toggle("is-server", isServerMode);
       elements.storageStatus.classList.toggle("is-local", !isServerMode);
-      elements.storageStatus.title = isServerMode ? "Данные читаются и сохраняются через локальный сервер." : "Сервер сейчас недоступен, поэтому приложение временно работает через localStorage.";
+      elements.storageStatus.classList.toggle("is-offline", isOfflineAuthenticated);
+      elements.storageStatus.title = status.message || (isServerMode ? "Данные синхронизированы с сервером." : "Изменения пока сохраняются только на этом устройстве.");
     }
     function renderAuthScreen() {
       var _a, _b, _c, _d, _e, _f, _g;
@@ -2119,44 +2239,29 @@
       elements.easyPatternPanel.classList.toggle("hidden", !shouldShow);
       if (!shouldShow) {
         elements.easyPatternPanel.innerHTML = "";
-        return;
+        return { visible: false, message: "" };
       }
       if (hasFeedback) {
         elements.easyPatternPanel.innerHTML = `
                 <div class="easy-pattern-card easy-pattern-card-feedback">
-                    <div class="easy-pattern-header">
-                        <span class="easy-pattern-kicker">Мягкое упрощение</span>
-                    </div>
-                    <p class="easy-pattern-message">${easyPattern.feedback}</p>
                     <div class="easy-pattern-actions">
                         <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-clear-feedback">Хорошо</button>
                     </div>
                 </div>
             `;
-        return;
+        return { visible: true, message: easyPattern.feedback };
       }
       const selectedScenario = easyPattern.selectedScenario || null;
       const preview = selectedScenario ? easyPattern.preview || previewEasyPatternScenario(state, selectedScenario, today, {
         resourceId: easyPattern.resourceSuggestionId || null
       }) : null;
       const resourcePreviewText = (preview == null ? void 0 : preview.resource) ? escapeHtml(preview.resource.text) : "Сейчас не нашлось свободной радости без дубля.";
+      const selectionSummary = selectedScenario ? selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? `${getEasyPatternScenarioLabel(selectedScenario)}: ${resourcePreviewText}` : `${getEasyPatternScenarioLabel(selectedScenario)}: останется ${(preview == null ? void 0 : preview.keepCount) || 0}, перенесётся ${(preview == null ? void 0 : preview.moveCount) || 0}` : "";
+      const helperMessage = getEasyPatternMessage(trigger);
       elements.easyPatternPanel.innerHTML = `
             <div class="easy-pattern-card">
-                <div class="easy-pattern-header">
-                    <span class="easy-pattern-kicker">Мягкая помощь на сегодня</span>
-                </div>
-                <p class="easy-pattern-message">${getEasyPatternMessage(trigger)}</p>
+                ${selectedScenario ? `<div class="easy-pattern-inline-note">${selectionSummary}</div>` : ""}
                 ${selectedScenario ? `
-                    <div class="easy-pattern-preview">
-                        <div class="easy-pattern-preview-title">${getEasyPatternScenarioLabel(selectedScenario)}</div>
-                        ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? `
-                                <div class="easy-pattern-preview-line">Добавится: ${(preview == null ? void 0 : preview.addCount) || 0} ресурс</div>
-                                <div class="easy-pattern-preview-resource">${resourcePreviewText}</div>
-                            ` : `
-                                <div class="easy-pattern-preview-line">Останется: ${(preview == null ? void 0 : preview.keepCount) || 0} задач</div>
-                                <div class="easy-pattern-preview-line">Перенесётся: ${(preview == null ? void 0 : preview.moveCount) || 0} задач</div>
-                            `}
-                    </div>
                     <div class="easy-pattern-actions">
                         ${selectedScenario === EASY_PATTERN_SCENARIOS.ADD_RESOURCE ? `
                             <button class="secondary-btn easy-pattern-btn" type="button" data-action="easy-pattern-cycle-resource" ${(preview == null ? void 0 : preview.isAvailable) ? "" : "disabled"}>Другое</button>
@@ -2174,9 +2279,10 @@
                 `}
             </div>
         `;
+      return { visible: true, message: helperMessage };
     }
     function renderMainScreen() {
-      var _a;
+      var _a, _b, _c, _d;
       const state = store.getState();
       const todayTasks = getTodayTasks(state);
       const isSosView = Boolean((_a = runtime.sosView) == null ? void 0 : _a.active);
@@ -2201,9 +2307,14 @@
         elements.selfCareList.innerHTML = '<div style="color: var(--text-secondary); font-size: 14px; text-align: center; padding: 8px;">Добавьте ресурс из «Моих радостей» ☕</div>';
       }
       renderLowEnergyPanel(state, todayTasks, isSosView);
-      renderEasyPatternPanel(state, isSosView);
+      const easyPatternInfo = renderEasyPatternPanel(state, isSosView);
       renderInboxUi();
       renderPersistenceStatus();
+      if (elements.offlineBanner) {
+        const shouldShowOfflineBanner = ((_b = runtime.persistenceStatus) == null ? void 0 : _b.mode) && runtime.persistenceStatus.mode !== "server";
+        elements.offlineBanner.textContent = ((_c = runtime.persistenceStatus) == null ? void 0 : _c.message) || "";
+        elements.offlineBanner.classList.toggle("hidden", !shouldShowOfflineBanner || !((_d = runtime.persistenceStatus) == null ? void 0 : _d.message));
+      }
       elements.balanceSection.classList.toggle("hidden", isSosView);
       elements.addTaskForm.classList.toggle("hidden", isSosView);
       elements.openTemplatesBtn.classList.toggle("hidden", isSosView);
@@ -2227,28 +2338,21 @@
       elements.usedEnergyEl.textContent = usedEnergy;
       elements.totalEnergyEl.textContent = total;
       const percentage = Math.min(usedEnergy / total * 100, 100);
+      const shouldShowHelperStrip = usedEnergy > total || easyPatternInfo.visible;
       if (usedEnergy > total) {
         elements.progressBar.style.width = "100%";
         elements.progressBar.classList.add("overloaded");
-        elements.balanceMessageContainer.classList.remove("hidden");
-        elements.balanceMessage.innerHTML = "Сегодня плотный график.<br>Позаботься о себе.";
-        let addBreakBtn = document.getElementById("add-break-btn");
-        if (!addBreakBtn) {
-          addBreakBtn = document.createElement("button");
-          addBreakBtn.id = "add-break-btn";
-          addBreakBtn.className = "add-break-btn";
-          addBreakBtn.textContent = "☕ Добавить паузу";
-          addBreakBtn.dataset.action = "add-break";
-          elements.balanceMessageContainer.appendChild(addBreakBtn);
-        }
       } else {
         elements.progressBar.style.width = `${percentage}%`;
         elements.progressBar.classList.remove("overloaded");
-        elements.balanceMessageContainer.classList.add("hidden");
         const existingBtn = document.getElementById("add-break-btn");
         if (existingBtn) {
           existingBtn.remove();
         }
+      }
+      elements.balanceMessageContainer.classList.toggle("hidden", !shouldShowHelperStrip);
+      if (shouldShowHelperStrip) {
+        elements.balanceMessage.textContent = easyPatternInfo.visible ? easyPatternInfo.message : "Сегодня плотный график. Позаботься о себе.";
       }
       renderVoiceUi();
     }
@@ -3035,6 +3139,66 @@
     };
   }
 
+  // js/services/offline-auth.js
+  var OFFLINE_AUTH_SNAPSHOT_KEY = "resourceTodoOfflineAuthSnapshot";
+  function canUseLocalStorage() {
+    return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  }
+  function normalizeSnapshot(rawSnapshot) {
+    if (!rawSnapshot || typeof rawSnapshot !== "object") {
+      return null;
+    }
+    const userId = typeof rawSnapshot.userId === "string" ? rawSnapshot.userId.trim() : "";
+    const email = typeof rawSnapshot.email === "string" ? rawSnapshot.email.trim() : "";
+    const name = typeof rawSnapshot.name === "string" ? rawSnapshot.name.trim() : "";
+    const lastAuthenticatedAt = typeof rawSnapshot.lastAuthenticatedAt === "string" ? rawSnapshot.lastAuthenticatedAt : null;
+    if (!userId || !email) {
+      return null;
+    }
+    return {
+      userId,
+      email,
+      name: name || email,
+      lastAuthenticatedAt
+    };
+  }
+  function readOfflineAuthSnapshot() {
+    if (!canUseLocalStorage()) {
+      return null;
+    }
+    try {
+      const rawValue = window.localStorage.getItem(OFFLINE_AUTH_SNAPSHOT_KEY);
+      if (!rawValue) {
+        return null;
+      }
+      return normalizeSnapshot(JSON.parse(rawValue));
+    } catch {
+      return null;
+    }
+  }
+  function saveOfflineAuthSnapshot(user) {
+    if (!canUseLocalStorage()) {
+      return null;
+    }
+    const snapshot = normalizeSnapshot({
+      userId: (user == null ? void 0 : user.id) || (user == null ? void 0 : user.userId),
+      email: user == null ? void 0 : user.email,
+      name: user == null ? void 0 : user.name,
+      lastAuthenticatedAt: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    if (!snapshot) {
+      return null;
+    }
+    window.localStorage.setItem(OFFLINE_AUTH_SNAPSHOT_KEY, JSON.stringify(snapshot));
+    return snapshot;
+  }
+  function clearOfflineAuthSnapshot() {
+    if (!canUseLocalStorage()) {
+      return;
+    }
+    window.localStorage.removeItem(OFFLINE_AUTH_SNAPSHOT_KEY);
+  }
+
   // js/ui/bindings.js
   function getDragAfterElement(container, y, selector, draggingClass) {
     const draggableElements = [...container.querySelectorAll(`${selector}:not(.${draggingClass})`)];
@@ -3372,7 +3536,7 @@
     }
     function openForgotPasswordModal() {
       if (!elements.forgotPasswordModal || !elements.forgotPasswordEmail) {
-        authState.error = "РњРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїР°СЂРѕР»СЏ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРЅРѕ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РїРѕР·Р¶Рµ.";
+        authState.error = "Модальное окно восстановления пароля пока недоступно. Попробуйте позже.";
         app.renderers.renderAuthScreen();
         return;
       }
@@ -3436,13 +3600,13 @@
       const passwordConfirm = elements.authPasswordConfirm.value;
       if (authState.mode === "reset-password") {
         if (!password || !passwordConfirm) {
-          authState.error = "Р вЂ”Р В°Р С—Р С•Р В»Р Р…Р С‘ Р Р…Р С•Р Р†РЎвЂ№Р в„– Р С—Р В°РЎР‚Р С•Р В»РЎРЉ Р С‘ Р ВµР С–Р С• Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ.";
+          authState.error = "Заполни новый пароль и его подтверждение.";
           authState.status = "guest";
           app.renderers.renderAuthScreen();
           return;
         }
         if (password !== passwordConfirm) {
-          authState.error = "Р СџР В°РЎР‚Р С•Р В»Р С‘ Р Р…Р Вµ РЎРѓР С•Р Р†Р С—Р В°Р Т‘Р В°РЎР‹РЎвЂљ.";
+          authState.error = "Пароли не совпадают.";
           authState.status = "guest";
           app.renderers.renderAuthScreen();
           return;
@@ -3459,7 +3623,7 @@
           authState.mode = "login";
           authState.resetToken = null;
           authState.status = "guest";
-          authState.notice = "Р СџР В°РЎР‚Р С•Р В»РЎРЉ Р С•Р В±Р Р…Р С•Р Р†Р В»РЎвЂР Р…. Р СћР ВµР С—Р ВµРЎР‚РЎРЉ Р СР С•Р В¶Р Р…Р С• Р Р†Р С•Р в„–РЎвЂљР С‘ РЎРѓ Р Р…Р С•Р Р†РЎвЂ№Р С Р С—Р В°РЎР‚Р С•Р В»Р ВµР С.";
+          authState.notice = "Пароль обновлён. Теперь можно войти с новым паролем.";
           authState.error = "";
           resetAuthForm({ preserveEmail: false });
           if (typeof window !== "undefined") {
@@ -3468,19 +3632,19 @@
           app.renderers.renderAuthScreen();
         } catch (error) {
           authState.status = "guest";
-          authState.error = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С•Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р В°РЎР‚Р С•Р В»РЎРЉ. Р СџР С•Р С—РЎР‚Р С•Р В±РЎС“Р в„– Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· РЎвЂЎРЎС“РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ.";
+          authState.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается обновить пароль. Попробуй ещё раз чуть позже.";
           app.renderers.renderAuthScreen();
         }
         return;
       }
       if (!email || !password || authState.mode === "register" && !name) {
-        authState.error = "Р вЂ”Р В°Р С—Р С•Р В»Р Р…Р С‘, Р С—Р С•Р В¶Р В°Р В»РЎС“Р в„–РЎРѓРЎвЂљР В°, Р Р†РЎРѓР Вµ Р С•Р В±РЎРЏР В·Р В°РЎвЂљР ВµР В»РЎРЉР Р…РЎвЂ№Р Вµ Р С—Р С•Р В»РЎРЏ.";
+        authState.error = "Заполни, пожалуйста, все обязательные поля.";
         authState.status = "guest";
         app.renderers.renderAuthScreen();
         return;
       }
       if (authState.mode === "register" && password !== passwordConfirm) {
-        authState.error = "Р СџР В°РЎР‚Р С•Р В»Р С‘ Р Р…Р Вµ РЎРѓР С•Р Р†Р С—Р В°Р Т‘Р В°РЎР‹РЎвЂљ.";
+        authState.error = "Пароли не совпадают.";
         authState.status = "guest";
         app.renderers.renderAuthScreen();
         return;
@@ -3495,7 +3659,7 @@
         await app.startAuthenticatedFlow(user);
       } catch (error) {
         authState.status = "guest";
-        authState.error = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ. Р СџР С•Р С—РЎР‚Р С•Р В±РЎС“Р в„– Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· РЎвЂЎРЎС“РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ.";
+        authState.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается продолжить. Попробуй ещё раз чуть позже.";
         app.renderers.renderAuthScreen();
       }
     }
@@ -3584,7 +3748,7 @@
         event.preventDefault();
         const email = elements.forgotPasswordEmail.value.trim();
         if (!email) {
-          elements.forgotPasswordError.textContent = "Р Р€Р С”Р В°Р В¶Р С‘ email Р Т‘Р В»РЎРЏ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ.";
+          elements.forgotPasswordError.textContent = "Укажи email для восстановления.";
           elements.forgotPasswordError.classList.remove("hidden");
           return;
         }
@@ -3593,10 +3757,10 @@
         elements.forgotPasswordSubmitBtn.disabled = true;
         try {
           const result = await app.auth.forgotPassword({ email });
-          elements.forgotPasswordMessage.textContent = (result == null ? void 0 : result.message) || "Р вЂўРЎРѓР В»Р С‘ РЎвЂљР В°Р С”Р С•Р в„– Р В°Р С”Р С”Р В°РЎС“Р Р…РЎвЂљ РЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“Р ВµРЎвЂљ, Р С—Р С‘РЎРѓРЎРЉР СР С• РЎС“Р В¶Р Вµ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р В»Р ВµР Р…Р С•.";
+          elements.forgotPasswordMessage.textContent = (result == null ? void 0 : result.message) || "Если такой аккаунт существует, письмо уже отправлено.";
           elements.forgotPasswordMessage.classList.remove("hidden");
         } catch (error) {
-          elements.forgotPasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р С‘РЎРѓРЎРЉР СР С• Р Т‘Р В»РЎРЏ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ.";
+          elements.forgotPasswordError.textContent = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается отправить письмо для восстановления.";
           elements.forgotPasswordError.classList.remove("hidden");
         } finally {
           elements.forgotPasswordSubmitBtn.disabled = false;
@@ -3703,15 +3867,17 @@
     elements.accountLogoutBtn.addEventListener("click", async () => {
       closeAccountModal();
       resetEasyPatternState();
+      clearOfflineAuthSnapshot();
       try {
         await app.auth.logout();
       } catch (error) {
-        runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р Р†РЎвЂ№Р в„–РЎвЂљР С‘ Р С‘Р В· Р В°Р С”Р С”Р В°РЎС“Р Р…РЎвЂљР В°.";
+        runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается выйти из аккаунта.";
       }
       store.setSessionContext({ authenticated: false, userId: null });
       authState.user = null;
       authState.mode = "login";
       authState.status = "guest";
+      authState.isOfflineAuthenticated = false;
       resetAuthForm({ preserveEmail: false });
       app.screens.showAuthScreen();
     });
@@ -3799,7 +3965,7 @@
           return;
         }
         if (!transcript) {
-          voiceState.voiceError = "Р Р‡ Р Р…Р С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ РЎР‚Р В°РЎРѓРЎРѓР В»РЎвЂ№РЎв‚¬Р В°Р В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·.";
+          voiceState.voiceError = "Я ничего не расслышал. Можно попробовать ещё раз.";
           app.renderers.renderMainScreen();
           return;
         }
@@ -3809,7 +3975,7 @@
         const drafts = parseVoiceTranscript(transcript, getLocalDateString());
         voiceState.isProcessing = false;
         if (drafts.length === 0) {
-          openVoiceMessage("Р СњР Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р С—Р С•Р Р…РЎРЏРЎвЂљР Р…РЎвЂ№Р в„– РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р В·Р В°Р Т‘Р В°РЎвЂЎРЎС“ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.");
+          openVoiceMessage("Не получилось собрать понятный черновик. Можно попробовать ещё раз или добавить задачу текстом.");
           return;
         }
         openVoiceDraftModal(drafts, transcript);
@@ -3840,7 +4006,7 @@
           return;
         }
         if (!transcript) {
-          inboxState.error = "Р Р‡ Р Р…Р С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ РЎР‚Р В°РЎРѓРЎРѓР В»РЎвЂ№РЎв‚¬Р В°Р В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»РЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.";
+          inboxState.error = "Я ничего не расслышал. Можно попробовать ещё раз или записать мысль текстом.";
           app.renderers.renderMainScreen();
           return;
         }
@@ -3849,7 +4015,7 @@
         const drafts = parseInboxTranscript(transcript);
         inboxState.isProcessing = false;
         if (drafts.length === 0) {
-          openInboxVoiceMessage("Р СњР Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р С—Р С•Р Р…РЎРЏРЎвЂљР Р…РЎвЂ№Р в„– РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р СРЎвЂ№РЎРѓР В»Р ВµР в„–. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»Р С‘ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.");
+          openInboxVoiceMessage("Не получилось собрать понятный черновик мыслей. Можно попробовать ещё раз или записать мысль текстом.");
           return;
         }
         openInboxDraftModal(drafts);
@@ -4140,7 +4306,7 @@
       addTask(store, { text: runtime.currentAdvice, weight: 0, isResource: true });
       app.renderers.renderMainScreen();
       const originalText = elements.adviceAddBtn.textContent;
-      elements.adviceAddBtn.textContent = "Р”РѕР±Р°РІР»РµРЅРѕ";
+      elements.adviceAddBtn.textContent = "Добавлено";
       elements.adviceAddBtn.style.backgroundColor = "var(--primary-color)";
       elements.adviceAddBtn.style.color = "white";
       setTimeout(() => {
@@ -4152,7 +4318,7 @@
     });
     elements.openVoiceBtn.addEventListener("click", () => {
       if (!voiceState.isSupported) {
-        openVoiceMessage("Р вЂњР С•Р В»Р С•РЎРѓР С•Р Р†Р С•Р в„– Р Р†Р Р†Р С•Р Т‘ Р Р† РЎРЊРЎвЂљР С•Р С Р В±РЎР‚Р В°РЎС“Р В·Р ВµРЎР‚Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµР Т‘Р С•РЎРѓРЎвЂљРЎС“Р С—Р ВµР Р…. Р СљР С•Р В¶Р Р…Р С• Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ Р С•Р В±РЎвЂ№РЎвЂЎР Р…РЎвЂ№Р С РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р С Р Р†Р Р†Р С•Р Т‘Р С•Р С.");
+        openVoiceMessage("Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.");
         return;
       }
       if (voiceState.isListening) {
@@ -4174,7 +4340,7 @@
     });
     elements.openInboxVoiceBtn.addEventListener("click", () => {
       if (!inboxState.isSupported) {
-        openInboxVoiceMessage("Р вЂњР С•Р В»Р С•РЎРѓР С•Р Р†Р С•Р в„– Р Р†Р Р†Р С•Р Т‘ Р Р† РЎРЊРЎвЂљР С•Р С Р В±РЎР‚Р В°РЎС“Р В·Р ВµРЎР‚Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµР Т‘Р С•РЎРѓРЎвЂљРЎС“Р С—Р ВµР Р…. Р СљР С•Р В¶Р Р…Р С• Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ Р С•Р В±РЎвЂ№РЎвЂЎР Р…РЎвЂ№Р С РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р С Р Р†Р Р†Р С•Р Т‘Р С•Р С.");
+        openInboxVoiceMessage("Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.");
         return;
       }
       if (inboxState.isListening) {
@@ -4197,7 +4363,7 @@
     elements.inboxVoiceConfirmBtn.addEventListener("click", () => {
       const drafts = inboxState.drafts.map((draft) => draft.text.trim()).filter(Boolean);
       if (drafts.length === 0) {
-        openInboxVoiceMessage("Р вЂ™ РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµРЎвЂљ Р СРЎвЂ№РЎРѓР В»Р ВµР в„–, Р С”Р С•РЎвЂљР С•РЎР‚РЎвЂ№Р Вµ Р СР С•Р В¶Р Р…Р С• РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р С‘РЎвЂљРЎРЉ.");
+        openInboxVoiceMessage("В черновике пока нет мыслей, которые можно сохранить.");
         return;
       }
       addInboxItems(store, drafts);
@@ -4214,7 +4380,7 @@
     elements.clearInboxBtn.addEventListener("click", () => {
       const inboxItems = store.getState().inboxItems || [];
       if (inboxItems.length === 0) return;
-      const shouldClear = window.confirm("Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†РЎРѓР Вµ Р С›Р В±Р В»Р В°Р С”Р С• Р СРЎвЂ№РЎРѓР В»Р ВµР в„–? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р ВµР Р…Р Р…РЎвЂ№Р Вµ Р СРЎвЂ№РЎРѓР В»Р С‘.");
+      const shouldClear = window.confirm("Очистить всё Облако мыслей? Это удалит все сохранённые мысли.");
       if (!shouldClear) return;
       clearInboxItems(store);
       closeInboxSortModal();
@@ -4306,7 +4472,7 @@
       elements.archiveModal.classList.add("hidden");
     });
     elements.clearArchiveBtn.addEventListener("click", () => {
-      const shouldClear = window.confirm("Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†Р ВµРЎРѓРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р’В«Р СњР В° Р С—Р С•РЎвЂљР С•Р СР’В»? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ Р С•РЎвЂљР В»Р С•Р В¶Р ВµР Р…Р Р…РЎвЂ№Р Вµ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘.");
+      const shouldClear = window.confirm("Очистить весь список «На потом»? Это удалит все отложенные задачи.");
       if (!shouldClear) return;
       clearDeferredTasks(store);
       app.renderers.renderArchive();
@@ -4317,7 +4483,7 @@
       elements.completedModal.classList.add("hidden");
     });
     elements.clearCompletedBtn.addEventListener("click", () => {
-      const shouldClear = window.confirm("Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†Р ВµРЎРѓРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р’В«Р РЋР Т‘Р ВµР В»Р В°Р Р…Р С•Р’В»? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬РЎвЂР Р…Р Р…РЎвЂ№Р Вµ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘ Р С‘Р В· РЎРЊРЎвЂљР С•Р С–Р С• РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р В°.");
+      const shouldClear = window.confirm("Очистить весь список «Сделано»? Это удалит все завершённые задачи из этого раздела.");
       if (!shouldClear) return;
       clearDoneTasks(store);
       app.renderers.renderCompleted();
@@ -4329,7 +4495,7 @@
         targetDate: draft.suggestedDate
       })).filter((draft) => draft.text);
       if (draftsToAdd.length === 0) {
-        openVoiceMessage("Р вЂ™ РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµРЎвЂљ Р В·Р В°Р Т‘Р В°РЎвЂЎ, Р С”Р С•РЎвЂљР С•РЎР‚РЎвЂ№Р Вµ Р СР С•Р В¶Р Р…Р С• Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ.");
+        openVoiceMessage("В черновике пока нет задач, которые можно добавить.");
         return;
       }
       draftsToAdd.forEach((draft) => {
@@ -4721,7 +4887,7 @@
       if (!target || target.dataset.action !== "inbox-voice-remove-draft") return;
       inboxState.drafts = inboxState.drafts.filter((draft) => draft.id !== target.dataset.draftId);
       if (inboxState.drafts.length === 0) {
-        openInboxVoiceMessage("Р В§Р ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р С•Р С—РЎС“РЎРѓРЎвЂљР ВµР В». Р СљР С•Р В¶Р Р…Р С• Р Р…Р В°Р Т‘Р С‘Р С”РЎвЂљР С•Р Р†Р В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»Р С‘ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р С‘РЎвЂ¦ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.");
+        openInboxVoiceMessage("Черновик опустел. Можно надиктовать мысли ещё раз или записать их текстом.");
         return;
       }
       app.renderers.renderInboxVoiceModal();
@@ -4738,7 +4904,7 @@
       if (!target || target.dataset.action !== "voice-remove-draft") return;
       voiceState.voiceDraft = voiceState.voiceDraft.filter((draft) => draft.id !== target.dataset.draftId);
       if (voiceState.voiceDraft.length === 0) {
-        openVoiceMessage("Р В§Р ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р С•Р С—РЎС“РЎРѓРЎвЂљР ВµР В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р Р…Р В°Р Т‘Р С‘Р С”РЎвЂљР С•Р Р†Р В°РЎвЂљРЎРЉ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·.");
+        openVoiceMessage("Черновик опустел. Можно попробовать надиктовать задачи ещё раз.");
         return;
       }
       app.renderers.renderVoiceModal();
@@ -5042,6 +5208,7 @@
     } catch (error) {
       const networkError = new Error("Network request failed");
       networkError.friendlyMessage = fallbackMessage;
+      networkError.isNetworkError = true;
       throw networkError;
     }
     const payload = await readJsonResponse(response);
@@ -5296,6 +5463,8 @@
           user: null,
           error: "",
           notice: "",
+          isOfflineAuthenticated: false,
+          hasPendingOfflineChanges: false,
           resetToken: null,
           forgotPassword: {
             status: "idle",
@@ -5366,26 +5535,33 @@
         },
         persistenceStatus: ((_a = store.getPersistenceStatus) == null ? void 0 : _a.call(store)) || {
           mode: "local-fallback",
-          message: ""
+          message: "",
+          hasPendingOfflineChanges: false
         }
       }
     };
     app.renderers = createRenderers(app);
     app.onboarding = createOnboardingController(app);
     app.screens = createScreens(app);
-    app.startAuthenticatedFlow = async (user) => {
+    app.startAuthenticatedFlow = async (user, options = {}) => {
+      const isOfflineAuthenticated = Boolean(options.isOfflineAuthenticated);
       app.runtime.auth.user = user || null;
       app.runtime.auth.status = "authenticated";
       app.runtime.auth.error = "";
+      app.runtime.auth.isOfflineAuthenticated = isOfflineAuthenticated;
       store.setSessionContext({
         authenticated: true,
         userId: (user == null ? void 0 : user.id) || null
       });
+      if (!isOfflineAuthenticated && user) {
+        saveOfflineAuthSnapshot(user);
+      }
       return startAuthenticatedFlow(app);
     };
     bindAppEvents(app);
     (_b = store.setPersistenceStatusListener) == null ? void 0 : _b.call(store, (status) => {
       app.runtime.persistenceStatus = status;
+      app.runtime.auth.hasPendingOfflineChanges = Boolean(status == null ? void 0 : status.hasPendingOfflineChanges);
       app.renderers.renderPersistenceStatus();
     });
     app.screens.showAuthScreen();
@@ -5396,24 +5572,68 @@
         app.runtime.auth.mode = "reset-password";
         app.runtime.auth.resetToken = resetToken;
       }
+      window.addEventListener("online", async () => {
+        var _a2, _b2;
+        const syncSucceeded = await ((_a2 = store.syncPendingState) == null ? void 0 : _a2.call(store));
+        if (syncSucceeded && app.runtime.auth.isOfflineAuthenticated) {
+          try {
+            const session = await auth.checkSession();
+            if ((session == null ? void 0 : session.authenticated) && session.user) {
+              app.runtime.auth.user = session.user;
+              app.runtime.auth.isOfflineAuthenticated = false;
+              saveOfflineAuthSnapshot(session.user);
+            }
+          } catch {
+          }
+        }
+        app.runtime.persistenceStatus = ((_b2 = store.getPersistenceStatus) == null ? void 0 : _b2.call(store)) || app.runtime.persistenceStatus;
+        app.renderers.renderPersistenceStatus();
+        app.renderers.renderMainScreen();
+      });
+      window.addEventListener("offline", () => {
+        var _a2;
+        app.runtime.persistenceStatus = ((_a2 = store.getPersistenceStatus) == null ? void 0 : _a2.call(store)) || app.runtime.persistenceStatus;
+        app.renderers.renderPersistenceStatus();
+        app.renderers.renderMainScreen();
+      });
     }
     try {
       const session = await auth.checkSession();
       if (!session.authenticated || !session.user) {
+        clearOfflineAuthSnapshot();
         app.runtime.auth.mode = "login";
         app.runtime.auth.status = "guest";
         app.runtime.auth.user = null;
         app.runtime.auth.error = "";
+        app.runtime.auth.isOfflineAuthenticated = false;
         store.setSessionContext({ authenticated: false, userId: null });
         app.screens.showAuthScreen();
         return app;
       }
       await app.startAuthenticatedFlow(session.user);
     } catch (error) {
+      const offlineSnapshot = (error == null ? void 0 : error.isNetworkError) ? readOfflineAuthSnapshot() : null;
+      if (offlineSnapshot) {
+        const offlineUser = {
+          id: offlineSnapshot.userId,
+          name: offlineSnapshot.name,
+          email: offlineSnapshot.email,
+          createdAt: offlineSnapshot.lastAuthenticatedAt
+        };
+        app.runtime.auth.mode = "login";
+        app.runtime.auth.status = "authenticated";
+        app.runtime.auth.user = offlineUser;
+        app.runtime.auth.error = "";
+        app.runtime.auth.notice = "";
+        app.runtime.auth.isOfflineAuthenticated = true;
+        await app.startAuthenticatedFlow(offlineUser, { isOfflineAuthenticated: true });
+        return app;
+      }
       app.runtime.auth.mode = "login";
       app.runtime.auth.status = "guest";
       app.runtime.auth.user = null;
       app.runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается проверить вход. Попробуй чуть позже.";
+      app.runtime.auth.isOfflineAuthenticated = false;
       store.setSessionContext({ authenticated: false, userId: null });
       app.screens.showAuthScreen();
     }

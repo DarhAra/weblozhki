@@ -57,6 +57,7 @@ import {
     setTemplateDailyPreference,
 } from '../domain/templates.js';
 import { createVoiceInputService } from '../services/voice-input.js';
+import { clearOfflineAuthSnapshot } from '../services/offline-auth.js';
 import { spawnHearts } from './renderers.js';
 
 function getDragAfterElement(container, y, selector, draggingClass) {
@@ -192,41 +193,41 @@ function buildSuggestedBreakdownDrafts(taskText) {
     const lower = normalized.toLowerCase();
     let suggestions;
 
-    if (lower.includes('Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљ')) {
+    if (lower.includes('документ')) {
         suggestions = [
-            'Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р Р…РЎС“Р В¶Р Р…РЎвЂ№РЎвЂ¦ Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљР С•Р Р†',
-            'Р СџР С•Р Т‘Р С–Р С•РЎвЂљР С•Р Р†Р С‘РЎвЂљРЎРЉ Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С•Р В»Р Р…Р С‘РЎвЂљРЎРЉ Р С—Р ВµРЎР‚Р Р†РЎС“РЎР‹ РЎвЂЎР В°РЎРѓРЎвЂљРЎРЉ',
-            'Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚Р С‘РЎвЂљРЎРЉ Р С‘ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р Т‘Р С•Р С”РЎС“Р СР ВµР Р…РЎвЂљРЎвЂ№',
+            'Открыть список нужных документов',
+            'Подготовить или заполнить первую часть',
+            'Проверить и отправить документы',
         ];
-    } else if (lower.includes('РЎС“Р В±Р С•РЎР‚Р С”') || lower.includes('Р С—РЎР‚Р С‘Р В±РЎР‚Р В°РЎвЂљ')) {
+    } else if (lower.includes('уборк') || lower.includes('прибрат')) {
         suggestions = [
-            'Р вЂ™РЎвЂ№Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р С•Р Т‘Р С‘Р Р… Р СР В°Р В»Р ВµР Р…РЎРЉР С”Р С‘Р в„– РЎС“РЎвЂЎР В°РЎРѓРЎвЂљР С•Р С” Р Т‘Р В»РЎРЏ РЎС“Р В±Р С•РЎР‚Р С”Р С‘',
-            'Р Р€Р В±РЎР‚Р В°РЎвЂљРЎРЉ РЎвЂљР С•Р В»РЎРЉР С”Р С• РЎРЊРЎвЂљР С•РЎвЂљ РЎС“РЎвЂЎР В°РЎРѓРЎвЂљР С•Р С” 10 Р СР С‘Р Р…РЎС“РЎвЂљ',
-            'Р вЂ™РЎвЂ№Р Р…Р ВµРЎРѓРЎвЂљР С‘ Р СРЎС“РЎРѓР С•РЎР‚ Р С‘Р В»Р С‘ РЎС“Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р Р†Р ВµРЎвЂ°Р С‘ Р Р…Р В° Р СР ВµРЎРѓРЎвЂљР С•',
+            'Выбрать один маленький участок для уборки',
+            'Убрать только этот участок 10 минут',
+            'Вынести мусор или убрать вещи на место',
         ];
-    } else if (lower.includes('Р В·Р Р†Р С•Р Р…') || lower.includes('Р С—Р С•Р В·Р Р†Р С•Р Р…')) {
+    } else if (lower.includes('звон') || lower.includes('позвон')) {
         suggestions = [
-            'Р С›РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р Р…Р С•Р СР ВµРЎР‚ Р С‘ Р С—Р С•Р Т‘Р С–Р С•РЎвЂљР С•Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р В°РЎР‚РЎС“ РЎвЂћРЎР‚Р В°Р В·',
-            'Р РЋР Т‘Р ВµР В»Р В°РЎвЂљРЎРЉ Р С”Р С•РЎР‚Р С•РЎвЂљР С”Р С‘Р в„– Р В·Р Р†Р С•Р Р…Р С•Р С”',
-            'Р вЂ”Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р С‘РЎвЂљР С•Р С– Р В·Р Р†Р С•Р Р…Р С”Р В° Р С‘Р В»Р С‘ РЎРѓР В»Р ВµР Т‘РЎС“РЎР‹РЎвЂ°Р С‘Р в„– РЎв‚¬Р В°Р С–',
+            'Открыть номер и подготовить пару фраз',
+            'Сделать короткий звонок',
+            'Записать итог звонка или следующий шаг',
         ];
-    } else if (lower.includes('Р С”РЎС“Р С—') || lower.includes('Р СР В°Р С–Р В°Р В·')) {
+    } else if (lower.includes('куп') || lower.includes('магаз')) {
         suggestions = [
-            'Р РЋР С•РЎРѓРЎвЂљР В°Р Р†Р С‘РЎвЂљРЎРЉ Р С”Р С•РЎР‚Р С•РЎвЂљР С”Р С‘Р в„– РЎРѓР С—Р С‘РЎРѓР С•Р С” Р С—Р С•Р С”РЎС“Р С—Р С•Р С”',
-            'Р РЋРЎвЂ¦Р С•Р Т‘Р С‘РЎвЂљРЎРЉ Р С‘Р В»Р С‘ Р С•РЎвЂљР С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ Р Т‘Р С•РЎРѓРЎвЂљР В°Р Р†Р С”РЎС“',
-            'Р В Р В°Р В·Р В»Р С•Р В¶Р С‘РЎвЂљРЎРЉ Р С—Р С•Р С”РЎС“Р С—Р С”Р С‘ Р С—Р С• Р СР ВµРЎРѓРЎвЂљР В°Р С',
+            'Составить короткий список покупок',
+            'Сходить или открыть доставку',
+            'Разложить покупки по местам',
         ];
-    } else if (lower.includes('Р Р†РЎР‚Р В°РЎвЂЎ') || lower.includes('Р С—Р С•Р В»Р С‘Р С”Р В»Р С‘Р Р…Р С‘Р С”')) {
+    } else if (lower.includes('врач') || lower.includes('поликлиник')) {
         suggestions = [
-            'Р СњР В°Р в„–РЎвЂљР С‘ Р С”Р С•Р Р…РЎвЂљР В°Р С”РЎвЂљРЎвЂ№ Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓРЎРЉ Р С” Р Р†РЎР‚Р В°РЎвЂЎРЎС“',
-            'Р РЋР Т‘Р ВµР В»Р В°РЎвЂљРЎРЉ Р С•Р Т‘Р С‘Р Р… Р С”Р С•РЎР‚Р С•РЎвЂљР С”Р С‘Р в„– Р В·Р Р†Р С•Р Р…Р С•Р С” Р С‘Р В»Р С‘ Р В·Р В°РЎРЏР Р†Р С”РЎС“',
-            'Р вЂ”Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р Т‘Р В°РЎвЂљРЎС“, Р Р†РЎР‚Р ВµР СРЎРЏ Р С‘Р В»Р С‘ РЎРѓР В»Р ВµР Т‘РЎС“РЎР‹РЎвЂ°Р С‘Р в„– РЎв‚¬Р В°Р С–',
+            'Найти контакты или запись к врачу',
+            'Сделать один короткий звонок или заявку',
+            'Записать дату, время или следующий шаг',
         ];
     } else {
         suggestions = [
-            `Р СџР С•Р Т‘Р С–Р С•РЎвЂљР С•Р Р†Р С‘РЎвЂљРЎРЉ Р Р†РЎРѓРЎвЂ Р Р…РЎС“Р В¶Р Р…Р С•Р Вµ Р Т‘Р В»РЎРЏ: ${normalized}`,
-            `Р РЋР Т‘Р ВµР В»Р В°РЎвЂљРЎРЉ Р СР В°Р В»Р ВµР Р…РЎРЉР С”РЎС“РЎР‹ Р С•РЎРѓР Р…Р С•Р Р†Р Р…РЎС“РЎР‹ РЎвЂЎР В°РЎРѓРЎвЂљРЎРЉ: ${normalized}`,
-            `Р СџРЎР‚Р С•Р Р†Р ВµРЎР‚Р С‘РЎвЂљРЎРЉ Р С‘ Р В·Р В°Р С”РЎР‚РЎвЂ№РЎвЂљРЎРЉ РЎв‚¬Р В°Р С– Р С—Р С• Р В·Р В°Р Т‘Р В°РЎвЂЎР Вµ: ${normalized}`,
+            `Подготовить всё нужное для: ${normalized}`,
+            `Сделать маленькую основную часть: ${normalized}`,
+            `Проверить и закрыть шаг по задаче: ${normalized}`,
         ];
     }
 
@@ -485,7 +486,7 @@ export function bindAppEvents(app) {
 
     function openForgotPasswordModal() {
         if (!elements.forgotPasswordModal || !elements.forgotPasswordEmail) {
-            authState.error = 'РњРѕРґР°Р»СЊРЅРѕРµ РѕРєРЅРѕ РІРѕСЃСЃС‚Р°РЅРѕРІР»РµРЅРёСЏ РїР°СЂРѕР»СЏ РїРѕРєР° РЅРµРґРѕСЃС‚СѓРїРЅРѕ. РџРѕРїСЂРѕР±СѓР№С‚Рµ РїРѕР·Р¶Рµ.';
+            authState.error = 'Модальное окно восстановления пароля пока недоступно. Попробуйте позже.';
             app.renderers.renderAuthScreen();
             return;
         }
@@ -559,14 +560,14 @@ export function bindAppEvents(app) {
 
         if (authState.mode === 'reset-password') {
             if (!password || !passwordConfirm) {
-                authState.error = 'Р вЂ”Р В°Р С—Р С•Р В»Р Р…Р С‘ Р Р…Р С•Р Р†РЎвЂ№Р в„– Р С—Р В°РЎР‚Р С•Р В»РЎРЉ Р С‘ Р ВµР С–Р С• Р С—Р С•Р Т‘РЎвЂљР Р†Р ВµРЎР‚Р В¶Р Т‘Р ВµР Р…Р С‘Р Вµ.';
+                authState.error = 'Заполни новый пароль и его подтверждение.';
                 authState.status = 'guest';
                 app.renderers.renderAuthScreen();
                 return;
             }
 
             if (password !== passwordConfirm) {
-                authState.error = 'Р СџР В°РЎР‚Р С•Р В»Р С‘ Р Р…Р Вµ РЎРѓР С•Р Р†Р С—Р В°Р Т‘Р В°РЎР‹РЎвЂљ.';
+                authState.error = 'Пароли не совпадают.';
                 authState.status = 'guest';
                 app.renderers.renderAuthScreen();
                 return;
@@ -586,7 +587,7 @@ export function bindAppEvents(app) {
                 authState.mode = 'login';
                 authState.resetToken = null;
                 authState.status = 'guest';
-                authState.notice = 'Р СџР В°РЎР‚Р С•Р В»РЎРЉ Р С•Р В±Р Р…Р С•Р Р†Р В»РЎвЂР Р…. Р СћР ВµР С—Р ВµРЎР‚РЎРЉ Р СР С•Р В¶Р Р…Р С• Р Р†Р С•Р в„–РЎвЂљР С‘ РЎРѓ Р Р…Р С•Р Р†РЎвЂ№Р С Р С—Р В°РЎР‚Р С•Р В»Р ВµР С.';
+                authState.notice = 'Пароль обновлён. Теперь можно войти с новым паролем.';
                 authState.error = '';
                 resetAuthForm({ preserveEmail: false });
                 if (typeof window !== 'undefined') {
@@ -595,21 +596,21 @@ export function bindAppEvents(app) {
                 app.renderers.renderAuthScreen();
             } catch (error) {
                 authState.status = 'guest';
-                authState.error = error?.friendlyMessage || 'Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С•Р В±Р Р…Р С•Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р В°РЎР‚Р С•Р В»РЎРЉ. Р СџР С•Р С—РЎР‚Р С•Р В±РЎС“Р в„– Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· РЎвЂЎРЎС“РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ.';
+                authState.error = error?.friendlyMessage || 'Сейчас не получается обновить пароль. Попробуй ещё раз чуть позже.';
                 app.renderers.renderAuthScreen();
             }
             return;
         }
 
         if (!email || !password || (authState.mode === 'register' && !name)) {
-            authState.error = 'Р вЂ”Р В°Р С—Р С•Р В»Р Р…Р С‘, Р С—Р С•Р В¶Р В°Р В»РЎС“Р в„–РЎРѓРЎвЂљР В°, Р Р†РЎРѓР Вµ Р С•Р В±РЎРЏР В·Р В°РЎвЂљР ВµР В»РЎРЉР Р…РЎвЂ№Р Вµ Р С—Р С•Р В»РЎРЏ.';
+            authState.error = 'Заполни, пожалуйста, все обязательные поля.';
             authState.status = 'guest';
             app.renderers.renderAuthScreen();
             return;
         }
 
         if (authState.mode === 'register' && password !== passwordConfirm) {
-            authState.error = 'Р СџР В°РЎР‚Р С•Р В»Р С‘ Р Р…Р Вµ РЎРѓР С•Р Р†Р С—Р В°Р Т‘Р В°РЎР‹РЎвЂљ.';
+            authState.error = 'Пароли не совпадают.';
             authState.status = 'guest';
             app.renderers.renderAuthScreen();
             return;
@@ -629,7 +630,7 @@ export function bindAppEvents(app) {
             await app.startAuthenticatedFlow(user);
         } catch (error) {
             authState.status = 'guest';
-            authState.error = error?.friendlyMessage || 'Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ. Р СџР С•Р С—РЎР‚Р С•Р В±РЎС“Р в„– Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· РЎвЂЎРЎС“РЎвЂљРЎРЉ Р С—Р С•Р В·Р В¶Р Вµ.';
+            authState.error = error?.friendlyMessage || 'Сейчас не получается продолжить. Попробуй ещё раз чуть позже.';
             app.renderers.renderAuthScreen();
         }
     }
@@ -738,7 +739,7 @@ export function bindAppEvents(app) {
         event.preventDefault();
         const email = elements.forgotPasswordEmail.value.trim();
         if (!email) {
-            elements.forgotPasswordError.textContent = 'Р Р€Р С”Р В°Р В¶Р С‘ email Р Т‘Р В»РЎРЏ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ.';
+            elements.forgotPasswordError.textContent = 'Укажи email для восстановления.';
             elements.forgotPasswordError.classList.remove('hidden');
             return;
         }
@@ -749,10 +750,10 @@ export function bindAppEvents(app) {
 
         try {
             const result = await app.auth.forgotPassword({ email });
-            elements.forgotPasswordMessage.textContent = result?.message || 'Р вЂўРЎРѓР В»Р С‘ РЎвЂљР В°Р С”Р С•Р в„– Р В°Р С”Р С”Р В°РЎС“Р Р…РЎвЂљ РЎРѓРЎС“РЎвЂ°Р ВµРЎРѓРЎвЂљР Р†РЎС“Р ВµРЎвЂљ, Р С—Р С‘РЎРѓРЎРЉР СР С• РЎС“Р В¶Р Вµ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р В»Р ВµР Р…Р С•.';
+            elements.forgotPasswordMessage.textContent = result?.message || 'Если такой аккаунт существует, письмо уже отправлено.';
             elements.forgotPasswordMessage.classList.remove('hidden');
         } catch (error) {
-            elements.forgotPasswordError.textContent = error?.friendlyMessage || 'Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р С•РЎвЂљР С—РЎР‚Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р С—Р С‘РЎРѓРЎРЉР СР С• Р Т‘Р В»РЎРЏ Р Р†Р С•РЎРѓРЎРѓРЎвЂљР В°Р Р…Р С•Р Р†Р В»Р ВµР Р…Р С‘РЎРЏ.';
+            elements.forgotPasswordError.textContent = error?.friendlyMessage || 'Сейчас не получается отправить письмо для восстановления.';
             elements.forgotPasswordError.classList.remove('hidden');
         } finally {
             elements.forgotPasswordSubmitBtn.disabled = false;
@@ -877,17 +878,19 @@ export function bindAppEvents(app) {
     elements.accountLogoutBtn.addEventListener('click', async () => {
         closeAccountModal();
         resetEasyPatternState();
+        clearOfflineAuthSnapshot();
 
         try {
             await app.auth.logout();
         } catch (error) {
-            runtime.auth.error = error?.friendlyMessage || 'Р РЋР ВµР в„–РЎвЂЎР В°РЎРѓ Р Р…Р Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР В°Р ВµРЎвЂљРЎРѓРЎРЏ Р Р†РЎвЂ№Р в„–РЎвЂљР С‘ Р С‘Р В· Р В°Р С”Р С”Р В°РЎС“Р Р…РЎвЂљР В°.';
+            runtime.auth.error = error?.friendlyMessage || 'Сейчас не получается выйти из аккаунта.';
         }
 
         store.setSessionContext({ authenticated: false, userId: null });
         authState.user = null;
         authState.mode = 'login';
         authState.status = 'guest';
+        authState.isOfflineAuthenticated = false;
         resetAuthForm({ preserveEmail: false });
         app.screens.showAuthScreen();
     });
@@ -989,7 +992,7 @@ export function bindAppEvents(app) {
             }
 
             if (!transcript) {
-                voiceState.voiceError = 'Р Р‡ Р Р…Р С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ РЎР‚Р В°РЎРѓРЎРѓР В»РЎвЂ№РЎв‚¬Р В°Р В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·.';
+                voiceState.voiceError = 'Я ничего не расслышал. Можно попробовать ещё раз.';
                 app.renderers.renderMainScreen();
                 return;
             }
@@ -1002,7 +1005,7 @@ export function bindAppEvents(app) {
             voiceState.isProcessing = false;
 
             if (drafts.length === 0) {
-                openVoiceMessage('Р СњР Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р С—Р С•Р Р…РЎРЏРЎвЂљР Р…РЎвЂ№Р в„– РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ Р В·Р В°Р Т‘Р В°РЎвЂЎРЎС“ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.');
+                openVoiceMessage('Не получилось собрать понятный черновик. Можно попробовать ещё раз или добавить задачу текстом.');
                 return;
             }
 
@@ -1037,7 +1040,7 @@ export function bindAppEvents(app) {
             }
 
             if (!transcript) {
-                inboxState.error = 'Р Р‡ Р Р…Р С‘РЎвЂЎР ВµР С–Р С• Р Р…Р Вµ РЎР‚Р В°РЎРѓРЎРѓР В»РЎвЂ№РЎв‚¬Р В°Р В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»РЎРЉ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.';
+                inboxState.error = 'Я ничего не расслышал. Можно попробовать ещё раз или записать мысль текстом.';
                 app.renderers.renderMainScreen();
                 return;
             }
@@ -1048,7 +1051,7 @@ export function bindAppEvents(app) {
             inboxState.isProcessing = false;
 
             if (drafts.length === 0) {
-                openInboxVoiceMessage('Р СњР Вµ Р С—Р С•Р В»РЎС“РЎвЂЎР С‘Р В»Р С•РЎРѓРЎРЉ РЎРѓР С•Р В±РЎР‚Р В°РЎвЂљРЎРЉ Р С—Р С•Р Р…РЎРЏРЎвЂљР Р…РЎвЂ№Р в„– РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р СРЎвЂ№РЎРѓР В»Р ВµР в„–. Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»Р С‘ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.');
+                openInboxVoiceMessage('Не получилось собрать понятный черновик мыслей. Можно попробовать ещё раз или записать мысль текстом.');
                 return;
             }
 
@@ -1383,7 +1386,7 @@ export function bindAppEvents(app) {
         app.renderers.renderMainScreen();
 
         const originalText = elements.adviceAddBtn.textContent;
-        elements.adviceAddBtn.textContent = 'Р”РѕР±Р°РІР»РµРЅРѕ';
+        elements.adviceAddBtn.textContent = 'Добавлено';
         elements.adviceAddBtn.style.backgroundColor = 'var(--primary-color)';
         elements.adviceAddBtn.style.color = 'white';
 
@@ -1397,7 +1400,7 @@ export function bindAppEvents(app) {
 
     elements.openVoiceBtn.addEventListener('click', () => {
         if (!voiceState.isSupported) {
-            openVoiceMessage('Р вЂњР С•Р В»Р С•РЎРѓР С•Р Р†Р С•Р в„– Р Р†Р Р†Р С•Р Т‘ Р Р† РЎРЊРЎвЂљР С•Р С Р В±РЎР‚Р В°РЎС“Р В·Р ВµРЎР‚Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµР Т‘Р С•РЎРѓРЎвЂљРЎС“Р С—Р ВµР Р…. Р СљР С•Р В¶Р Р…Р С• Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ Р С•Р В±РЎвЂ№РЎвЂЎР Р…РЎвЂ№Р С РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р С Р Р†Р Р†Р С•Р Т‘Р С•Р С.');
+            openVoiceMessage('Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.');
             return;
         }
 
@@ -1424,7 +1427,7 @@ export function bindAppEvents(app) {
 
     elements.openInboxVoiceBtn.addEventListener('click', () => {
         if (!inboxState.isSupported) {
-            openInboxVoiceMessage('Р вЂњР С•Р В»Р С•РЎРѓР С•Р Р†Р С•Р в„– Р Р†Р Р†Р С•Р Т‘ Р Р† РЎРЊРЎвЂљР С•Р С Р В±РЎР‚Р В°РЎС“Р В·Р ВµРЎР‚Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµР Т‘Р С•РЎРѓРЎвЂљРЎС“Р С—Р ВµР Р…. Р СљР С•Р В¶Р Р…Р С• Р С—РЎР‚Р С•Р Т‘Р С•Р В»Р В¶Р С‘РЎвЂљРЎРЉ Р С•Р В±РЎвЂ№РЎвЂЎР Р…РЎвЂ№Р С РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р Р†РЎвЂ№Р С Р Р†Р Р†Р С•Р Т‘Р С•Р С.');
+            openInboxVoiceMessage('Голосовой ввод в этом браузере пока недоступен. Можно продолжить обычным текстовым вводом.');
             return;
         }
 
@@ -1455,7 +1458,7 @@ export function bindAppEvents(app) {
             .filter(Boolean);
 
         if (drafts.length === 0) {
-            openInboxVoiceMessage('Р вЂ™ РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµРЎвЂљ Р СРЎвЂ№РЎРѓР В»Р ВµР в„–, Р С”Р С•РЎвЂљР С•РЎР‚РЎвЂ№Р Вµ Р СР С•Р В¶Р Р…Р С• РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р С‘РЎвЂљРЎРЉ.');
+            openInboxVoiceMessage('В черновике пока нет мыслей, которые можно сохранить.');
             return;
         }
 
@@ -1477,7 +1480,7 @@ export function bindAppEvents(app) {
         const inboxItems = store.getState().inboxItems || [];
         if (inboxItems.length === 0) return;
 
-        const shouldClear = window.confirm('Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†РЎРѓР Вµ Р С›Р В±Р В»Р В°Р С”Р С• Р СРЎвЂ№РЎРѓР В»Р ВµР в„–? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ РЎРѓР С•РЎвЂ¦РЎР‚Р В°Р Р…Р ВµР Р…Р Р…РЎвЂ№Р Вµ Р СРЎвЂ№РЎРѓР В»Р С‘.');
+        const shouldClear = window.confirm('Очистить всё Облако мыслей? Это удалит все сохранённые мысли.');
         if (!shouldClear) return;
 
         clearInboxItems(store);
@@ -1588,7 +1591,7 @@ export function bindAppEvents(app) {
     });
 
     elements.clearArchiveBtn.addEventListener('click', () => {
-        const shouldClear = window.confirm('Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†Р ВµРЎРѓРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р’В«Р СњР В° Р С—Р С•РЎвЂљР С•Р СР’В»? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ Р С•РЎвЂљР В»Р С•Р В¶Р ВµР Р…Р Р…РЎвЂ№Р Вµ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘.');
+        const shouldClear = window.confirm('Очистить весь список «На потом»? Это удалит все отложенные задачи.');
         if (!shouldClear) return;
 
         clearDeferredTasks(store);
@@ -1602,7 +1605,7 @@ export function bindAppEvents(app) {
     });
 
     elements.clearCompletedBtn.addEventListener('click', () => {
-        const shouldClear = window.confirm('Р С›РЎвЂЎР С‘РЎРѓРЎвЂљР С‘РЎвЂљРЎРЉ Р Р†Р ВµРЎРѓРЎРЉ РЎРѓР С—Р С‘РЎРѓР С•Р С” Р’В«Р РЋР Т‘Р ВµР В»Р В°Р Р…Р С•Р’В»? Р В­РЎвЂљР С• РЎС“Р Т‘Р В°Р В»Р С‘РЎвЂљ Р Р†РЎРѓР Вµ Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬РЎвЂР Р…Р Р…РЎвЂ№Р Вµ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘ Р С‘Р В· РЎРЊРЎвЂљР С•Р С–Р С• РЎР‚Р В°Р В·Р Т‘Р ВµР В»Р В°.');
+        const shouldClear = window.confirm('Очистить весь список «Сделано»? Это удалит все завершённые задачи из этого раздела.');
         if (!shouldClear) return;
 
         clearDoneTasks(store);
@@ -1619,7 +1622,7 @@ export function bindAppEvents(app) {
             .filter(draft => draft.text);
 
         if (draftsToAdd.length === 0) {
-            openVoiceMessage('Р вЂ™ РЎвЂЎР ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С”Р Вµ Р С—Р С•Р С”Р В° Р Р…Р ВµРЎвЂљ Р В·Р В°Р Т‘Р В°РЎвЂЎ, Р С”Р С•РЎвЂљР С•РЎР‚РЎвЂ№Р Вµ Р СР С•Р В¶Р Р…Р С• Р Т‘Р С•Р В±Р В°Р Р†Р С‘РЎвЂљРЎРЉ.');
+            openVoiceMessage('В черновике пока нет задач, которые можно добавить.');
             return;
         }
 
@@ -2110,7 +2113,7 @@ export function bindAppEvents(app) {
 
         inboxState.drafts = inboxState.drafts.filter(draft => draft.id !== target.dataset.draftId);
         if (inboxState.drafts.length === 0) {
-            openInboxVoiceMessage('Р В§Р ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р С•Р С—РЎС“РЎРѓРЎвЂљР ВµР В». Р СљР С•Р В¶Р Р…Р С• Р Р…Р В°Р Т‘Р С‘Р С”РЎвЂљР С•Р Р†Р В°РЎвЂљРЎРЉ Р СРЎвЂ№РЎРѓР В»Р С‘ Р ВµРЎвЂ°Р Вµ РЎР‚Р В°Р В· Р С‘Р В»Р С‘ Р В·Р В°Р С—Р С‘РЎРѓР В°РЎвЂљРЎРЉ Р С‘РЎвЂ¦ РЎвЂљР ВµР С”РЎРѓРЎвЂљР С•Р С.');
+            openInboxVoiceMessage('Черновик опустел. Можно надиктовать мысли ещё раз или записать их текстом.');
             return;
         }
 
@@ -2133,7 +2136,7 @@ export function bindAppEvents(app) {
 
         voiceState.voiceDraft = voiceState.voiceDraft.filter(draft => draft.id !== target.dataset.draftId);
         if (voiceState.voiceDraft.length === 0) {
-            openVoiceMessage('Р В§Р ВµРЎР‚Р Р…Р С•Р Р†Р С‘Р С” Р С•Р С—РЎС“РЎРѓРЎвЂљР ВµР В». Р СљР С•Р В¶Р Р…Р С• Р С—Р С•Р С—РЎР‚Р С•Р В±Р С•Р Р†Р В°РЎвЂљРЎРЉ Р Р…Р В°Р Т‘Р С‘Р С”РЎвЂљР С•Р Р†Р В°РЎвЂљРЎРЉ Р В·Р В°Р Т‘Р В°РЎвЂЎР С‘ Р ВµРЎвЂ°РЎвЂ РЎР‚Р В°Р В·.');
+            openVoiceMessage('Черновик опустел. Можно попробовать надиктовать задачи ещё раз.');
             return;
         }
 

@@ -54,6 +54,7 @@ async function requestJson(url, options = {}, fallbackMessage = 'Сейчас н
     } catch (error) {
         const networkError = new Error('Network request failed');
         networkError.friendlyMessage = fallbackMessage;
+        networkError.isNetworkError = true;
         throw networkError;
     }
 
