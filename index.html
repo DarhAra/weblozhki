@@ -201,7 +201,7 @@
                                 <span>История самочувствия</span>
                             </button>
                             <button id="open-account-btn" class="app-menu-item" type="button" role="menuitem">
-                                <span class="app-menu-icon">◌</span>
+                                <span class="app-menu-icon">👤</span>
                                 <span>Аккаунт</span>
                             </button>
                         </div>
@@ -276,16 +276,16 @@
                             <div>
                                 <h3 class="inbox-title">Облако мыслей</h3>
                             </div>
-                            <div class="inbox-header-actions">
-                                <button id="open-inbox-sort-btn" class="secondary-btn inbox-header-btn" type="button">Разобрать по одной</button>
-                                <button id="clear-inbox-btn" class="text-btn" type="button">Очистить</button>
-                            </div>
                         </div>
                         <p class="inbox-subtitle">Сюда можно быстро выгрузить всё, что крутится в голове. Разобрать можно потом.</p>
                         <form id="add-inbox-form" class="inbox-form">
                             <textarea id="inbox-text" rows="2" placeholder="Запиши мысль, идею или список строк..." autocomplete="off"></textarea>
                             <div class="inbox-form-actions">
                                 <button id="open-inbox-voice-btn" type="button" class="voice-btn" title="Надиктовать в Облако">🎤</button>
+                                <button id="open-inbox-sort-btn" class="secondary-btn inbox-header-btn" type="button">Разобрать по одной</button>
+                                <button id="clear-inbox-btn" class="text-btn inbox-clear-btn" type="button">Очистить</button>
+                            </div>
+                            <div class="inbox-form-submit-row">
                                 <button type="submit" class="primary-btn inbox-submit-btn">Сохранить в Облако</button>
                             </div>
                         </form>
@@ -294,9 +294,9 @@
                     </section>
 
                     <div id="tasks-section" class="tasks-section">
-                        <div class="tasks-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                            <h3 id="tasks-title" style="font-size: 16px; font-weight: 500;">Задачи</h3>
-                            <button id="open-templates-btn" class="text-btn" style="background: none; border: none; color: var(--primary-color); cursor: pointer; font-size: 14px; font-weight: 500; padding: 4px;">📋 Выбрать из шаблона</button>
+                        <div class="tasks-header">
+                            <h3 id="tasks-title">Задачи</h3>
+                            <button id="open-templates-btn" class="text-btn tasks-template-btn">📋 Выбрать из шаблона</button>
                         </div>
 
                         <!-- Форма добавления задачи -->

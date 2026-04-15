@@ -428,6 +428,28 @@ header h2 {
     gap: 16px;
 }
 
+.tasks-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 8px;
+}
+
+.tasks-header h3 {
+    font-size: 20px;
+    font-weight: 500;
+    line-height: 1.25;
+    color: #597161;
+    margin: 0;
+}
+
+.tasks-template-btn {
+    padding: 4px;
+    white-space: nowrap;
+    font-size: 14px;
+}
+
 .sos-view {
     margin-bottom: 24px;
 }
@@ -826,14 +848,6 @@ header h2 {
     margin-bottom: 8px;
 }
 
-.inbox-header-actions {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    justify-content: flex-end;
-}
-
 .inbox-caption {
     color: #8a978f;
     font-size: 12px;
@@ -843,16 +857,17 @@ header h2 {
 }
 
 .inbox-title {
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 500;
+    line-height: 1.25;
     color: #597161;
 }
 
 .inbox-subtitle {
     color: var(--text-secondary);
-    font-size: 14px;
-    line-height: 1.6;
-    margin-bottom: 16px;
+    font-size: 13px;
+    line-height: 1.55;
+    margin-bottom: 14px;
     max-width: 700px;
 }
 
@@ -886,13 +901,24 @@ header h2 {
 
 .inbox-form-actions {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     align-items: center;
     gap: 12px;
+    flex-wrap: wrap;
+}
+
+.inbox-form-submit-row {
+    display: flex;
+    justify-content: flex-start;
 }
 
 .inbox-submit-btn {
     padding-inline: 22px;
+}
+
+.inbox-clear-btn {
+    padding: 8px 2px;
+    white-space: nowrap;
 }
 
 .inbox-list {
@@ -1200,11 +1226,8 @@ header h2 {
 
 /* Модальное окно */
 .modal {
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
+    position: fixed;
+    inset: 0;
     background: rgba(0, 0, 0, 0.4);
     backdrop-filter: blur(4px);
     z-index: 100;
@@ -1212,6 +1235,7 @@ header h2 {
     justify-content: center;
     align-items: center;
     padding: 24px;
+    overflow-y: auto;
 }
 
 .modal-content {
@@ -1931,17 +1955,31 @@ header h2 {
         width: 100%;
     }
 
-    .inbox-header,
     .inbox-form-actions {
-        flex-direction: column;
-        align-items: stretch;
+        display: grid;
+        grid-template-columns: 44px minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 8px;
     }
 
-    .inbox-header-actions {
-        justify-content: flex-start;
+    .inbox-header-btn {
+        width: 100%;
+        min-height: 44px;
+        padding: 0 14px;
+        font-size: 13px;
+        justify-content: center;
     }
 
-    .inbox-header-btn,
+    .inbox-clear-btn {
+        justify-self: start;
+        padding: 0 2px;
+        font-size: 13px;
+    }
+
+    .inbox-form-submit-row {
+        margin-top: 8px;
+    }
+
     .inbox-submit-btn {
         width: 100%;
     }
@@ -2529,35 +2567,247 @@ header h2 {
 }
 
 @media (max-width: 640px) {
-    header {
-        padding-left: 0;
-        flex-wrap: wrap;
+    body {
+        padding: 10px;
+    }
+
+    .app-container {
+        padding: 18px 16px 20px;
+        border-radius: 18px;
+        min-height: calc(100vh - 20px);
+    }
+
+    .screen {
+        gap: 0;
+    }
+
+    .onboarding-step h2 {
+        font-size: 24px;
+        margin-bottom: 10px;
+    }
+
+    .onboarding-step p {
+        font-size: 15px;
+        margin-bottom: 22px;
+    }
+
+    .onboarding-card {
+        min-height: auto;
+        justify-content: flex-start;
+        padding-top: 8px;
+    }
+
+    .helper-message {
         gap: 12px;
         align-items: flex-start;
+    }
+
+    .helper-avatar {
+        width: 48px;
+        height: 48px;
+        flex: 0 0 48px;
+    }
+
+    .dialog-bubble {
+        width: 100%;
+        padding: 14px 16px;
+    }
+
+    header {
+        padding-left: 0;
+        flex-wrap: nowrap;
+        flex-direction: column;
+        gap: 12px;
+        align-items: stretch;
+    }
+
+    header h2 {
+        font-size: 22px;
+        line-height: 1.2;
     }
 
     .header-actions {
         width: 100%;
         justify-content: space-between;
-        flex-wrap: wrap;
-        padding-top: 56px;
+        flex-wrap: nowrap;
+        align-items: center;
+        padding-top: 0;
+        gap: 10px;
     }
 
     .app-menu-wrapper {
-        position: absolute;
-        top: 0;
-        left: 0;
+        position: static;
         transform: none;
+        order: -1;
+        margin-right: auto;
+    }
+
+    .storage-status-pill {
+        order: 1;
+        font-size: 11px;
+        padding: 6px 8px;
+    }
+
+    .app-helper-avatar {
+        order: 2;
+        width: 40px;
+        height: 40px;
+    }
+
+    .app-menu-popover {
+        left: 0;
+        top: calc(100% + 8px);
+        width: min(320px, calc(100vw - 40px));
+    }
+
+    .balance-section {
+        margin-bottom: 20px;
+    }
+
+    .balance-header {
+        gap: 8px;
+        margin-bottom: 6px;
+    }
+
+    .balance-text {
+        font-size: 13px;
+    }
+
+    .sos-trigger-btn {
+        width: 100%;
+        margin-left: 0;
+        padding: 9px 14px;
+        font-size: 13px;
     }
 
     .balance-message-container {
         align-items: flex-start;
         flex-wrap: wrap;
+        gap: 8px;
+        padding: 10px 12px;
+        margin-bottom: 10px;
     }
 
     .balance-message-container .balance-message {
         max-width: 100%;
         flex-basis: auto;
+        font-size: 12px;
+    }
+
+    .self-care-slot {
+        padding: 14px;
+        margin-bottom: 16px;
+        order: 1;
+    }
+
+    .main-right-column {
+        gap: 16px;
+    }
+
+    .tasks-section {
+        order: 1;
+    }
+
+    .inbox-section {
+        order: 2;
+        padding: 14px;
+        border-radius: 16px;
+    }
+
+    .inbox-title {
+        font-size: 18px;
+    }
+
+    .inbox-subtitle {
+        font-size: 13px;
+        margin-bottom: 12px;
+    }
+
+    .inbox-item,
+    .inbox-sort-card {
+        padding: 12px;
+    }
+
+    .task-list {
+        gap: 10px;
+    }
+
+    .tasks-header {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start !important;
+        gap: 10px;
+        margin-bottom: 10px !important;
+    }
+
+    .tasks-header h3,
+    .tasks-header button {
+        margin: 0;
+    }
+
+    .tasks-header h3 {
+        font-size: 18px;
+    }
+
+    .tasks-template-btn {
+        font-size: 13px;
+        padding: 2px 0;
+    }
+
+    .tasks-section {
+        gap: 12px;
+    }
+
+    .add-task-form {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 44px 44px;
+        gap: 8px;
+        align-items: center;
+    }
+
+    .add-task-form input[type=text] {
+        grid-column: 1 / -1;
+        padding: 11px 14px;
+        font-size: 14px;
+    }
+
+    .add-task-form select {
+        min-width: 0;
+        width: 100%;
+        font-size: 13px;
+    }
+
+    .add-task-form .voice-btn,
+    .add-task-form .add-task-btn,
+    .add-task-form button[type="submit"] {
+        width: 44px;
+        min-width: 44px;
+        padding-left: 0;
+        padding-right: 0;
+        justify-self: stretch;
+    }
+
+    .weekly-screen header,
+    .history-screen header {
+        gap: 10px;
+    }
+
+    .weekly-container {
+        gap: 12px;
+    }
+
+    .weekly-column {
+        padding: 12px;
+        border-radius: 14px;
+    }
+
+    .weekly-column-header {
+        margin-bottom: 10px;
+    }
+
+    .weekly-col-tasks {
+        min-height: 120px;
+        padding: 6px;
     }
 
     .auth-card {
@@ -2567,6 +2817,26 @@ header h2 {
 
     .auth-intro h1 {
         font-size: 26px;
+    }
+
+    .modal {
+        align-items: flex-start;
+        padding: 16px 12px;
+    }
+
+    .modal-content {
+        max-height: none;
+        margin: 8px 0 20px;
+        padding: 22px 18px;
+        border-radius: 18px;
+    }
+
+    .modal-header {
+        margin-bottom: 18px;
+    }
+
+    .modal-header h3 {
+        font-size: 18px;
     }
 }
 .auth-notice {
