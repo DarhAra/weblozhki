@@ -6,6 +6,8 @@ const API_AUTH_FORGOT_PASSWORD_URL = '/api/auth/forgot-password';
 const API_AUTH_RESET_PASSWORD_URL = '/api/auth/reset-password';
 const API_ACCOUNT_PROFILE_URL = '/api/account/profile';
 const API_ACCOUNT_CHANGE_PASSWORD_URL = '/api/account/change-password';
+const API_PAYMENT_STATUS_URL = '/api/payments/status';
+const API_CREATE_DONATION_SESSION_URL = '/api/payments/create-donation-session';
 
 async function readJsonResponse(response) {
     const contentType = response.headers.get('content-type') || '';
@@ -39,6 +41,18 @@ function buildFriendlyAuthError(payload, fallbackMessage) {
     }
     if (errorCode === 'PASSWORD_RESET_TOKEN_INVALID') {
         return 'Ссылка для восстановления уже недействительна. Запросите новую.';
+    }
+    if (errorCode === 'AUTH_REQUIRED') {
+        return 'Нужно войти в аккаунт заново.';
+    }
+    if (errorCode === 'INVALID_DONATION_AMOUNT') {
+        return 'Выберите корректную сумму поддержки.';
+    }
+    if (errorCode === 'PAYMENTS_NOT_CONFIGURED') {
+        return 'Оплата ещё не настроена на сервере.';
+    }
+    if (errorCode === 'DONATION_NOT_FOUND') {
+        return 'Платёж не найден или больше недоступен.';
     }
     return fallbackMessage;
 }
@@ -210,6 +224,38 @@ export function createAuthService() {
         );
     }
 
+    async function getPaymentStatus({ donationId } = {}) {
+        const url = new URL(API_PAYMENT_STATUS_URL, window.location.origin);
+        if (donationId) {
+            url.searchParams.set('donationId', donationId);
+        }
+
+        return requestJson(
+            `${url.pathname}${url.search}`,
+            {
+                headers: {
+                    Accept: 'application/json',
+                },
+            },
+            'Сейчас не получается проверить статус поддержки.',
+        );
+    }
+
+    async function createDonationSession({ amount }) {
+        return requestJson(
+            API_CREATE_DONATION_SESSION_URL,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Accept: 'application/json',
+                },
+                body: JSON.stringify({ amount }),
+            },
+            'Сейчас не получается открыть страницу оплаты.',
+        );
+    }
+
     return {
         checkSession,
         login,
@@ -220,5 +266,7 @@ export function createAuthService() {
         getProfile,
         updateProfile,
         changePassword,
+        getPaymentStatus,
+        createDonationSession,
     };
 }

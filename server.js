@@ -5,6 +5,7 @@ const { config, getSafeRuntimeSummary } = require('./server/config');
 const { createDatabase } = require('./server/db');
 const { createRepositories } = require('./server/repositories');
 const { createMailer } = require('./server/mailer');
+const { createPaymentError, createYookassaClient } = require('./server/yookassa');
 
 const app = express();
 const PORT = config.port;
@@ -20,16 +21,26 @@ const { db, databasePath } = createDatabase({
 });
 const repositories = createRepositories(db);
 const mailer = createMailer(config);
+const yookassa = createYookassaClient(config);
 
 app.set('trust proxy', config.trustProxy);
 
-function logServerError(label, error) {
+function logServerError(label, error, meta = {}) {
+    const safeMeta = {
+        code: meta.code || error?.code || null,
+        userId: meta.userId || null,
+        donationId: meta.donationId || null,
+        paymentId: meta.paymentId || null,
+        eventType: meta.eventType || null,
+    };
+
     if (config.isDevelopment) {
-        console.error(label, error);
+        console.error(label, safeMeta, error);
         return;
     }
 
     console.error(label, {
+        ...safeMeta,
         message: error?.message || 'Unknown error',
         statusCode: error?.statusCode || 500,
     });
@@ -48,16 +59,6 @@ function normalizeDisplayName(name) {
     }
 
     return name.trim().replace(/\s+/g, ' ');
-}
-
-function getFallbackNameFromEmail(email) {
-    const normalized = normalizeEmail(email);
-    const separatorIndex = normalized.indexOf('@');
-    if (separatorIndex <= 0) {
-        return 'Пользователь';
-    }
-
-    return normalized.slice(0, separatorIndex);
 }
 
 function isValidEmail(email) {
@@ -91,6 +92,22 @@ function toPublicUser(user) {
         name: user.name,
         email: user.email,
         createdAt: user.createdAt,
+    };
+}
+
+function toPublicDonation(donation) {
+    if (!donation) {
+        return null;
+    }
+
+    return {
+        id: donation.id,
+        amountValue: donation.amountValue,
+        amountCurrency: donation.amountCurrency,
+        status: donation.status,
+        type: donation.type,
+        createdAt: donation.createdAt,
+        confirmedAt: donation.confirmedAt,
     };
 }
 
@@ -190,9 +207,12 @@ function createPasswordResetRecord(userId) {
     };
 }
 
+function getBaseUrl() {
+    return config.appBaseUrl || `http://localhost:${PORT}`;
+}
+
 function getResetUrl(rawToken) {
-    const baseUrl = config.appBaseUrl || `http://localhost:${PORT}`;
-    return new URL(`/?resetToken=${encodeURIComponent(rawToken)}`, baseUrl).toString();
+    return new URL(`/?resetToken=${encodeURIComponent(rawToken)}`, getBaseUrl()).toString();
 }
 
 function refreshSession(req) {
@@ -242,19 +262,26 @@ function wrapResponseWithSessionRefresh(req, res, next) {
     next();
 }
 
-function createSessionForUser(res, userId, req) {
-    const session = createSessionRecord(userId, req);
-    repositories.createSession(session);
-    setSessionCookie(res, session.id);
-    return session;
-}
-
 function revokeCurrentSession(req) {
     if (!req.sessionRecord?.id) {
         return;
     }
 
     repositories.revokeSession(req.sessionRecord.id);
+    req.sessionId = null;
+    req.sessionRecord = null;
+    req.shouldRefreshSessionCookie = false;
+}
+
+function createSessionForUser(res, userId, req) {
+    revokeCurrentSession(req);
+    const session = createSessionRecord(userId, req);
+    repositories.createSession(session);
+    req.sessionId = session.id;
+    req.sessionRecord = session;
+    req.shouldRefreshSessionCookie = false;
+    setSessionCookie(res, session.id);
+    return session;
 }
 
 function requireAuthenticatedUser(req, res, next) {
@@ -266,6 +293,147 @@ function requireAuthenticatedUser(req, res, next) {
     }
 
     return next();
+}
+
+function getAllowedDonationAmounts() {
+    if (Array.isArray(config.donationAllowedAmounts) && config.donationAllowedAmounts.length > 0) {
+        return [...new Set(config.donationAllowedAmounts)]
+            .filter(value => Number.isFinite(value) && value >= config.donationMinAmount && value <= config.donationMaxAmount)
+            .sort((left, right) => left - right);
+    }
+
+    return [149, 299, 499].filter(value => value >= config.donationMinAmount && value <= config.donationMaxAmount);
+}
+
+function parseDonationAmount(rawAmount) {
+    const amount = Number(rawAmount);
+    if (!Number.isFinite(amount)) {
+        return null;
+    }
+
+    return Math.round(amount);
+}
+
+function isAllowedDonationAmount(amount) {
+    if (!Number.isFinite(amount) || amount < config.donationMinAmount || amount > config.donationMaxAmount) {
+        return false;
+    }
+
+    const allowedAmounts = getAllowedDonationAmounts();
+    if (allowedAmounts.length === 0) {
+        return true;
+    }
+
+    return allowedAmounts.includes(amount);
+}
+
+function ensureSecurePublicBaseUrl() {
+    const baseUrl = config.appBaseUrl;
+    if (!baseUrl) {
+        throw createPaymentError('APP_BASE_URL is required for payments.', 500, 'PAYMENT_PUBLIC_URL_MISSING');
+    }
+
+    let parsedUrl;
+    try {
+        parsedUrl = new URL(baseUrl);
+    } catch {
+        throw createPaymentError('APP_BASE_URL is invalid.', 500, 'PAYMENT_PUBLIC_URL_INVALID');
+    }
+
+    if (config.isProduction && parsedUrl.protocol !== 'https:') {
+        throw createPaymentError('Payments require HTTPS in production.', 500, 'PAYMENT_PUBLIC_URL_INSECURE');
+    }
+
+    return parsedUrl;
+}
+
+function buildDonationReturnUrl(donationId) {
+    const baseUrl = ensureSecurePublicBaseUrl();
+    baseUrl.pathname = '/';
+    baseUrl.searchParams.set('paymentReturn', '1');
+    baseUrl.searchParams.set('donationId', donationId);
+    return baseUrl.toString();
+}
+
+function getDonationCheckoutConfig() {
+    return {
+        currency: config.donationCurrency,
+        allowedAmounts: getAllowedDonationAmounts(),
+        minAmount: config.donationMinAmount,
+        maxAmount: config.donationMaxAmount,
+    };
+}
+
+function getPaymentSummary(userId, donation = null) {
+    const latestDonation = donation || repositories.findLatestDonationByUserId(userId);
+    const latestSucceededDonation = repositories.findLatestSucceededDonationByUserId(userId);
+
+    return {
+        support: {
+            hasSupported: Boolean(latestSucceededDonation),
+            lastDonationAt: latestSucceededDonation?.confirmedAt || latestSucceededDonation?.createdAt || null,
+            lastDonationAmount: latestSucceededDonation?.amountValue || null,
+            lastDonationCurrency: latestSucceededDonation?.amountCurrency || config.donationCurrency,
+            lastDonationStatus: latestDonation?.status || latestSucceededDonation?.status || null,
+        },
+        latestDonation: toPublicDonation(latestDonation),
+        checkout: getDonationCheckoutConfig(),
+    };
+}
+
+function createDonationRecord(userId, amountValue) {
+    const now = new Date().toISOString();
+    const donationId = `don_${crypto.randomUUID()}`;
+    return {
+        id: donationId,
+        userId,
+        provider: 'yookassa',
+        providerPaymentId: null,
+        amountValue,
+        amountCurrency: config.donationCurrency,
+        status: 'pending',
+        type: 'one_time',
+        returnUrl: buildDonationReturnUrl(donationId),
+        createdAt: now,
+        updatedAt: now,
+        confirmedAt: null,
+    };
+}
+
+function getYookassaWebhookSecretFromRequest(req) {
+    if (typeof req.query?.key !== 'string') {
+        return '';
+    }
+
+    return req.query.key.trim();
+}
+
+function isYookassaWebhookSecretValid(req) {
+    if (!config.yookassaWebhookSecret) {
+        return true;
+    }
+
+    return getYookassaWebhookSecretFromRequest(req) === config.yookassaWebhookSecret;
+}
+
+function getRemoteIp(req) {
+    const forwardedFor = req.headers['x-forwarded-for'];
+    if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
+        return forwardedFor.split(',')[0].trim();
+    }
+
+    return req.ip || req.socket?.remoteAddress || '';
+}
+
+function buildWebhookRecord({ eventId, eventType, paymentId, donationId = null }) {
+    return {
+        id: eventId,
+        provider: 'yookassa',
+        eventType,
+        paymentId,
+        donationId,
+        createdAt: new Date().toISOString(),
+    };
 }
 
 app.use(express.json({ limit: '2mb' }));
@@ -323,6 +491,10 @@ app.use(express.static(ROOT_DIR));
 
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
+});
+
+app.get('/favicon.ico', (_req, res) => {
+    res.status(204).end();
 });
 
 app.get('/api/auth/session', (req, res) => {
@@ -394,7 +566,9 @@ app.post('/api/auth/register', (req, res) => {
             user: toPublicUser(user),
         });
     } catch (error) {
-        logServerError('Failed to register user', error);
+        logServerError('Failed to register user', error, {
+            code: 'REGISTER_FAILED',
+        });
         return res.status(error.statusCode || 500).json({
             error: 'REGISTER_FAILED',
             message: 'Could not register user right now.',
@@ -430,7 +604,6 @@ app.post('/api/auth/login', (req, res) => {
             });
         }
 
-        revokeCurrentSession(req);
         createSessionForUser(res, user.id, req);
 
         return res.json({
@@ -438,7 +611,9 @@ app.post('/api/auth/login', (req, res) => {
             user: toPublicUser(user),
         });
     } catch (error) {
-        logServerError('Failed to log in', error);
+        logServerError('Failed to log in', error, {
+            code: 'LOGIN_FAILED',
+        });
         return res.status(error.statusCode || 500).json({
             error: 'LOGIN_FAILED',
             message: 'Could not log in right now.',
@@ -480,7 +655,10 @@ app.post('/api/auth/forgot-password', async (req, res) => {
 
         return res.json(genericResponse);
     } catch (error) {
-        logServerError('Failed to start password reset flow', error);
+        logServerError('Failed to start password reset flow', error, {
+            code: 'PASSWORD_RESET_REQUEST_FAILED',
+            userId: repositories.findUserByEmail(email)?.id || null,
+        });
         return res.status(error.statusCode || 500).json({
             error: 'PASSWORD_RESET_REQUEST_FAILED',
             message: 'Could not start password recovery right now.',
@@ -531,7 +709,9 @@ app.post('/api/auth/reset-password', (req, res) => {
 
         return res.json({ ok: true });
     } catch (error) {
-        logServerError('Failed to reset password', error);
+        logServerError('Failed to reset password', error, {
+            code: 'PASSWORD_RESET_FAILED',
+        });
         return res.status(error.statusCode || 500).json({
             error: 'PASSWORD_RESET_FAILED',
             message: 'Could not reset password right now.',
@@ -585,7 +765,10 @@ app.patch('/api/account/profile', requireAuthenticatedUser, (req, res) => {
             user: toPublicUser(user),
         });
     } catch (error) {
-        logServerError('Failed to update profile', error);
+        logServerError('Failed to update profile', error, {
+            code: 'PROFILE_UPDATE_FAILED',
+            userId: req.user?.id || null,
+        });
         return res.status(error.statusCode || 500).json({
             error: 'PROFILE_UPDATE_FAILED',
             message: 'Could not update the profile right now.',
@@ -630,10 +813,194 @@ app.post('/api/account/change-password', requireAuthenticatedUser, (req, res) =>
             requireLogin: true,
         });
     } catch (error) {
-        logServerError('Failed to change password', error);
+        logServerError('Failed to change password', error, {
+            code: 'PASSWORD_CHANGE_FAILED',
+            userId: req.user?.id || null,
+        });
         return res.status(error.statusCode || 500).json({
             error: 'PASSWORD_CHANGE_FAILED',
             message: 'Could not change password right now.',
+        });
+    }
+});
+
+app.get('/api/payments/status', requireAuthenticatedUser, (req, res) => {
+    const donationId = typeof req.query?.donationId === 'string' ? req.query.donationId.trim() : '';
+
+    try {
+        let donation = null;
+        if (donationId) {
+            donation = repositories.findDonationById(donationId);
+            if (!donation || donation.userId !== req.user.id) {
+                return res.status(404).json({
+                    error: 'DONATION_NOT_FOUND',
+                    message: 'Donation was not found.',
+                });
+            }
+        }
+
+        return res.json(getPaymentSummary(req.user.id, donation));
+    } catch (error) {
+        logServerError('Failed to read payment status', error, {
+            code: 'PAYMENT_STATUS_FAILED',
+            userId: req.user?.id || null,
+            donationId,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: 'PAYMENT_STATUS_FAILED',
+            message: 'Could not read payment status right now.',
+        });
+    }
+});
+
+app.post('/api/payments/create-donation-session', requireAuthenticatedUser, async (req, res) => {
+    const amount = parseDonationAmount(req.body?.amount);
+    if (!isAllowedDonationAmount(amount)) {
+        return res.status(400).json({
+            error: 'INVALID_DONATION_AMOUNT',
+            message: 'Please choose a valid support amount.',
+        });
+    }
+
+    if (!yookassa.isConfigured) {
+        return res.status(503).json({
+            error: 'PAYMENTS_NOT_CONFIGURED',
+            message: 'Payments are not configured yet.',
+        });
+    }
+
+    try {
+        const donation = createDonationRecord(req.user.id, amount);
+        repositories.createDonation(donation);
+
+        const payment = await yookassa.createPayment({
+            amount,
+            currency: config.donationCurrency,
+            description: 'Поддержка проекта "Мои ложки"',
+            returnUrl: donation.returnUrl,
+            donationId: donation.id,
+            userId: req.user.id,
+        });
+
+        const confirmationUrl = payment?.confirmation?.confirmation_url;
+        if (!payment?.id || !confirmationUrl) {
+            repositories.updateDonationStatus({
+                id: donation.id,
+                status: 'failed',
+                updatedAt: new Date().toISOString(),
+            });
+            throw createPaymentError('YooKassa did not return a confirmation URL.', 502, 'PAYMENT_PROVIDER_INVALID_RESPONSE');
+        }
+
+        repositories.attachProviderPaymentToDonation({
+            id: donation.id,
+            providerPaymentId: payment.id,
+            status: payment.status || 'pending',
+            updatedAt: new Date().toISOString(),
+        });
+
+        return res.status(201).json({
+            donationId: donation.id,
+            confirmationUrl,
+        });
+    } catch (error) {
+        logServerError('Failed to create donation session', error, {
+            code: 'DONATION_SESSION_FAILED',
+            userId: req.user?.id || null,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: error.code || 'DONATION_SESSION_FAILED',
+            message: error.message || 'Could not start the payment right now.',
+        });
+    }
+});
+
+app.post('/api/payments/yookassa/webhook', async (req, res) => {
+    const remoteIp = getRemoteIp(req);
+    if (!isYookassaWebhookSecretValid(req)) {
+        return res.status(403).json({
+            error: 'WEBHOOK_FORBIDDEN',
+            message: 'Webhook secret is invalid.',
+        });
+    }
+
+    if (!yookassa.isAllowedWebhookIp(remoteIp)) {
+        return res.status(403).json({
+            error: 'WEBHOOK_FORBIDDEN',
+            message: 'Webhook IP is not allowed.',
+        });
+    }
+
+    const eventType = typeof req.body?.event === 'string' ? req.body.event.trim() : '';
+    const paymentId = typeof req.body?.object?.id === 'string' ? req.body.object.id.trim() : '';
+    const eventId = paymentId ? `yookassa:${eventType}:${paymentId}` : '';
+
+    if (!eventType || !eventId || !paymentId) {
+        return res.status(400).json({
+            error: 'INVALID_WEBHOOK',
+            message: 'Webhook payload is incomplete.',
+        });
+    }
+
+    try {
+        const alreadyProcessed = repositories.findProcessedWebhookById(eventId);
+        if (alreadyProcessed) {
+            return res.json({ ok: true, duplicate: true });
+        }
+
+        const donation = repositories.findDonationByProviderPaymentId(paymentId);
+        if (!donation) {
+            repositories.markWebhookProcessed({
+                webhook: buildWebhookRecord({
+                    eventId,
+                    eventType,
+                    paymentId,
+                }),
+            });
+            return res.json({ ok: true, skipped: true });
+        }
+
+        const remotePayment = await yookassa.getPayment(paymentId);
+        if (!remotePayment?.id || remotePayment.id !== paymentId) {
+            throw createPaymentError('Payment verification failed.', 400, 'PAYMENT_VERIFICATION_FAILED');
+        }
+
+        const remoteAmount = Number(remotePayment.amount?.value);
+        if (!Number.isFinite(remoteAmount) || Math.round(remoteAmount) !== Math.round(donation.amountValue)) {
+            throw createPaymentError('Payment amount does not match.', 400, 'PAYMENT_AMOUNT_MISMATCH');
+        }
+
+        const webhook = buildWebhookRecord({
+            eventId,
+            eventType,
+            paymentId,
+            donationId: donation.id,
+        });
+        const remoteStatus = typeof remotePayment.status === 'string' ? remotePayment.status : 'pending';
+
+        repositories.markDonationWebhookProcessed({
+            donationId: donation.id,
+            status: remoteStatus === 'succeeded'
+                ? 'succeeded'
+                : remoteStatus === 'canceled'
+                    ? 'canceled'
+                    : 'pending',
+            updatedAt: new Date().toISOString(),
+            confirmedAt: remoteStatus === 'succeeded' ? new Date().toISOString() : null,
+            webhook,
+        });
+
+        return res.json({ ok: true });
+    } catch (error) {
+        logServerError('Failed to process YooKassa webhook', error, {
+            code: 'WEBHOOK_PROCESSING_FAILED',
+            donationId: repositories.findDonationByProviderPaymentId(paymentId)?.id || null,
+            paymentId,
+            eventType,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: error.code || 'WEBHOOK_PROCESSING_FAILED',
+            message: error.message || 'Could not process webhook.',
         });
     }
 });
@@ -645,7 +1012,10 @@ app.get('/api/state', (req, res) => {
             : repositories.getGuestState();
         return res.json({ state });
     } catch (error) {
-        logServerError('Failed to read state from SQLite', error);
+        logServerError('Failed to read state from SQLite', error, {
+            code: 'STATE_READ_FAILED',
+            userId: req.user?.id || null,
+        });
         return res.status(error.statusCode || 500).json({
             error: 'STATE_READ_FAILED',
             message: 'Could not read saved state.',
@@ -676,7 +1046,10 @@ app.post('/api/state', (req, res) => {
         }
         return res.json({ ok: true });
     } catch (error) {
-        logServerError('Failed to write state to SQLite', error);
+        logServerError('Failed to write state to SQLite', error, {
+            code: 'STATE_WRITE_FAILED',
+            userId: req.user?.id || null,
+        });
         return res.status(500).json({
             error: 'STATE_WRITE_FAILED',
             message: 'Could not save state.',
@@ -689,7 +1062,10 @@ app.get('/', (_req, res) => {
 });
 
 app.use((error, req, res, _next) => {
-    logServerError('Unhandled server error', error);
+    logServerError('Unhandled server error', error, {
+        code: 'INTERNAL_SERVER_ERROR',
+        userId: req.user?.id || null,
+    });
 
     if (res.headersSent) {
         return;
@@ -716,4 +1092,5 @@ app.listen(PORT, () => {
     console.log(`Cookie: ${summary.sessionCookieName}, SameSite=${summary.sessionCookieSameSite}, Secure=${summary.sessionCookieSecure}`);
     console.log(`Session TTL days: ${summary.sessionTtlDays}`);
     console.log(`SMTP configured: ${summary.smtpConfigured ? 'yes' : 'no'}`);
+    console.log(`YooKassa configured: ${summary.yookassaConfigured ? 'yes' : 'no'}`);
 });

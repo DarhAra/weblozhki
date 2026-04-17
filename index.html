@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Мои ложки</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="style.css?v=20260320-main-layout">
+    <link rel="stylesheet" href="style.css?v=20260415-payments">
 </head>
 
 <body>
@@ -439,10 +439,45 @@
                         <p id="account-profile-error" class="auth-error hidden"></p>
                         <button id="account-profile-submit-btn" class="primary-btn auth-submit-btn" type="submit">Сохранить изменения</button>
                     </form>
+                    <section class="account-support-card hidden">
+                        <div class="account-support-header">
+                            <div>
+                                <h4>Поддержать проект</h4>
+                                <p id="account-support-summary" class="account-support-summary">Оплата проходит на защищённой стороне YooKassa.</p>
+                            </div>
+                            <span id="account-support-badge" class="account-support-badge hidden">Спасибо за поддержку</span>
+                        </div>
+                        <div id="account-support-amounts" class="account-support-amounts">
+                            <button class="secondary-btn support-amount-btn" type="button" data-support-amount="149">149 ₽</button>
+                            <button class="secondary-btn support-amount-btn" type="button" data-support-amount="299">299 ₽</button>
+                            <button class="secondary-btn support-amount-btn" type="button" data-support-amount="499">499 ₽</button>
+                        </div>
+                        <label class="auth-field">
+                            <span>Своя сумма</span>
+                            <input id="account-support-custom-amount" type="number" min="100" step="1" inputmode="numeric" placeholder="Например, 199">
+                        </label>
+                        <p id="account-support-message" class="auth-notice hidden"></p>
+                        <p id="account-support-error" class="auth-error hidden"></p>
+                        <button id="account-support-submit-btn" class="primary-btn auth-submit-btn" type="button">Перейти к оплате</button>
+                    </section>
                     <div class="account-actions">
                         <button id="open-change-password-btn" class="secondary-btn" type="button">Сменить пароль</button>
                         <button id="account-logout-btn" class="secondary-btn account-logout-btn" type="button">Выйти</button>
                     </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="payment-return-modal" class="modal hidden">
+            <div class="modal-content account-modal-card">
+                <div class="modal-header">
+                    <h3>Поддержка проекта</h3>
+                    <button id="close-payment-return-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p id="payment-return-message" class="modal-subtitle">Проверяем статус платежа…</p>
+                    <p id="payment-return-error" class="auth-error hidden"></p>
+                    <button id="payment-return-close-btn" class="primary-btn auth-submit-btn" type="button">Закрыть</button>
                 </div>
             </div>
         </div>
@@ -722,7 +757,7 @@
         </div>
     </div>
 
-    <script src="js/app.bundle.js?v=20260326-auth"></script>
+    <script src="js/app.bundle.js?v=20260415-payments"></script>
 </body>
 
 </html>

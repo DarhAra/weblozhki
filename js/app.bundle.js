@@ -28,6 +28,7 @@
       inboxSortModal: doc.getElementById("inbox-sort-modal"),
       sosModal: doc.getElementById("sos-modal"),
       allDoneModal: doc.getElementById("all-done-modal"),
+      paymentReturnModal: doc.getElementById("payment-return-modal"),
       authTitle: doc.getElementById("auth-title"),
       authSubtitle: doc.getElementById("auth-subtitle"),
       authLoading: doc.getElementById("auth-loading"),
@@ -61,6 +62,13 @@
       accountProfileError: doc.getElementById("account-profile-error"),
       accountProfileMessage: doc.getElementById("account-profile-message"),
       accountProfileSubmitBtn: doc.getElementById("account-profile-submit-btn"),
+      accountSupportSummary: doc.getElementById("account-support-summary"),
+      accountSupportBadge: doc.getElementById("account-support-badge"),
+      accountSupportAmounts: doc.getElementById("account-support-amounts"),
+      accountSupportCustomAmount: doc.getElementById("account-support-custom-amount"),
+      accountSupportMessage: doc.getElementById("account-support-message"),
+      accountSupportError: doc.getElementById("account-support-error"),
+      accountSupportSubmitBtn: doc.getElementById("account-support-submit-btn"),
       openChangePasswordBtn: doc.getElementById("open-change-password-btn"),
       accountEmailValue: doc.getElementById("account-email-value"),
       openAccountBtn: doc.getElementById("open-account-btn"),
@@ -76,6 +84,10 @@
       changePasswordMessage: doc.getElementById("change-password-message"),
       changePasswordSubmitBtn: doc.getElementById("change-password-submit-btn"),
       changePasswordCancelBtn: doc.getElementById("change-password-cancel-btn"),
+      paymentReturnMessage: doc.getElementById("payment-return-message"),
+      paymentReturnError: doc.getElementById("payment-return-error"),
+      closePaymentReturnBtn: doc.getElementById("close-payment-return-btn"),
+      paymentReturnCloseBtn: doc.getElementById("payment-return-close-btn"),
       energyInput: doc.getElementById("energy-input"),
       energyDisplay: doc.getElementById("energy-display"),
       startDayBtn: doc.getElementById("start-day-btn"),
@@ -2699,6 +2711,7 @@
       elements.archiveModal.classList.add("hidden");
       elements.completedModal.classList.add("hidden");
       elements.accountModal.classList.add("hidden");
+      elements.paymentReturnModal.classList.add("hidden");
       elements.forgotPasswordModal.classList.add("hidden");
       elements.changePasswordModal.classList.add("hidden");
       elements.templatesModal.classList.add("hidden");
@@ -3523,16 +3536,149 @@
       elements.accountProfileEmail.value = (currentUser == null ? void 0 : currentUser.email) || "";
       authState.accountProfile.status = "idle";
       authState.accountProfile.error = "";
+      authState.payments.error = "";
       authState.passwordChange.error = "";
       authState.passwordChange.message = "";
       elements.accountProfileError.textContent = "";
       elements.accountProfileError.classList.add("hidden");
       elements.accountProfileMessage.textContent = "";
       elements.accountProfileMessage.classList.add("hidden");
+      elements.accountSupportCustomAmount.value = "";
+      elements.accountSupportError.textContent = "";
+      elements.accountSupportError.classList.add("hidden");
+      elements.accountSupportMessage.classList.add("hidden");
       elements.accountModal.classList.remove("hidden");
     }
     function closeAccountModal() {
       elements.accountModal.classList.add("hidden");
+    }
+    function closePaymentReturnModal() {
+      elements.paymentReturnModal.classList.add("hidden");
+      authState.payments.returnStatus = "idle";
+      authState.payments.returnMessage = "";
+      authState.payments.returnDonationId = null;
+      elements.paymentReturnError.textContent = "";
+      elements.paymentReturnError.classList.add("hidden");
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("paymentReturn");
+        url.searchParams.delete("donationId");
+        window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+      }
+    }
+    function getSelectedSupportAmount() {
+      var _a2, _b, _c, _d;
+      const customValue = (_b = (_a2 = elements.accountSupportCustomAmount) == null ? void 0 : _a2.value) == null ? void 0 : _b.trim();
+      if (customValue) {
+        return Number(customValue);
+      }
+      return Number(authState.payments.selectedAmount || ((_d = (_c = authState.payments.checkout) == null ? void 0 : _c.allowedAmounts) == null ? void 0 : _d[0]) || 149);
+    }
+    function renderSupportAmountButtons() {
+      var _a2, _b;
+      if (!elements.accountSupportAmounts) {
+        return;
+      }
+      const selectedAmount = Number(authState.payments.selectedAmount);
+      const allowedAmounts = ((_b = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b.length) ? authState.payments.checkout.allowedAmounts : [149, 299, 499];
+      elements.accountSupportAmounts.innerHTML = allowedAmounts.map((amount) => `
+                <button class="secondary-btn support-amount-btn ${amount === selectedAmount && !elements.accountSupportCustomAmount.value ? "is-selected" : ""}" type="button" data-support-amount="${amount}">
+                    ${amount} ₽
+                </button>
+            `).join("");
+    }
+    function renderPaymentSummary() {
+      var _a2, _b;
+      const payments = authState.payments;
+      const support = payments.support;
+      const latestDonation = payments.latestDonation;
+      const hasSupported = Boolean(support == null ? void 0 : support.hasSupported);
+      const pendingOffline = Boolean(runtime.auth.isOfflineAuthenticated || ((_a2 = runtime.persistenceStatus) == null ? void 0 : _a2.mode) === "offline-authenticated");
+      elements.accountSupportBadge.classList.toggle("hidden", !hasSupported);
+      elements.accountSupportSummary.textContent = hasSupported ? `Последняя поддержка ${support.lastDonationAt ? new Date(support.lastDonationAt).toLocaleDateString("ru-RU") : "уже получена"}. Оплата всё равно проходит только через защищённую страницу YooKassa.` : "Оплата проходит на защищённой стороне YooKassa. Карта не сохраняется в приложении.";
+      if ((latestDonation == null ? void 0 : latestDonation.status) === "pending") {
+        elements.accountSupportMessage.textContent = "Есть незавершённая оплата. После подтверждения YooKassa статус обновится автоматически.";
+        elements.accountSupportMessage.classList.remove("hidden");
+      } else if (pendingOffline) {
+        elements.accountSupportMessage.textContent = "В офлайн-режиме оплату открыть нельзя. Нужна живая связь с сервером.";
+        elements.accountSupportMessage.classList.remove("hidden");
+      } else if (!authState.payments.error) {
+        elements.accountSupportMessage.classList.add("hidden");
+      }
+      elements.accountSupportSubmitBtn.disabled = payments.status === "submitting" || pendingOffline;
+      elements.accountSupportSubmitBtn.textContent = payments.status === "submitting" ? "Открываем оплату…" : "Перейти к оплате";
+      elements.accountSupportCustomAmount.min = String(((_b = payments.checkout) == null ? void 0 : _b.minAmount) || 100);
+      renderSupportAmountButtons();
+    }
+    async function refreshPaymentStatus({ donationId, openReturnModal = false } = {}) {
+      var _a2, _b, _c;
+      authState.payments.status = "loading";
+      authState.payments.error = "";
+      elements.accountSupportError.textContent = "";
+      elements.accountSupportError.classList.add("hidden");
+      try {
+        const payload = await app.auth.getPaymentStatus({ donationId });
+        authState.payments.support = (payload == null ? void 0 : payload.support) || null;
+        authState.payments.latestDonation = (payload == null ? void 0 : payload.latestDonation) || null;
+        authState.payments.checkout = (payload == null ? void 0 : payload.checkout) || authState.payments.checkout;
+        if (!authState.payments.selectedAmount && ((_b = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b.length)) {
+          authState.payments.selectedAmount = authState.payments.checkout.allowedAmounts[0];
+        }
+        authState.payments.status = "idle";
+        renderPaymentSummary();
+        if (openReturnModal && donationId) {
+          const latestStatus = (_c = payload == null ? void 0 : payload.latestDonation) == null ? void 0 : _c.status;
+          authState.payments.returnStatus = latestStatus || "pending";
+          elements.paymentReturnMessage.textContent = latestStatus === "succeeded" ? "Поддержка получена. Спасибо, это очень помогает проекту." : latestStatus === "canceled" ? "Платёж не был завершён. Ничего страшного, можно вернуться позже." : "Платёж ещё проверяется. Финальный статус приходит только после уведомления от YooKassa.";
+          elements.paymentReturnError.classList.add("hidden");
+          elements.paymentReturnModal.classList.remove("hidden");
+        }
+      } catch (error) {
+        authState.payments.status = "idle";
+        authState.payments.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается проверить статус поддержки.";
+        elements.accountSupportError.textContent = authState.payments.error;
+        elements.accountSupportError.classList.remove("hidden");
+        if (openReturnModal) {
+          elements.paymentReturnMessage.textContent = "Сейчас не удалось проверить платёж автоматически.";
+          elements.paymentReturnError.textContent = authState.payments.error;
+          elements.paymentReturnError.classList.remove("hidden");
+          elements.paymentReturnModal.classList.remove("hidden");
+        }
+      }
+    }
+    async function startDonationCheckout() {
+      var _a2;
+      if (!navigator.onLine || runtime.auth.isOfflineAuthenticated || ((_a2 = runtime.persistenceStatus) == null ? void 0 : _a2.mode) === "offline-authenticated") {
+        elements.accountSupportError.textContent = "Для оплаты нужно подключение к интернету и активная серверная сессия.";
+        elements.accountSupportError.classList.remove("hidden");
+        return;
+      }
+      const amount = getSelectedSupportAmount();
+      if (!Number.isFinite(amount)) {
+        elements.accountSupportError.textContent = "Выберите сумму поддержки.";
+        elements.accountSupportError.classList.remove("hidden");
+        return;
+      }
+      elements.accountSupportError.classList.add("hidden");
+      elements.accountSupportMessage.classList.add("hidden");
+      authState.payments.status = "submitting";
+      renderPaymentSummary();
+      try {
+        const payload = await app.auth.createDonationSession({ amount });
+        authState.payments.status = "idle";
+        if (payload == null ? void 0 : payload.confirmationUrl) {
+          window.location.href = payload.confirmationUrl;
+          return;
+        }
+        elements.accountSupportError.textContent = "Сервер не вернул ссылку на оплату.";
+        elements.accountSupportError.classList.remove("hidden");
+      } catch (error) {
+        authState.payments.status = "idle";
+        elements.accountSupportError.textContent = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается открыть страницу оплаты.";
+        elements.accountSupportError.classList.remove("hidden");
+      } finally {
+        renderPaymentSummary();
+      }
     }
     function openForgotPasswordModal() {
       if (!elements.forgotPasswordModal || !elements.forgotPasswordEmail) {
@@ -3793,6 +3939,27 @@
         }
       });
     }
+    if (elements.accountSupportAmounts) {
+      elements.accountSupportAmounts.addEventListener("click", (event) => {
+        const button = event.target.closest("[data-support-amount]");
+        if (!button) {
+          return;
+        }
+        authState.payments.selectedAmount = Number(button.dataset.supportAmount);
+        elements.accountSupportCustomAmount.value = "";
+        renderSupportAmountButtons();
+      });
+    }
+    if (elements.accountSupportCustomAmount) {
+      elements.accountSupportCustomAmount.addEventListener("input", () => {
+        renderSupportAmountButtons();
+      });
+    }
+    if (elements.accountSupportSubmitBtn) {
+      elements.accountSupportSubmitBtn.addEventListener("click", () => {
+        void startDonationCheckout();
+      });
+    }
     if (elements.openChangePasswordBtn) {
       elements.openChangePasswordBtn.addEventListener("click", () => {
         openChangePasswordModal();
@@ -3847,6 +4014,16 @@
         }
       });
     }
+    if (elements.closePaymentReturnBtn) {
+      elements.closePaymentReturnBtn.addEventListener("click", () => {
+        closePaymentReturnModal();
+      });
+    }
+    if (elements.paymentReturnCloseBtn) {
+      elements.paymentReturnCloseBtn.addEventListener("click", () => {
+        closePaymentReturnModal();
+      });
+    }
     elements.appMenuPopover.addEventListener("click", (event) => {
       event.stopPropagation();
     });
@@ -3866,8 +4043,12 @@
     });
     elements.accountLogoutBtn.addEventListener("click", async () => {
       closeAccountModal();
+      closePaymentReturnModal();
       resetEasyPatternState();
       clearOfflineAuthSnapshot();
+      authState.payments.support = null;
+      authState.payments.latestDonation = null;
+      authState.payments.error = "";
       try {
         await app.auth.logout();
       } catch (error) {
@@ -4510,6 +4691,9 @@
       app.renderers.renderMainScreen();
       app.renderers.renderWeeklyScreen();
     });
+    app.handlePaymentReturn = async () => {
+      authState.payments.returnDonationId = null;
+    };
     elements.openWeeklyBtn.addEventListener("click", () => {
       closeAppMenu();
       app.screens.showWeeklyScreen();
@@ -5165,6 +5349,8 @@
   var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
   var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
   var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
+  var API_PAYMENT_STATUS_URL = "/api/payments/status";
+  var API_CREATE_DONATION_SESSION_URL = "/api/payments/create-donation-session";
   async function readJsonResponse(response) {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
@@ -5195,6 +5381,18 @@
     }
     if (errorCode === "PASSWORD_RESET_TOKEN_INVALID") {
       return "Ссылка для восстановления уже недействительна. Запросите новую.";
+    }
+    if (errorCode === "AUTH_REQUIRED") {
+      return "Нужно войти в аккаунт заново.";
+    }
+    if (errorCode === "INVALID_DONATION_AMOUNT") {
+      return "Выберите корректную сумму поддержки.";
+    }
+    if (errorCode === "PAYMENTS_NOT_CONFIGURED") {
+      return "Оплата ещё не настроена на сервере.";
+    }
+    if (errorCode === "DONATION_NOT_FOUND") {
+      return "Платёж не найден или больше недоступен.";
     }
     return fallbackMessage;
   }
@@ -5347,6 +5545,35 @@
         "Сейчас не получается сменить пароль."
       );
     }
+    async function getPaymentStatus({ donationId } = {}) {
+      const url = new URL(API_PAYMENT_STATUS_URL, window.location.origin);
+      if (donationId) {
+        url.searchParams.set("donationId", donationId);
+      }
+      return requestJson(
+        `${url.pathname}${url.search}`,
+        {
+          headers: {
+            Accept: "application/json"
+          }
+        },
+        "Сейчас не получается проверить статус поддержки."
+      );
+    }
+    async function createDonationSession({ amount }) {
+      return requestJson(
+        API_CREATE_DONATION_SESSION_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json"
+          },
+          body: JSON.stringify({ amount })
+        },
+        "Сейчас не получается открыть страницу оплаты."
+      );
+    }
     return {
       checkSession,
       login,
@@ -5356,7 +5583,9 @@
       resetPassword,
       getProfile,
       updateProfile,
-      changePassword
+      changePassword,
+      getPaymentStatus,
+      createDonationSession
     };
   }
 
@@ -5476,6 +5705,23 @@
             status: "idle",
             error: ""
           },
+          payments: {
+            status: "idle",
+            error: "",
+            support: null,
+            latestDonation: null,
+            checkout: {
+              currency: "RUB",
+              allowedAmounts: [149, 299, 499],
+              minAmount: 100,
+              maxAmount: 5e3
+            },
+            selectedAmount: 149,
+            customAmount: "",
+            returnDonationId: null,
+            returnStatus: "idle",
+            returnMessage: ""
+          },
           passwordChange: {
             status: "idle",
             error: "",
@@ -5556,7 +5802,11 @@
       if (!isOfflineAuthenticated && user) {
         saveOfflineAuthSnapshot(user);
       }
-      return startAuthenticatedFlow(app);
+      const result = await startAuthenticatedFlow(app);
+      if (!isOfflineAuthenticated && typeof app.handlePaymentReturn === "function") {
+        await app.handlePaymentReturn();
+      }
+      return result;
     };
     bindAppEvents(app);
     (_b = store.setPersistenceStatusListener) == null ? void 0 : _b.call(store, (status) => {
@@ -5568,9 +5818,14 @@
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const resetToken = params.get("resetToken");
+      const paymentReturn = params.get("paymentReturn");
+      const paymentDonationId = params.get("donationId");
       if (resetToken) {
         app.runtime.auth.mode = "reset-password";
         app.runtime.auth.resetToken = resetToken;
+      }
+      if (paymentReturn === "1" && paymentDonationId) {
+        app.runtime.auth.payments.returnDonationId = paymentDonationId;
       }
       window.addEventListener("online", async () => {
         var _a2, _b2;

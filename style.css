@@ -1426,6 +1426,64 @@ header h2 {
     margin-top: -2px;
 }
 
+.account-support-card {
+    margin-top: 18px;
+    padding: 18px;
+    border: 1px solid #e7ece8;
+    border-radius: 18px;
+    background: linear-gradient(180deg, #fcfdfc 0%, #f7faf8 100%);
+}
+
+.account-support-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+}
+
+.account-support-header h4 {
+    font-size: 17px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.account-support-summary {
+    color: var(--text-secondary);
+    font-size: 14px;
+    line-height: 1.55;
+}
+
+.account-support-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #f1f8f4;
+    border: 1px solid #d4e7da;
+    color: #5d7e69;
+    font-size: 12px;
+    white-space: nowrap;
+}
+
+.account-support-amounts {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.support-amount-btn {
+    width: 100%;
+    padding: 12px 14px;
+}
+
+.support-amount-btn.is-selected {
+    background: var(--primary-light);
+    border-color: #bfd4c7;
+    color: #517460;
+}
+
 .account-modal-card .auth-form > .secondary-btn,
 .account-modal-card .auth-form > .primary-btn {
     width: 100%;
@@ -2813,6 +2871,16 @@ header h2 {
     .auth-card {
         padding: 28px 20px;
         border-radius: 22px;
+    }
+
+    .account-support-header,
+    .account-actions {
+        grid-template-columns: 1fr;
+        display: grid;
+    }
+
+    .account-support-amounts {
+        grid-template-columns: 1fr;
     }
 
     .auth-intro h1 {

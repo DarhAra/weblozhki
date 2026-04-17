@@ -123,9 +123,39 @@ function initSchema(db) {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS donations (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            provider_payment_id TEXT UNIQUE,
+            amount_value REAL NOT NULL,
+            amount_currency TEXT NOT NULL,
+            status TEXT NOT NULL,
+            type TEXT NOT NULL,
+            return_url TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            confirmed_at TEXT,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS processed_webhooks (
+            id TEXT PRIMARY KEY,
+            provider TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            payment_id TEXT,
+            donation_id TEXT,
+            created_at TEXT NOT NULL,
+            FOREIGN KEY (donation_id) REFERENCES donations(id) ON DELETE SET NULL
+        );
+
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_donations_user_id ON donations(user_id);
+        CREATE INDEX IF NOT EXISTS idx_donations_provider_payment_id ON donations(provider_payment_id);
+        CREATE INDEX IF NOT EXISTS idx_donations_status ON donations(status);
+        CREATE INDEX IF NOT EXISTS idx_processed_webhooks_payment_id ON processed_webhooks(payment_id);
     `);
 
     ensureUserColumns(db);

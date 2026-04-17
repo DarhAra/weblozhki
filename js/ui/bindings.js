@@ -471,17 +471,176 @@ export function bindAppEvents(app) {
         elements.accountProfileEmail.value = currentUser?.email || '';
         authState.accountProfile.status = 'idle';
         authState.accountProfile.error = '';
+        authState.payments.error = '';
         authState.passwordChange.error = '';
         authState.passwordChange.message = '';
         elements.accountProfileError.textContent = '';
         elements.accountProfileError.classList.add('hidden');
         elements.accountProfileMessage.textContent = '';
         elements.accountProfileMessage.classList.add('hidden');
+        elements.accountSupportCustomAmount.value = '';
+        elements.accountSupportError.textContent = '';
+        elements.accountSupportError.classList.add('hidden');
+        elements.accountSupportMessage.classList.add('hidden');
         elements.accountModal.classList.remove('hidden');
     }
 
     function closeAccountModal() {
         elements.accountModal.classList.add('hidden');
+    }
+
+    function closePaymentReturnModal() {
+        elements.paymentReturnModal.classList.add('hidden');
+        authState.payments.returnStatus = 'idle';
+        authState.payments.returnMessage = '';
+        authState.payments.returnDonationId = null;
+        elements.paymentReturnError.textContent = '';
+        elements.paymentReturnError.classList.add('hidden');
+        if (typeof window !== 'undefined') {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('paymentReturn');
+            url.searchParams.delete('donationId');
+            window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+        }
+    }
+
+    function getSelectedSupportAmount() {
+        const customValue = elements.accountSupportCustomAmount?.value?.trim();
+        if (customValue) {
+            return Number(customValue);
+        }
+
+        return Number(authState.payments.selectedAmount || authState.payments.checkout?.allowedAmounts?.[0] || 149);
+    }
+
+    function renderSupportAmountButtons() {
+        if (!elements.accountSupportAmounts) {
+            return;
+        }
+
+        const selectedAmount = Number(authState.payments.selectedAmount);
+        const allowedAmounts = authState.payments.checkout?.allowedAmounts?.length
+            ? authState.payments.checkout.allowedAmounts
+            : [149, 299, 499];
+
+        elements.accountSupportAmounts.innerHTML = allowedAmounts
+            .map(amount => `
+                <button class="secondary-btn support-amount-btn ${amount === selectedAmount && !elements.accountSupportCustomAmount.value ? 'is-selected' : ''}" type="button" data-support-amount="${amount}">
+                    ${amount} ₽
+                </button>
+            `)
+            .join('');
+    }
+
+    function renderPaymentSummary() {
+        const payments = authState.payments;
+        const support = payments.support;
+        const latestDonation = payments.latestDonation;
+        const hasSupported = Boolean(support?.hasSupported);
+        const pendingOffline = Boolean(runtime.auth.isOfflineAuthenticated || runtime.persistenceStatus?.mode === 'offline-authenticated');
+
+        elements.accountSupportBadge.classList.toggle('hidden', !hasSupported);
+        elements.accountSupportSummary.textContent = hasSupported
+            ? `Последняя поддержка ${support.lastDonationAt ? new Date(support.lastDonationAt).toLocaleDateString('ru-RU') : 'уже получена'}. Оплата всё равно проходит только через защищённую страницу YooKassa.`
+            : 'Оплата проходит на защищённой стороне YooKassa. Карта не сохраняется в приложении.';
+
+        if (latestDonation?.status === 'pending') {
+            elements.accountSupportMessage.textContent = 'Есть незавершённая оплата. После подтверждения YooKassa статус обновится автоматически.';
+            elements.accountSupportMessage.classList.remove('hidden');
+        } else if (pendingOffline) {
+            elements.accountSupportMessage.textContent = 'В офлайн-режиме оплату открыть нельзя. Нужна живая связь с сервером.';
+            elements.accountSupportMessage.classList.remove('hidden');
+        } else if (!authState.payments.error) {
+            elements.accountSupportMessage.classList.add('hidden');
+        }
+
+        elements.accountSupportSubmitBtn.disabled = payments.status === 'submitting' || pendingOffline;
+        elements.accountSupportSubmitBtn.textContent = payments.status === 'submitting'
+            ? 'Открываем оплату…'
+            : 'Перейти к оплате';
+        elements.accountSupportCustomAmount.min = String(payments.checkout?.minAmount || 100);
+        renderSupportAmountButtons();
+    }
+
+    async function refreshPaymentStatus({ donationId, openReturnModal = false } = {}) {
+        authState.payments.status = 'loading';
+        authState.payments.error = '';
+        elements.accountSupportError.textContent = '';
+        elements.accountSupportError.classList.add('hidden');
+
+        try {
+            const payload = await app.auth.getPaymentStatus({ donationId });
+            authState.payments.support = payload?.support || null;
+            authState.payments.latestDonation = payload?.latestDonation || null;
+            authState.payments.checkout = payload?.checkout || authState.payments.checkout;
+            if (!authState.payments.selectedAmount && authState.payments.checkout?.allowedAmounts?.length) {
+                authState.payments.selectedAmount = authState.payments.checkout.allowedAmounts[0];
+            }
+            authState.payments.status = 'idle';
+            renderPaymentSummary();
+
+            if (openReturnModal && donationId) {
+                const latestStatus = payload?.latestDonation?.status;
+                authState.payments.returnStatus = latestStatus || 'pending';
+                elements.paymentReturnMessage.textContent = latestStatus === 'succeeded'
+                    ? 'Поддержка получена. Спасибо, это очень помогает проекту.'
+                    : latestStatus === 'canceled'
+                        ? 'Платёж не был завершён. Ничего страшного, можно вернуться позже.'
+                        : 'Платёж ещё проверяется. Финальный статус приходит только после уведомления от YooKassa.';
+                elements.paymentReturnError.classList.add('hidden');
+                elements.paymentReturnModal.classList.remove('hidden');
+            }
+        } catch (error) {
+            authState.payments.status = 'idle';
+            authState.payments.error = error?.friendlyMessage || 'Сейчас не получается проверить статус поддержки.';
+            elements.accountSupportError.textContent = authState.payments.error;
+            elements.accountSupportError.classList.remove('hidden');
+
+            if (openReturnModal) {
+                elements.paymentReturnMessage.textContent = 'Сейчас не удалось проверить платёж автоматически.';
+                elements.paymentReturnError.textContent = authState.payments.error;
+                elements.paymentReturnError.classList.remove('hidden');
+                elements.paymentReturnModal.classList.remove('hidden');
+            }
+        }
+    }
+
+    async function startDonationCheckout() {
+        if (!navigator.onLine || runtime.auth.isOfflineAuthenticated || runtime.persistenceStatus?.mode === 'offline-authenticated') {
+            elements.accountSupportError.textContent = 'Для оплаты нужно подключение к интернету и активная серверная сессия.';
+            elements.accountSupportError.classList.remove('hidden');
+            return;
+        }
+
+        const amount = getSelectedSupportAmount();
+        if (!Number.isFinite(amount)) {
+            elements.accountSupportError.textContent = 'Выберите сумму поддержки.';
+            elements.accountSupportError.classList.remove('hidden');
+            return;
+        }
+
+        elements.accountSupportError.classList.add('hidden');
+        elements.accountSupportMessage.classList.add('hidden');
+        authState.payments.status = 'submitting';
+        renderPaymentSummary();
+
+        try {
+            const payload = await app.auth.createDonationSession({ amount });
+            authState.payments.status = 'idle';
+            if (payload?.confirmationUrl) {
+                window.location.href = payload.confirmationUrl;
+                return;
+            }
+
+            elements.accountSupportError.textContent = 'Сервер не вернул ссылку на оплату.';
+            elements.accountSupportError.classList.remove('hidden');
+        } catch (error) {
+            authState.payments.status = 'idle';
+            elements.accountSupportError.textContent = error?.friendlyMessage || 'Сейчас не получается открыть страницу оплаты.';
+            elements.accountSupportError.classList.remove('hidden');
+        } finally {
+            renderPaymentSummary();
+        }
     }
 
     function openForgotPasswordModal() {
@@ -791,6 +950,31 @@ export function bindAppEvents(app) {
         });
     }
 
+    if (elements.accountSupportAmounts) {
+        elements.accountSupportAmounts.addEventListener('click', event => {
+            const button = event.target.closest('[data-support-amount]');
+            if (!button) {
+                return;
+            }
+
+            authState.payments.selectedAmount = Number(button.dataset.supportAmount);
+            elements.accountSupportCustomAmount.value = '';
+            renderSupportAmountButtons();
+        });
+    }
+
+    if (elements.accountSupportCustomAmount) {
+        elements.accountSupportCustomAmount.addEventListener('input', () => {
+            renderSupportAmountButtons();
+        });
+    }
+
+    if (elements.accountSupportSubmitBtn) {
+        elements.accountSupportSubmitBtn.addEventListener('click', () => {
+            void startDonationCheckout();
+        });
+    }
+
     if (elements.openChangePasswordBtn) {
         elements.openChangePasswordBtn.addEventListener('click', () => {
             openChangePasswordModal();
@@ -853,6 +1037,18 @@ export function bindAppEvents(app) {
         });
     }
 
+    if (elements.closePaymentReturnBtn) {
+        elements.closePaymentReturnBtn.addEventListener('click', () => {
+            closePaymentReturnModal();
+        });
+    }
+
+    if (elements.paymentReturnCloseBtn) {
+        elements.paymentReturnCloseBtn.addEventListener('click', () => {
+            closePaymentReturnModal();
+        });
+    }
+
     elements.appMenuPopover.addEventListener('click', event => {
         event.stopPropagation();
     });
@@ -877,8 +1073,12 @@ export function bindAppEvents(app) {
 
     elements.accountLogoutBtn.addEventListener('click', async () => {
         closeAccountModal();
+        closePaymentReturnModal();
         resetEasyPatternState();
         clearOfflineAuthSnapshot();
+        authState.payments.support = null;
+        authState.payments.latestDonation = null;
+        authState.payments.error = '';
 
         try {
             await app.auth.logout();
@@ -1639,6 +1839,10 @@ export function bindAppEvents(app) {
         app.renderers.renderMainScreen();
         app.renderers.renderWeeklyScreen();
     });
+
+    app.handlePaymentReturn = async () => {
+        authState.payments.returnDonationId = null;
+    };
 
     elements.openWeeklyBtn.addEventListener('click', () => {
         closeAppMenu();

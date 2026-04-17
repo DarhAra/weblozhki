@@ -147,6 +147,23 @@ export async function initApp({ elements }) {
                     status: 'idle',
                     error: '',
                 },
+                payments: {
+                    status: 'idle',
+                    error: '',
+                    support: null,
+                    latestDonation: null,
+                    checkout: {
+                        currency: 'RUB',
+                        allowedAmounts: [149, 299, 499],
+                        minAmount: 100,
+                        maxAmount: 5000,
+                    },
+                    selectedAmount: 149,
+                    customAmount: '',
+                    returnDonationId: null,
+                    returnStatus: 'idle',
+                    returnMessage: '',
+                },
                 passwordChange: {
                     status: 'idle',
                     error: '',
@@ -228,7 +245,11 @@ export async function initApp({ elements }) {
         if (!isOfflineAuthenticated && user) {
             saveOfflineAuthSnapshot(user);
         }
-        return startAuthenticatedFlow(app);
+        const result = await startAuthenticatedFlow(app);
+        if (!isOfflineAuthenticated && typeof app.handlePaymentReturn === 'function') {
+            await app.handlePaymentReturn();
+        }
+        return result;
     };
     bindAppEvents(app);
     store.setPersistenceStatusListener?.(status => {
@@ -242,9 +263,14 @@ export async function initApp({ elements }) {
     if (typeof window !== 'undefined') {
         const params = new URLSearchParams(window.location.search);
         const resetToken = params.get('resetToken');
+        const paymentReturn = params.get('paymentReturn');
+        const paymentDonationId = params.get('donationId');
         if (resetToken) {
             app.runtime.auth.mode = 'reset-password';
             app.runtime.auth.resetToken = resetToken;
+        }
+        if (paymentReturn === '1' && paymentDonationId) {
+            app.runtime.auth.payments.returnDonationId = paymentDonationId;
         }
 
         window.addEventListener('online', async () => {

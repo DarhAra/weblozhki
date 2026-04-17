@@ -25,6 +25,42 @@ function mapUserRow(row) {
     };
 }
 
+function mapDonationRow(row) {
+    if (!row) {
+        return null;
+    }
+
+    return {
+        id: row.id,
+        userId: row.user_id,
+        provider: row.provider,
+        providerPaymentId: row.provider_payment_id,
+        amountValue: Number(row.amount_value),
+        amountCurrency: row.amount_currency,
+        status: row.status,
+        type: row.type,
+        returnUrl: row.return_url,
+        createdAt: row.created_at,
+        updatedAt: row.updated_at,
+        confirmedAt: row.confirmed_at,
+    };
+}
+
+function mapProcessedWebhookRow(row) {
+    if (!row) {
+        return null;
+    }
+
+    return {
+        id: row.id,
+        provider: row.provider,
+        eventType: row.event_type,
+        paymentId: row.payment_id,
+        donationId: row.donation_id,
+        createdAt: row.created_at,
+    };
+}
+
 function createRepositories(db) {
     const selectUserByEmail = db.prepare(`
         SELECT id, name, email, password_salt, password_hash, created_at, updated_at, password_changed_at
@@ -176,6 +212,126 @@ function createRepositories(db) {
         DELETE FROM password_reset_tokens
         WHERE expires_at <= @now_iso OR used_at IS NOT NULL
     `);
+    const insertDonation = db.prepare(`
+        INSERT INTO donations (
+            id,
+            user_id,
+            provider,
+            provider_payment_id,
+            amount_value,
+            amount_currency,
+            status,
+            type,
+            return_url,
+            created_at,
+            updated_at,
+            confirmed_at
+        )
+        VALUES (
+            @id,
+            @user_id,
+            @provider,
+            @provider_payment_id,
+            @amount_value,
+            @amount_currency,
+            @status,
+            @type,
+            @return_url,
+            @created_at,
+            @updated_at,
+            @confirmed_at
+        )
+    `);
+    const updateDonationProviderPayment = db.prepare(`
+        UPDATE donations
+        SET provider_payment_id = @provider_payment_id,
+            status = @status,
+            updated_at = @updated_at
+        WHERE id = @id
+    `);
+    const updateDonationStatus = db.prepare(`
+        UPDATE donations
+        SET status = @status,
+            updated_at = @updated_at,
+            confirmed_at = @confirmed_at
+        WHERE id = @id
+    `);
+    const selectDonationById = db.prepare(`
+        SELECT id, user_id, provider, provider_payment_id, amount_value, amount_currency, status, type, return_url, created_at, updated_at, confirmed_at
+        FROM donations
+        WHERE id = ?
+    `);
+    const selectDonationByProviderPaymentId = db.prepare(`
+        SELECT id, user_id, provider, provider_payment_id, amount_value, amount_currency, status, type, return_url, created_at, updated_at, confirmed_at
+        FROM donations
+        WHERE provider_payment_id = ?
+    `);
+    const selectLatestDonationByUserId = db.prepare(`
+        SELECT id, user_id, provider, provider_payment_id, amount_value, amount_currency, status, type, return_url, created_at, updated_at, confirmed_at
+        FROM donations
+        WHERE user_id = ?
+        ORDER BY created_at DESC
+        LIMIT 1
+    `);
+    const selectLatestSucceededDonationByUserId = db.prepare(`
+        SELECT id, user_id, provider, provider_payment_id, amount_value, amount_currency, status, type, return_url, created_at, updated_at, confirmed_at
+        FROM donations
+        WHERE user_id = ? AND status = 'succeeded'
+        ORDER BY confirmed_at DESC, updated_at DESC
+        LIMIT 1
+    `);
+    const insertProcessedWebhook = db.prepare(`
+        INSERT INTO processed_webhooks (
+            id,
+            provider,
+            event_type,
+            payment_id,
+            donation_id,
+            created_at
+        )
+        VALUES (
+            @id,
+            @provider,
+            @event_type,
+            @payment_id,
+            @donation_id,
+            @created_at
+        )
+    `);
+    const selectProcessedWebhookById = db.prepare(`
+        SELECT id, provider, event_type, payment_id, donation_id, created_at
+        FROM processed_webhooks
+        WHERE id = ?
+    `);
+
+    const markDonationSucceededTransaction = db.transaction(({ donationId, status, updatedAt, confirmedAt, webhook }) => {
+        updateDonationStatus.run({
+            id: donationId,
+            status,
+            updated_at: updatedAt,
+            confirmed_at: confirmedAt,
+        });
+
+        insertProcessedWebhook.run({
+            id: webhook.id,
+            provider: webhook.provider,
+            event_type: webhook.eventType,
+            payment_id: webhook.paymentId || null,
+            donation_id: donationId,
+            created_at: webhook.createdAt,
+        });
+    });
+
+    const markWebhookProcessedTransaction = db.transaction(({ webhook }) => {
+        insertProcessedWebhook.run({
+            id: webhook.id,
+            provider: webhook.provider,
+            event_type: webhook.eventType,
+            payment_id: webhook.paymentId || null,
+            donation_id: webhook.donationId || null,
+            created_at: webhook.createdAt,
+        });
+    });
 
     return {
         findUserByEmail(email) {
@@ -340,6 +496,91 @@ function createRepositories(db) {
 
         prunePasswordResetTokens(nowIso = new Date().toISOString()) {
             deleteExpiredPasswordResetTokens.run({ now_iso: nowIso });
+        },
+
+        createDonation(donation) {
+            insertDonation.run({
+                id: donation.id,
+                user_id: donation.userId,
+                provider: donation.provider,
+                provider_payment_id: donation.providerPaymentId || null,
+                amount_value: donation.amountValue,
+                amount_currency: donation.amountCurrency,
+                status: donation.status,
+                type: donation.type,
+                return_url: donation.returnUrl,
+                created_at: donation.createdAt,
+                updated_at: donation.updatedAt,
+                confirmed_at: donation.confirmedAt || null,
+            });
+            return donation;
+        },
+
+        attachProviderPaymentToDonation({ id, providerPaymentId, status, updatedAt }) {
+            updateDonationProviderPayment.run({
+                id,
+                provider_payment_id: providerPaymentId,
+                status,
+                updated_at: updatedAt,
+            });
+            return this.findDonationById(id);
+        },
+
+        updateDonationStatus({ id, status, updatedAt, confirmedAt = null }) {
+            updateDonationStatus.run({
+                id,
+                status,
+                updated_at: updatedAt,
+                confirmed_at: confirmedAt,
+            });
+            return this.findDonationById(id);
+        },
+
+        findDonationById(id) {
+            return mapDonationRow(selectDonationById.get(id));
+        },
+
+        findDonationByProviderPaymentId(providerPaymentId) {
+            return mapDonationRow(selectDonationByProviderPaymentId.get(providerPaymentId));
+        },
+
+        findLatestDonationByUserId(userId) {
+            return mapDonationRow(selectLatestDonationByUserId.get(userId));
+        },
+
+        findLatestSucceededDonationByUserId(userId) {
+            return mapDonationRow(selectLatestSucceededDonationByUserId.get(userId));
+        },
+
+        findProcessedWebhookById(id) {
+            return mapProcessedWebhookRow(selectProcessedWebhookById.get(id));
+        },
+
+        createProcessedWebhook(webhook) {
+            insertProcessedWebhook.run({
+                id: webhook.id,
+                provider: webhook.provider,
+                event_type: webhook.eventType,
+                payment_id: webhook.paymentId || null,
+                donation_id: webhook.donationId || null,
+                created_at: webhook.createdAt,
+            });
+            return webhook;
+        },
+
+        markDonationWebhookProcessed({ donationId, status, updatedAt, confirmedAt = null, webhook }) {
+            markDonationSucceededTransaction({
+                donationId,
+                status,
+                updatedAt,
+                confirmedAt,
+                webhook,
+            });
+            return this.findDonationById(donationId);
+        },
+
+        markWebhookProcessed({ webhook }) {
+            markWebhookProcessedTransaction({ webhook });
         },
     };
 }

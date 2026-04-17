@@ -17,6 +17,7 @@ export function createScreens(app) {
         elements.archiveModal.classList.add('hidden');
         elements.completedModal.classList.add('hidden');
         elements.accountModal.classList.add('hidden');
+        elements.paymentReturnModal.classList.add('hidden');
         elements.forgotPasswordModal.classList.add('hidden');
         elements.changePasswordModal.classList.add('hidden');
         elements.templatesModal.classList.add('hidden');
