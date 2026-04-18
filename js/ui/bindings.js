@@ -1076,6 +1076,7 @@ export function bindAppEvents(app) {
         closePaymentReturnModal();
         resetEasyPatternState();
         clearOfflineAuthSnapshot();
+        await store.clearOfflineCache?.({ includeGuest: true });
         authState.payments.support = null;
         authState.payments.latestDonation = null;
         authState.payments.error = '';

@@ -95,7 +95,27 @@ function initSchema(db) {
             FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
         );
 
+        CREATE TABLE IF NOT EXISTS user_runtime_state (
+            user_id TEXT PRIMARY KEY,
+            state_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
+        CREATE TABLE IF NOT EXISTS user_private_state (
+            user_id TEXT PRIMARY KEY,
+            encrypted_state TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        );
+
         CREATE TABLE IF NOT EXISTS app_state (
+            key TEXT PRIMARY KEY,
+            state_json TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE IF NOT EXISTS app_runtime_state (
             key TEXT PRIMARY KEY,
             state_json TEXT NOT NULL,
             updated_at TEXT NOT NULL
@@ -152,6 +172,8 @@ function initSchema(db) {
         CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id);
         CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at);
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
+        CREATE INDEX IF NOT EXISTS idx_user_runtime_state_updated_at ON user_runtime_state(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_user_private_state_updated_at ON user_private_state(updated_at);
         CREATE INDEX IF NOT EXISTS idx_donations_user_id ON donations(user_id);
         CREATE INDEX IF NOT EXISTS idx_donations_provider_payment_id ON donations(provider_payment_id);
         CREATE INDEX IF NOT EXISTS idx_donations_status ON donations(status);

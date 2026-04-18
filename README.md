@@ -135,15 +135,19 @@ TRUST_PROXY=true
 - `DATABASE_PATH` — путь к SQLite-базе.
 - `TRUST_PROXY` — нужен, если приложение запускается за proxy или на хостинге.
 - `SESSION_COOKIE_NAME` — имя cookie сессии.
+- `CSRF_COOKIE_NAME` — имя cookie для CSRF-защиты.
 - `SESSION_COOKIE_SAME_SITE` — политика cookie: обычно `Lax`.
 - `SESSION_COOKIE_SECURE` — требует HTTPS, если `true`.
-- `SESSION_TTL_HOURS` — срок жизни сессии в часах.
+- `SESSION_TTL_DAYS` — срок жизни сессии в днях.
+- `DATA_ENCRYPTION_KEY` — серверный ключ для шифрования приватных данных пользователей в SQLite.
+- `ALLOWED_ORIGIN` — ожидаемый origin для POST/PATCH/DELETE-запросов в production.
 
 ## Что уже готово для будущего размещения
 
 Сейчас проект уже умеет:
 - запускаться через локальный Express-сервер;
 - хранить пользователей и состояние в SQLite;
+- шифровать чувствительные пользовательские данные в SQLite отдельным серверным ключом;
 - работать с регистрацией, входом и выходом;
 - читать настройки из `.env`;
 - различать `development` и `production` режимы;

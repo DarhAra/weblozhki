@@ -9,6 +9,20 @@ const API_ACCOUNT_CHANGE_PASSWORD_URL = '/api/account/change-password';
 const API_PAYMENT_STATUS_URL = '/api/payments/status';
 const API_CREATE_DONATION_SESSION_URL = '/api/payments/create-donation-session';
 
+let csrfToken = '';
+
+function setCsrfToken(nextToken) {
+    csrfToken = typeof nextToken === 'string' ? nextToken : '';
+}
+
+function getCsrfToken() {
+    return csrfToken;
+}
+
+export function getCsrfTokenValue() {
+    return getCsrfToken();
+}
+
 async function readJsonResponse(response) {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
@@ -33,11 +47,14 @@ function buildFriendlyAuthError(payload, fallbackMessage) {
     if (errorCode === 'INVALID_PASSWORD') {
         return 'Пароль должен быть не короче 6 символов.';
     }
+    if (errorCode === 'PASSWORD_TOO_WEAK') {
+        return 'Пароль нужен чуть сильнее: лучше с буквами разного регистра и цифрами.';
+    }
     if (errorCode === 'INVALID_EMAIL') {
-        return 'Пожалуйста, проверь email.';
+        return 'Пожалуйста, проверьте email.';
     }
     if (errorCode === 'AUTH_FAILED' || errorCode === 'INVALID_CREDENTIALS') {
-        return 'Не получилось войти. Проверь email и пароль.';
+        return 'Не получилось войти. Проверьте email и пароль.';
     }
     if (errorCode === 'PASSWORD_RESET_TOKEN_INVALID') {
         return 'Ссылка для восстановления уже недействительна. Запросите новую.';
@@ -54,6 +71,15 @@ function buildFriendlyAuthError(payload, fallbackMessage) {
     if (errorCode === 'DONATION_NOT_FOUND') {
         return 'Платёж не найден или больше недоступен.';
     }
+    if (errorCode === 'RATE_LIMITED') {
+        return 'Слишком много попыток. Попробуйте чуть позже.';
+    }
+    if (errorCode === 'CSRF_TOKEN_INVALID') {
+        return 'Защитная сессия обновилась. Повторите действие ещё раз.';
+    }
+    if (errorCode === 'ORIGIN_FORBIDDEN') {
+        return 'Запрос отклонён из соображений безопасности.';
+    }
     return fallbackMessage;
 }
 
@@ -61,9 +87,18 @@ async function requestJson(url, options = {}, fallbackMessage = 'Сейчас н
     let response;
 
     try {
+        const headers = new Headers(options.headers || {});
+        if (!headers.has('Accept')) {
+            headers.set('Accept', 'application/json');
+        }
+        if (csrfToken && !headers.has('X-CSRF-Token')) {
+            headers.set('X-CSRF-Token', csrfToken);
+        }
+
         response = await fetch(url, {
             credentials: 'same-origin',
             ...options,
+            headers,
         });
     } catch (error) {
         const networkError = new Error('Network request failed');
@@ -73,6 +108,10 @@ async function requestJson(url, options = {}, fallbackMessage = 'Сейчас н
     }
 
     const payload = await readJsonResponse(response);
+    if (payload?.csrfToken) {
+        setCsrfToken(payload.csrfToken);
+    }
+
     if (!response.ok) {
         const requestError = new Error(`Request failed with status ${response.status}`);
         requestError.friendlyMessage = buildFriendlyAuthError(payload, fallbackMessage);
@@ -87,17 +126,14 @@ export function createAuthService() {
     async function checkSession() {
         const payload = await requestJson(
             API_AUTH_SESSION_URL,
-            {
-                headers: {
-                    Accept: 'application/json',
-                },
-            },
-            'Сейчас не получается проверить вход. Попробуй чуть позже.',
+            {},
+            'Сейчас не получается проверить вход. Попробуйте чуть позже.',
         );
 
         return {
             authenticated: Boolean(payload?.authenticated),
             user: payload?.user || null,
+            csrfToken: payload?.csrfToken || '',
         };
     }
 
@@ -108,11 +144,10 @@ export function createAuthService() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Accept: 'application/json',
                 },
                 body: JSON.stringify({ email, password }),
             },
-            'Сейчас не получается войти. Попробуй ещё раз чуть позже.',
+            'Сейчас не получается войти. Попробуйте ещё раз чуть позже.',
         );
 
         return payload?.user || null;
@@ -125,11 +160,10 @@ export function createAuthService() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Accept: 'application/json',
                 },
                 body: JSON.stringify({ name, email, password }),
             },
-            'Сейчас не получается создать аккаунт. Попробуй ещё раз чуть позже.',
+            'Сейчас не получается создать аккаунт. Попробуйте ещё раз чуть позже.',
         );
 
         return payload?.user || null;
@@ -140,12 +174,10 @@ export function createAuthService() {
             API_AUTH_LOGOUT_URL,
             {
                 method: 'POST',
-                headers: {
-                    Accept: 'application/json',
-                },
             },
-            'Сейчас не получается выйти из аккаунта. Попробуй ещё раз чуть позже.',
+            'Сейчас не получается выйти из аккаунта. Попробуйте ещё раз чуть позже.',
         );
+        setCsrfToken('');
     }
 
     async function forgotPassword({ email }) {
@@ -155,7 +187,6 @@ export function createAuthService() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Accept: 'application/json',
                 },
                 body: JSON.stringify({ email }),
             },
@@ -170,22 +201,17 @@ export function createAuthService() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Accept: 'application/json',
                 },
                 body: JSON.stringify({ token, password }),
             },
-            'Сейчас не получается сменить пароль. Попробуй ещё раз чуть позже.',
+            'Сейчас не получается сменить пароль. Попробуйте ещё раз чуть позже.',
         );
     }
 
     async function getProfile() {
         const payload = await requestJson(
             API_ACCOUNT_PROFILE_URL,
-            {
-                headers: {
-                    Accept: 'application/json',
-                },
-            },
+            {},
             'Сейчас не получается открыть данные аккаунта.',
         );
 
@@ -199,7 +225,6 @@ export function createAuthService() {
                 method: 'PATCH',
                 headers: {
                     'Content-Type': 'application/json',
-                    Accept: 'application/json',
                 },
                 body: JSON.stringify({ name, email }),
             },
@@ -216,7 +241,6 @@ export function createAuthService() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Accept: 'application/json',
                 },
                 body: JSON.stringify({ currentPassword, newPassword }),
             },
@@ -232,11 +256,7 @@ export function createAuthService() {
 
         return requestJson(
             `${url.pathname}${url.search}`,
-            {
-                headers: {
-                    Accept: 'application/json',
-                },
-            },
+            {},
             'Сейчас не получается проверить статус поддержки.',
         );
     }
@@ -248,7 +268,6 @@ export function createAuthService() {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    Accept: 'application/json',
                 },
                 body: JSON.stringify({ amount }),
             },
@@ -268,5 +287,7 @@ export function createAuthService() {
         changePassword,
         getPaymentStatus,
         createDonationSession,
+        setCsrfToken,
+        getCsrfToken,
     };
 }

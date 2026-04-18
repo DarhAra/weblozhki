@@ -61,7 +61,9 @@ function mapProcessedWebhookRow(row) {
     };
 }
 
-function createRepositories(db) {
+const { splitAppState } = require('./state-storage');
+
+function createRepositories(db, { encryptor } = {}) {
     const selectUserByEmail = db.prepare(`
         SELECT id, name, email, password_salt, password_hash, created_at, updated_at, password_changed_at
         FROM users
@@ -114,8 +116,20 @@ function createRepositories(db) {
         FROM app_state
         WHERE key = ?
     `);
+    const selectGuestRuntimeState = db.prepare(`
+        SELECT state_json
+        FROM app_runtime_state
+        WHERE key = ?
+    `);
     const upsertGuestState = db.prepare(`
         INSERT INTO app_state (key, state_json, updated_at)
+        VALUES (@key, @state_json, @updated_at)
+        ON CONFLICT(key) DO UPDATE SET
+            state_json = excluded.state_json,
+            updated_at = excluded.updated_at
+    `);
+    const upsertGuestRuntimeState = db.prepare(`
+        INSERT INTO app_runtime_state (key, state_json, updated_at)
         VALUES (@key, @state_json, @updated_at)
         ON CONFLICT(key) DO UPDATE SET
             state_json = excluded.state_json,
@@ -126,11 +140,35 @@ function createRepositories(db) {
         FROM user_states
         WHERE user_id = ?
     `);
+    const selectUserRuntimeState = db.prepare(`
+        SELECT state_json
+        FROM user_runtime_state
+        WHERE user_id = ?
+    `);
+    const selectUserPrivateState = db.prepare(`
+        SELECT encrypted_state
+        FROM user_private_state
+        WHERE user_id = ?
+    `);
     const upsertUserState = db.prepare(`
         INSERT INTO user_states (user_id, state_json, updated_at)
         VALUES (@user_id, @state_json, @updated_at)
         ON CONFLICT(user_id) DO UPDATE SET
             state_json = excluded.state_json,
+            updated_at = excluded.updated_at
+    `);
+    const upsertUserRuntimeState = db.prepare(`
+        INSERT INTO user_runtime_state (user_id, state_json, updated_at)
+        VALUES (@user_id, @state_json, @updated_at)
+        ON CONFLICT(user_id) DO UPDATE SET
+            state_json = excluded.state_json,
+            updated_at = excluded.updated_at
+    `);
+    const upsertUserPrivateState = db.prepare(`
+        INSERT INTO user_private_state (user_id, encrypted_state, updated_at)
+        VALUES (@user_id, @encrypted_state, @updated_at)
+        ON CONFLICT(user_id) DO UPDATE SET
+            encrypted_state = excluded.encrypted_state,
             updated_at = excluded.updated_at
     `);
     const insertSession = db.prepare(`
@@ -377,6 +415,29 @@ function createRepositories(db) {
             return this.findUserById(user.id);
         },
 
+        getGuestRuntimeState() {
+            const row = selectGuestRuntimeState.get('guest');
+            if (row) {
+                return parseStoredJson(row.state_json, 'guest runtime state');
+            }
+
+            const legacyRow = selectGuestState.get('guest');
+            if (!legacyRow) {
+                return null;
+            }
+
+            const legacyState = parseStoredJson(legacyRow.state_json, 'legacy guest state');
+            return splitAppState(legacyState).runtimeState;
+        },
+
+        saveGuestRuntimeState(state) {
+            upsertGuestRuntimeState.run({
+                key: 'guest',
+                state_json: JSON.stringify(state),
+                updated_at: new Date().toISOString(),
+            });
+        },
+
         getGuestState() {
             const row = selectGuestState.get('guest');
             return row ? parseStoredJson(row.state_json, 'guest state') : null;
@@ -386,6 +447,60 @@ function createRepositories(db) {
             upsertGuestState.run({
                 key: 'guest',
                 state_json: JSON.stringify(state),
+                updated_at: new Date().toISOString(),
+            });
+        },
+
+        getUserRuntimeState(userId) {
+            const row = selectUserRuntimeState.get(userId);
+            if (row) {
+                return parseStoredJson(row.state_json, `user runtime state ${userId}`);
+            }
+
+            const legacyRow = selectUserState.get(userId);
+            if (!legacyRow) {
+                return null;
+            }
+
+            const legacyState = parseStoredJson(legacyRow.state_json, `legacy user state ${userId}`);
+            return splitAppState(legacyState).runtimeState;
+        },
+
+        saveUserRuntimeState(userId, state) {
+            upsertUserRuntimeState.run({
+                user_id: userId,
+                state_json: JSON.stringify(state),
+                updated_at: new Date().toISOString(),
+            });
+        },
+
+        getUserPrivateState(userId) {
+            const row = selectUserPrivateState.get(userId);
+            if (row) {
+                if (!encryptor) {
+                    throw new Error('Encryptor is required to read private user state.');
+                }
+
+                return encryptor.decryptJson(row.encrypted_state);
+            }
+
+            const legacyRow = selectUserState.get(userId);
+            if (!legacyRow) {
+                return null;
+            }
+
+            const legacyState = parseStoredJson(legacyRow.state_json, `legacy user state ${userId}`);
+            return splitAppState(legacyState).privateState;
+        },
+
+        saveUserPrivateState(userId, state) {
+            if (!encryptor) {
+                throw new Error('Encryptor is required to save private user state.');
+            }
+
+            upsertUserPrivateState.run({
+                user_id: userId,
+                encrypted_state: encryptor.encryptJson(state),
                 updated_at: new Date().toISOString(),
             });
         },

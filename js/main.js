@@ -225,6 +225,7 @@ export async function initApp({ elements }) {
                 mode: 'local-fallback',
                 message: '',
                 hasPendingOfflineChanges: false,
+                privateDataAvailableOffline: true,
             },
         },
     };
@@ -304,6 +305,7 @@ export async function initApp({ elements }) {
         const session = await auth.checkSession();
         if (!session.authenticated || !session.user) {
             clearOfflineAuthSnapshot();
+            await store.clearOfflineCache?.({ includeGuest: true });
             app.runtime.auth.mode = 'login';
             app.runtime.auth.status = 'guest';
             app.runtime.auth.user = null;

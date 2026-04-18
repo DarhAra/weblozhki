@@ -853,9 +853,393 @@
     });
   }
 
+  // js/services/offline-state-cache.js
+  var DB_NAME = "resourceTodoOffline";
+  var STORE_NAME = "stateCache";
+  var LEGACY_STORAGE_KEY = "resourceTodoState";
+  var openRequest = null;
+  function canUseIndexedDb() {
+    return typeof window !== "undefined" && typeof window.indexedDB !== "undefined";
+  }
+  function canUseLocalStorage() {
+    return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
+  }
+  function openDatabase() {
+    if (!canUseIndexedDb()) {
+      return Promise.resolve(null);
+    }
+    if (openRequest) {
+      return openRequest;
+    }
+    openRequest = new Promise((resolve, reject) => {
+      const request = window.indexedDB.open(DB_NAME, 1);
+      request.onerror = () => reject(request.error || new Error("IndexedDB is unavailable."));
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(STORE_NAME)) {
+          db.createObjectStore(STORE_NAME, { keyPath: "key" });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+    }).catch((error) => {
+      openRequest = null;
+      throw error;
+    });
+    return openRequest;
+  }
+  function createTransactionRequest(storeName, mode, callback) {
+    return openDatabase().then((db) => {
+      if (!db) {
+        return null;
+      }
+      return new Promise((resolve, reject) => {
+        const transaction = db.transaction(storeName, mode);
+        const store = transaction.objectStore(storeName);
+        const request = callback(store);
+        transaction.oncomplete = () => {
+          var _a;
+          return resolve((_a = request == null ? void 0 : request.result) != null ? _a : null);
+        };
+        transaction.onerror = () => reject(transaction.error || (request == null ? void 0 : request.error) || new Error("IndexedDB transaction failed."));
+        transaction.onabort = () => reject(transaction.error || new Error("IndexedDB transaction aborted."));
+      });
+    });
+  }
+  async function readOfflineStateCache(key) {
+    const entry = await createTransactionRequest(STORE_NAME, "readonly", (store) => store.get(key));
+    if (!entry) {
+      return null;
+    }
+    if (entry.expiresAt && Date.now() > entry.expiresAt) {
+      await removeOfflineStateCache(key);
+      return null;
+    }
+    return entry.value || null;
+  }
+  async function writeOfflineStateCache(key, value, { ttlMs }) {
+    const now = Date.now();
+    await createTransactionRequest(STORE_NAME, "readwrite", (store) => store.put({
+      key,
+      value,
+      updatedAt: now,
+      expiresAt: now + ttlMs
+    }));
+  }
+  async function removeOfflineStateCache(key) {
+    await createTransactionRequest(STORE_NAME, "readwrite", (store) => store.delete(key));
+  }
+  function readLegacyOfflineState(key) {
+    if (!canUseLocalStorage()) {
+      return null;
+    }
+    try {
+      const raw = window.localStorage.getItem(key);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+  function removeLegacyOfflineState(key) {
+    if (!canUseLocalStorage()) {
+      return;
+    }
+    window.localStorage.removeItem(key);
+  }
+  function getLegacyOfflineStateKey(userId = null) {
+    return userId ? `${LEGACY_STORAGE_KEY}:${userId}` : LEGACY_STORAGE_KEY;
+  }
+
+  // js/services/auth.js
+  var API_AUTH_SESSION_URL = "/api/auth/session";
+  var API_AUTH_LOGIN_URL = "/api/auth/login";
+  var API_AUTH_REGISTER_URL = "/api/auth/register";
+  var API_AUTH_LOGOUT_URL = "/api/auth/logout";
+  var API_AUTH_FORGOT_PASSWORD_URL = "/api/auth/forgot-password";
+  var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
+  var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
+  var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
+  var API_PAYMENT_STATUS_URL = "/api/payments/status";
+  var API_CREATE_DONATION_SESSION_URL = "/api/payments/create-donation-session";
+  var csrfToken = "";
+  function setCsrfToken(nextToken) {
+    csrfToken = typeof nextToken === "string" ? nextToken : "";
+  }
+  function getCsrfToken() {
+    return csrfToken;
+  }
+  function getCsrfTokenValue() {
+    return getCsrfToken();
+  }
+  async function readJsonResponse(response) {
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      return null;
+    }
+    try {
+      return await response.json();
+    } catch {
+      return null;
+    }
+  }
+  function buildFriendlyAuthError(payload, fallbackMessage) {
+    const errorCode = payload == null ? void 0 : payload.error;
+    if (errorCode === "EMAIL_EXISTS") {
+      return "Этот email уже используется.";
+    }
+    if (errorCode === "INVALID_NAME") {
+      return "Укажите имя длиной от 2 до 80 символов.";
+    }
+    if (errorCode === "INVALID_PASSWORD") {
+      return "Пароль должен быть не короче 6 символов.";
+    }
+    if (errorCode === "PASSWORD_TOO_WEAK") {
+      return "Пароль нужен чуть сильнее: лучше с буквами разного регистра и цифрами.";
+    }
+    if (errorCode === "INVALID_EMAIL") {
+      return "Пожалуйста, проверьте email.";
+    }
+    if (errorCode === "AUTH_FAILED" || errorCode === "INVALID_CREDENTIALS") {
+      return "Не получилось войти. Проверьте email и пароль.";
+    }
+    if (errorCode === "PASSWORD_RESET_TOKEN_INVALID") {
+      return "Ссылка для восстановления уже недействительна. Запросите новую.";
+    }
+    if (errorCode === "AUTH_REQUIRED") {
+      return "Нужно войти в аккаунт заново.";
+    }
+    if (errorCode === "INVALID_DONATION_AMOUNT") {
+      return "Выберите корректную сумму поддержки.";
+    }
+    if (errorCode === "PAYMENTS_NOT_CONFIGURED") {
+      return "Оплата ещё не настроена на сервере.";
+    }
+    if (errorCode === "DONATION_NOT_FOUND") {
+      return "Платёж не найден или больше недоступен.";
+    }
+    if (errorCode === "RATE_LIMITED") {
+      return "Слишком много попыток. Попробуйте чуть позже.";
+    }
+    if (errorCode === "CSRF_TOKEN_INVALID") {
+      return "Защитная сессия обновилась. Повторите действие ещё раз.";
+    }
+    if (errorCode === "ORIGIN_FORBIDDEN") {
+      return "Запрос отклонён из соображений безопасности.";
+    }
+    return fallbackMessage;
+  }
+  async function requestJson(url, options = {}, fallbackMessage = "Сейчас не получается связаться с сервером.") {
+    let response;
+    try {
+      const headers = new Headers(options.headers || {});
+      if (!headers.has("Accept")) {
+        headers.set("Accept", "application/json");
+      }
+      if (csrfToken && !headers.has("X-CSRF-Token")) {
+        headers.set("X-CSRF-Token", csrfToken);
+      }
+      response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        headers
+      });
+    } catch (error) {
+      const networkError = new Error("Network request failed");
+      networkError.friendlyMessage = fallbackMessage;
+      networkError.isNetworkError = true;
+      throw networkError;
+    }
+    const payload = await readJsonResponse(response);
+    if (payload == null ? void 0 : payload.csrfToken) {
+      setCsrfToken(payload.csrfToken);
+    }
+    if (!response.ok) {
+      const requestError = new Error(`Request failed with status ${response.status}`);
+      requestError.friendlyMessage = buildFriendlyAuthError(payload, fallbackMessage);
+      requestError.payload = payload;
+      throw requestError;
+    }
+    return payload;
+  }
+  function createAuthService() {
+    async function checkSession() {
+      const payload = await requestJson(
+        API_AUTH_SESSION_URL,
+        {},
+        "Сейчас не получается проверить вход. Попробуйте чуть позже."
+      );
+      return {
+        authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
+        user: (payload == null ? void 0 : payload.user) || null,
+        csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
+      };
+    }
+    async function login({ email, password }) {
+      const payload = await requestJson(
+        API_AUTH_LOGIN_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ email, password })
+        },
+        "Сейчас не получается войти. Попробуйте ещё раз чуть позже."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function register({ name, email, password }) {
+      const payload = await requestJson(
+        API_AUTH_REGISTER_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name, email, password })
+        },
+        "Сейчас не получается создать аккаунт. Попробуйте ещё раз чуть позже."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function logout() {
+      await requestJson(
+        API_AUTH_LOGOUT_URL,
+        {
+          method: "POST"
+        },
+        "Сейчас не получается выйти из аккаунта. Попробуйте ещё раз чуть позже."
+      );
+      setCsrfToken("");
+    }
+    async function forgotPassword({ email }) {
+      return requestJson(
+        API_AUTH_FORGOT_PASSWORD_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ email })
+        },
+        "Сейчас не получается отправить письмо для восстановления."
+      );
+    }
+    async function resetPassword({ token, password }) {
+      return requestJson(
+        API_AUTH_RESET_PASSWORD_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ token, password })
+        },
+        "Сейчас не получается сменить пароль. Попробуйте ещё раз чуть позже."
+      );
+    }
+    async function getProfile() {
+      const payload = await requestJson(
+        API_ACCOUNT_PROFILE_URL,
+        {},
+        "Сейчас не получается открыть данные аккаунта."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function updateProfile({ name, email }) {
+      const payload = await requestJson(
+        API_ACCOUNT_PROFILE_URL,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ name, email })
+        },
+        "Сейчас не получается обновить профиль."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function changePassword({ currentPassword, newPassword }) {
+      return requestJson(
+        API_ACCOUNT_CHANGE_PASSWORD_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ currentPassword, newPassword })
+        },
+        "Сейчас не получается сменить пароль."
+      );
+    }
+    async function getPaymentStatus({ donationId } = {}) {
+      const url = new URL(API_PAYMENT_STATUS_URL, window.location.origin);
+      if (donationId) {
+        url.searchParams.set("donationId", donationId);
+      }
+      return requestJson(
+        `${url.pathname}${url.search}`,
+        {},
+        "Сейчас не получается проверить статус поддержки."
+      );
+    }
+    async function createDonationSession({ amount }) {
+      return requestJson(
+        API_CREATE_DONATION_SESSION_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ amount })
+        },
+        "Сейчас не получается открыть страницу оплаты."
+      );
+    }
+    return {
+      checkSession,
+      login,
+      register,
+      logout,
+      forgotPassword,
+      resetPassword,
+      getProfile,
+      updateProfile,
+      changePassword,
+      getPaymentStatus,
+      createDonationSession,
+      setCsrfToken,
+      getCsrfToken
+    };
+  }
+
   // js/state/store.js
-  var STORAGE_KEY = "resourceTodoState";
-  var API_STATE_URL = "/api/state";
+  var OFFLINE_STATE_KEY = "resourceTodoOfflineState";
+  var API_RUNTIME_STATE_URL = "/api/state/runtime";
+  var API_PRIVATE_STATE_URL = "/api/private-state";
+  var RUNTIME_STATE_KEYS = [
+    "hasOnboarded",
+    "userName",
+    "gender",
+    "avatar",
+    "energyBudget",
+    "lastDate",
+    "pendingReviewDate",
+    "currentDayMeta",
+    "resources",
+    "templates",
+    "preferences"
+  ];
+  var PRIVATE_STATE_KEYS = [
+    "tasks",
+    "inboxItems",
+    "moodHistory"
+  ];
+  var OFFLINE_PRIVATE_STATE_KEYS = [
+    "tasks",
+    "inboxItems"
+  ];
+  var OFFLINE_STATE_TTL_MS = 7 * 24 * 60 * 60 * 1e3;
   function getDefaultTemplates() {
     return [
       {
@@ -1102,6 +1486,14 @@
     }
     return nextState;
   }
+  function pickStateFields(source, keys) {
+    return keys.reduce((result, key) => {
+      if (Object.prototype.hasOwnProperty.call(source || {}, key)) {
+        result[key] = source[key];
+      }
+      return result;
+    }, {});
+  }
   function createStore() {
     let state = createDefaultStateWithTemplates();
     let sessionContext = {
@@ -1111,7 +1503,8 @@
     let persistenceStatus = {
       mode: "local-fallback",
       message: "Сохранение: локально, сеть недоступна.",
-      hasPendingOfflineChanges: false
+      hasPendingOfflineChanges: false,
+      privateDataAvailableOffline: true
     };
     let persistenceStatusListener = null;
     let saveChain = Promise.resolve();
@@ -1128,9 +1521,12 @@
     }
     function getStorageKey() {
       if (sessionContext.authenticated && sessionContext.userId) {
-        return `${STORAGE_KEY}:${sessionContext.userId}`;
+        return `${OFFLINE_STATE_KEY}:${sessionContext.userId}`;
       }
-      return STORAGE_KEY;
+      return OFFLINE_STATE_KEY;
+    }
+    function getLegacyStorageKey() {
+      return getLegacyOfflineStateKey(sessionContext.authenticated ? sessionContext.userId : null);
     }
     function setSessionContext(nextContext = {}) {
       sessionContext = {
@@ -1148,23 +1544,76 @@
       const nextMode = (nextStatus == null ? void 0 : nextStatus.mode) || "local-fallback";
       const nextMessage = (nextStatus == null ? void 0 : nextStatus.message) || "";
       const nextPending = Boolean(nextStatus == null ? void 0 : nextStatus.hasPendingOfflineChanges);
-      if (persistenceStatus.mode === nextMode && persistenceStatus.message === nextMessage && Boolean(persistenceStatus.hasPendingOfflineChanges) === nextPending) {
+      const nextOfflinePrivate = Boolean(nextStatus == null ? void 0 : nextStatus.privateDataAvailableOffline);
+      if (persistenceStatus.mode === nextMode && persistenceStatus.message === nextMessage && Boolean(persistenceStatus.hasPendingOfflineChanges) === nextPending && Boolean(persistenceStatus.privateDataAvailableOffline) === nextOfflinePrivate) {
         return;
       }
       persistenceStatus = {
         mode: nextMode,
         message: nextMessage,
-        hasPendingOfflineChanges: nextPending
+        hasPendingOfflineChanges: nextPending,
+        privateDataAvailableOffline: nextOfflinePrivate
       };
       if (typeof persistenceStatusListener === "function") {
         persistenceStatusListener({ ...persistenceStatus });
       }
     }
-    function saveStateToLocal(nextState = state) {
-      localStorage.setItem(getStorageKey(), JSON.stringify(nextState));
+    function buildRuntimeState(nextState = state) {
+      return pickStateFields(nextState, RUNTIME_STATE_KEYS);
     }
-    function getLocalSavedState() {
-      return localStorage.getItem(getStorageKey());
+    function buildPrivateState(nextState = state) {
+      return pickStateFields(nextState, PRIVATE_STATE_KEYS);
+    }
+    function buildOfflineState(nextState = state) {
+      return {
+        ...buildRuntimeState(nextState),
+        ...pickStateFields(nextState, OFFLINE_PRIVATE_STATE_KEYS),
+        syncMeta: {
+          ...nextState.syncMeta
+        },
+        offlineMeta: {
+          privateDataAvailableOffline: true,
+          cachedPrivateSections: [...OFFLINE_PRIVATE_STATE_KEYS]
+        }
+      };
+    }
+    async function saveStateToLocal(nextState = state) {
+      await writeOfflineStateCache(getStorageKey(), buildOfflineState(nextState), {
+        ttlMs: OFFLINE_STATE_TTL_MS
+      });
+      removeLegacyOfflineState(getLegacyStorageKey());
+    }
+    async function getLocalSavedState() {
+      const cacheKey = getStorageKey();
+      const cached = await readOfflineStateCache(cacheKey);
+      if (cached) {
+        return cached;
+      }
+      const legacyKey = getLegacyStorageKey();
+      const legacyState = readLegacyOfflineState(legacyKey);
+      if (legacyState) {
+        await writeOfflineStateCache(cacheKey, legacyState, {
+          ttlMs: OFFLINE_STATE_TTL_MS
+        });
+        removeLegacyOfflineState(legacyKey);
+        return legacyState;
+      }
+      return null;
+    }
+    async function clearOfflineCache(options = {}) {
+      const { includeGuest = false } = options;
+      await removeOfflineStateCache(getStorageKey());
+      removeLegacyOfflineState(getLegacyStorageKey());
+      if (includeGuest) {
+        await removeOfflineStateCache(OFFLINE_STATE_KEY);
+        removeLegacyOfflineState(getLegacyOfflineStateKey());
+      }
+    }
+    function buildStateFromSegments(runtimeState = {}, privateState = {}, previousState = createDefaultStateWithTemplates()) {
+      return normalizeLoadedState({
+        ...runtimeState,
+        ...privateState
+      }, previousState);
     }
     function markLocalMutation(nextState = state) {
       ensureSyncMetaDefaults(nextState);
@@ -1184,40 +1633,52 @@
     function getOfflineStatusMessage() {
       return sessionContext.authenticated ? "Офлайн-режим: данные сохраняются на этом устройстве и будут синхронизированы позже." : "Сохранение: локально, сеть недоступна.";
     }
-    async function fetchServerState() {
-      const response = await fetch(API_STATE_URL, {
-        headers: {
-          Accept: "application/json"
-        }
+    async function requestJson2(url, options = {}) {
+      const headers = new Headers(options.headers || {});
+      if (!headers.has("Accept")) {
+        headers.set("Accept", "application/json");
+      }
+      const csrfToken2 = getCsrfTokenValue();
+      if (csrfToken2 && !headers.has("X-CSRF-Token")) {
+        headers.set("X-CSRF-Token", csrfToken2);
+      }
+      const response = await fetch(url, {
+        credentials: "same-origin",
+        ...options,
+        headers
       });
       if (!response.ok) {
-        throw new Error(`Failed to load state from server: ${response.status}`);
-      }
-      const payload = await response.json();
-      if (!payload || typeof payload !== "object") {
-        return null;
-      }
-      if (payload.state === null) {
-        return null;
-      }
-      if (typeof payload.state !== "object") {
-        throw new Error("Server returned invalid state payload");
-      }
-      return payload.state;
-    }
-    async function postServerState(nextState = state) {
-      const response = await fetch(API_STATE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json"
-        },
-        body: JSON.stringify(nextState)
-      });
-      if (!response.ok) {
-        throw new Error(`Failed to save state to server: ${response.status}`);
+        throw new Error(`Request failed with status ${response.status}`);
       }
       return response.json().catch(() => null);
+    }
+    async function fetchServerState() {
+      const runtimePayload = await requestJson2(API_RUNTIME_STATE_URL);
+      const runtimeState = (runtimePayload == null ? void 0 : runtimePayload.state) && typeof runtimePayload.state === "object" ? runtimePayload.state : {};
+      if (!sessionContext.authenticated) {
+        return buildStateFromSegments(runtimeState, {}, createDefaultStateWithTemplates());
+      }
+      const privatePayload = await requestJson2(API_PRIVATE_STATE_URL);
+      const privateState = (privatePayload == null ? void 0 : privatePayload.state) && typeof privatePayload.state === "object" ? privatePayload.state : {};
+      return buildStateFromSegments(runtimeState, privateState, createDefaultStateWithTemplates());
+    }
+    async function postServerState(nextState = state) {
+      await requestJson2(API_RUNTIME_STATE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(buildRuntimeState(nextState))
+      });
+      if (sessionContext.authenticated) {
+        await requestJson2(API_PRIVATE_STATE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(buildPrivateState(nextState))
+        });
+      }
     }
     async function syncPendingState() {
       var _a, _b;
@@ -1230,46 +1691,50 @@
         if (snapshot.syncMeta.hasPendingOfflineChanges) {
           await postServerState(snapshot);
           markServerSyncSuccess(snapshot);
-          saveStateToLocal(state);
+          await saveStateToLocal(state);
         } else {
           await fetchServerState();
         }
         updatePersistenceStatus({
           mode: "server",
           message: "Сохранение: сервер",
-          hasPendingOfflineChanges: Boolean((_a = state.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges)
+          hasPendingOfflineChanges: Boolean((_a = state.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges),
+          privateDataAvailableOffline: true
         });
         return true;
       } catch (error) {
         updatePersistenceStatus({
           mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
           message: getOfflineStatusMessage(),
-          hasPendingOfflineChanges: Boolean((_b = state.syncMeta) == null ? void 0 : _b.hasPendingOfflineChanges)
+          hasPendingOfflineChanges: Boolean((_b = state.syncMeta) == null ? void 0 : _b.hasPendingOfflineChanges),
+          privateDataAvailableOffline: true
         });
         return false;
       }
     }
     function saveState(nextState = state) {
-      saveStateToLocal(nextState);
+      void saveStateToLocal(nextState);
       const stateSnapshot = cloneStateSnapshot(nextState);
       saveChain = saveChain.catch(() => void 0).then(async () => {
         var _a;
         try {
           await postServerState(stateSnapshot);
           markServerSyncSuccess(stateSnapshot);
-          saveStateToLocal(state);
+          await saveStateToLocal(state);
           updatePersistenceStatus({
             mode: "server",
             message: "Сохранение: сервер",
-            hasPendingOfflineChanges: Boolean((_a = state.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges)
+            hasPendingOfflineChanges: Boolean((_a = state.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges),
+            privateDataAvailableOffline: true
           });
         } catch (error) {
           console.warn("Failed to save state to server, using local fallback", error);
-          saveStateToLocal(nextState);
+          await saveStateToLocal(nextState);
           updatePersistenceStatus({
             mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
             message: getOfflineStatusMessage(),
-            hasPendingOfflineChanges: true
+            hasPendingOfflineChanges: true,
+            privateDataAvailableOffline: true
           });
         }
       });
@@ -1285,12 +1750,12 @@
     }
     async function loadState(options = {}) {
       var _a, _b, _c, _d;
-      const localSaved = getLocalSavedState();
+      const localSaved = await getLocalSavedState();
       const allowLegacyGuestBootstrap = options.allowLegacyGuestBootstrap !== false;
       let normalizedLocalState = null;
       if (localSaved) {
         try {
-          normalizedLocalState = normalizeLoadedState(JSON.parse(localSaved), createDefaultStateWithTemplates());
+          normalizedLocalState = normalizeLoadedState(localSaved, createDefaultStateWithTemplates());
         } catch (localParseError) {
           console.error("Failed to parse local state", localParseError);
         }
@@ -1299,64 +1764,70 @@
         const serverState = await fetchServerState();
         if ((_a = normalizedLocalState == null ? void 0 : normalizedLocalState.syncMeta) == null ? void 0 : _a.hasPendingOfflineChanges) {
           state = normalizedLocalState;
-          saveStateToLocal(state);
+          await saveStateToLocal(state);
           try {
             await postServerState(state);
             markServerSyncSuccess(state);
-            saveStateToLocal(state);
+            await saveStateToLocal(state);
             updatePersistenceStatus({
               mode: "server",
               message: "Сохранение: сервер",
-              hasPendingOfflineChanges: false
+              hasPendingOfflineChanges: false,
+              privateDataAvailableOffline: true
             });
           } catch (migrationError) {
             console.warn("Failed to sync pending local state to server", migrationError);
             updatePersistenceStatus({
               mode: "offline-authenticated",
               message: getOfflineStatusMessage(),
-              hasPendingOfflineChanges: true
+              hasPendingOfflineChanges: true,
+              privateDataAvailableOffline: true
             });
           }
           return state;
         }
         if (serverState) {
           state = normalizeLoadedState(serverState, createDefaultStateWithTemplates());
-          saveStateToLocal(state);
+          await saveStateToLocal(state);
           updatePersistenceStatus({
             mode: "server",
             message: "Сохранение: сервер",
-            hasPendingOfflineChanges: Boolean((_b = state.syncMeta) == null ? void 0 : _b.hasPendingOfflineChanges)
+            hasPendingOfflineChanges: Boolean((_b = state.syncMeta) == null ? void 0 : _b.hasPendingOfflineChanges),
+            privateDataAvailableOffline: true
           });
           return state;
         }
         if (normalizedLocalState) {
           state = normalizedLocalState;
-          saveStateToLocal(state);
+          await saveStateToLocal(state);
           try {
             await postServerState(state);
             markServerSyncSuccess(state);
-            saveStateToLocal(state);
+            await saveStateToLocal(state);
             updatePersistenceStatus({
               mode: "server",
               message: "Сохранение: сервер",
-              hasPendingOfflineChanges: false
+              hasPendingOfflineChanges: false,
+              privateDataAvailableOffline: true
             });
           } catch (migrationError) {
             console.warn("Failed to migrate local state to server", migrationError);
             updatePersistenceStatus({
               mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
               message: getOfflineStatusMessage(),
-              hasPendingOfflineChanges: Boolean((_c = state.syncMeta) == null ? void 0 : _c.hasPendingOfflineChanges)
+              hasPendingOfflineChanges: Boolean((_c = state.syncMeta) == null ? void 0 : _c.hasPendingOfflineChanges),
+              privateDataAvailableOffline: true
             });
           }
           return state;
         }
-        if (sessionContext.authenticated && allowLegacyGuestBootstrap && getStorageKey() !== STORAGE_KEY && localStorage.getItem(STORAGE_KEY)) {
+        if (sessionContext.authenticated && allowLegacyGuestBootstrap && getStorageKey() !== OFFLINE_STATE_KEY && readLegacyOfflineState(getLegacyOfflineStateKey())) {
           state = createDefaultStateWithTemplates();
           updatePersistenceStatus({
             mode: "server",
             message: "Сохранение: сервер",
-            hasPendingOfflineChanges: false
+            hasPendingOfflineChanges: false,
+            privateDataAvailableOffline: true
           });
           return state;
         }
@@ -1364,7 +1835,8 @@
         updatePersistenceStatus({
           mode: "server",
           message: "Сохранение: сервер",
-          hasPendingOfflineChanges: false
+          hasPendingOfflineChanges: false,
+          privateDataAvailableOffline: true
         });
         return state;
       } catch (serverError) {
@@ -1377,7 +1849,8 @@
         updatePersistenceStatus({
           mode: sessionContext.authenticated ? "offline-authenticated" : "local-fallback",
           message: sessionContext.authenticated ? "Офлайн-режим: данные сохраняются на этом устройстве." : "Сохранение: локально, сеть недоступна.",
-          hasPendingOfflineChanges: Boolean((_d = state.syncMeta) == null ? void 0 : _d.hasPendingOfflineChanges)
+          hasPendingOfflineChanges: Boolean((_d = state.syncMeta) == null ? void 0 : _d.hasPendingOfflineChanges),
+          privateDataAvailableOffline: true
         });
         return state;
       }
@@ -1391,7 +1864,8 @@
       saveState,
       updateState,
       loadState,
-      syncPendingState
+      syncPendingState,
+      clearOfflineCache
     };
   }
 
@@ -3154,7 +3628,7 @@
 
   // js/services/offline-auth.js
   var OFFLINE_AUTH_SNAPSHOT_KEY = "resourceTodoOfflineAuthSnapshot";
-  function canUseLocalStorage() {
+  function canUseLocalStorage2() {
     return typeof window !== "undefined" && typeof window.localStorage !== "undefined";
   }
   function normalizeSnapshot(rawSnapshot) {
@@ -3176,7 +3650,7 @@
     };
   }
   function readOfflineAuthSnapshot() {
-    if (!canUseLocalStorage()) {
+    if (!canUseLocalStorage2()) {
       return null;
     }
     try {
@@ -3190,7 +3664,7 @@
     }
   }
   function saveOfflineAuthSnapshot(user) {
-    if (!canUseLocalStorage()) {
+    if (!canUseLocalStorage2()) {
       return null;
     }
     const snapshot = normalizeSnapshot({
@@ -3206,7 +3680,7 @@
     return snapshot;
   }
   function clearOfflineAuthSnapshot() {
-    if (!canUseLocalStorage()) {
+    if (!canUseLocalStorage2()) {
       return;
     }
     window.localStorage.removeItem(OFFLINE_AUTH_SNAPSHOT_KEY);
@@ -4042,10 +4516,12 @@
       }
     });
     elements.accountLogoutBtn.addEventListener("click", async () => {
+      var _a2;
       closeAccountModal();
       closePaymentReturnModal();
       resetEasyPatternState();
       clearOfflineAuthSnapshot();
+      await ((_a2 = store.clearOfflineCache) == null ? void 0 : _a2.call(store, { includeGuest: true }));
       authState.payments.support = null;
       authState.payments.latestDonation = null;
       authState.payments.error = "";
@@ -5340,255 +5816,6 @@
     });
   }
 
-  // js/services/auth.js
-  var API_AUTH_SESSION_URL = "/api/auth/session";
-  var API_AUTH_LOGIN_URL = "/api/auth/login";
-  var API_AUTH_REGISTER_URL = "/api/auth/register";
-  var API_AUTH_LOGOUT_URL = "/api/auth/logout";
-  var API_AUTH_FORGOT_PASSWORD_URL = "/api/auth/forgot-password";
-  var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
-  var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
-  var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
-  var API_PAYMENT_STATUS_URL = "/api/payments/status";
-  var API_CREATE_DONATION_SESSION_URL = "/api/payments/create-donation-session";
-  async function readJsonResponse(response) {
-    const contentType = response.headers.get("content-type") || "";
-    if (!contentType.includes("application/json")) {
-      return null;
-    }
-    try {
-      return await response.json();
-    } catch {
-      return null;
-    }
-  }
-  function buildFriendlyAuthError(payload, fallbackMessage) {
-    const errorCode = payload == null ? void 0 : payload.error;
-    if (errorCode === "EMAIL_EXISTS") {
-      return "Этот email уже используется.";
-    }
-    if (errorCode === "INVALID_NAME") {
-      return "Укажите имя длиной от 2 до 80 символов.";
-    }
-    if (errorCode === "INVALID_PASSWORD") {
-      return "Пароль должен быть не короче 6 символов.";
-    }
-    if (errorCode === "INVALID_EMAIL") {
-      return "Пожалуйста, проверь email.";
-    }
-    if (errorCode === "AUTH_FAILED" || errorCode === "INVALID_CREDENTIALS") {
-      return "Не получилось войти. Проверь email и пароль.";
-    }
-    if (errorCode === "PASSWORD_RESET_TOKEN_INVALID") {
-      return "Ссылка для восстановления уже недействительна. Запросите новую.";
-    }
-    if (errorCode === "AUTH_REQUIRED") {
-      return "Нужно войти в аккаунт заново.";
-    }
-    if (errorCode === "INVALID_DONATION_AMOUNT") {
-      return "Выберите корректную сумму поддержки.";
-    }
-    if (errorCode === "PAYMENTS_NOT_CONFIGURED") {
-      return "Оплата ещё не настроена на сервере.";
-    }
-    if (errorCode === "DONATION_NOT_FOUND") {
-      return "Платёж не найден или больше недоступен.";
-    }
-    return fallbackMessage;
-  }
-  async function requestJson(url, options = {}, fallbackMessage = "Сейчас не получается связаться с сервером.") {
-    let response;
-    try {
-      response = await fetch(url, {
-        credentials: "same-origin",
-        ...options
-      });
-    } catch (error) {
-      const networkError = new Error("Network request failed");
-      networkError.friendlyMessage = fallbackMessage;
-      networkError.isNetworkError = true;
-      throw networkError;
-    }
-    const payload = await readJsonResponse(response);
-    if (!response.ok) {
-      const requestError = new Error(`Request failed with status ${response.status}`);
-      requestError.friendlyMessage = buildFriendlyAuthError(payload, fallbackMessage);
-      requestError.payload = payload;
-      throw requestError;
-    }
-    return payload;
-  }
-  function createAuthService() {
-    async function checkSession() {
-      const payload = await requestJson(
-        API_AUTH_SESSION_URL,
-        {
-          headers: {
-            Accept: "application/json"
-          }
-        },
-        "Сейчас не получается проверить вход. Попробуй чуть позже."
-      );
-      return {
-        authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
-        user: (payload == null ? void 0 : payload.user) || null
-      };
-    }
-    async function login({ email, password }) {
-      const payload = await requestJson(
-        API_AUTH_LOGIN_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({ email, password })
-        },
-        "Сейчас не получается войти. Попробуй ещё раз чуть позже."
-      );
-      return (payload == null ? void 0 : payload.user) || null;
-    }
-    async function register({ name, email, password }) {
-      const payload = await requestJson(
-        API_AUTH_REGISTER_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({ name, email, password })
-        },
-        "Сейчас не получается создать аккаунт. Попробуй ещё раз чуть позже."
-      );
-      return (payload == null ? void 0 : payload.user) || null;
-    }
-    async function logout() {
-      await requestJson(
-        API_AUTH_LOGOUT_URL,
-        {
-          method: "POST",
-          headers: {
-            Accept: "application/json"
-          }
-        },
-        "Сейчас не получается выйти из аккаунта. Попробуй ещё раз чуть позже."
-      );
-    }
-    async function forgotPassword({ email }) {
-      return requestJson(
-        API_AUTH_FORGOT_PASSWORD_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({ email })
-        },
-        "Сейчас не получается отправить письмо для восстановления."
-      );
-    }
-    async function resetPassword({ token, password }) {
-      return requestJson(
-        API_AUTH_RESET_PASSWORD_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({ token, password })
-        },
-        "Сейчас не получается сменить пароль. Попробуй ещё раз чуть позже."
-      );
-    }
-    async function getProfile() {
-      const payload = await requestJson(
-        API_ACCOUNT_PROFILE_URL,
-        {
-          headers: {
-            Accept: "application/json"
-          }
-        },
-        "Сейчас не получается открыть данные аккаунта."
-      );
-      return (payload == null ? void 0 : payload.user) || null;
-    }
-    async function updateProfile({ name, email }) {
-      const payload = await requestJson(
-        API_ACCOUNT_PROFILE_URL,
-        {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({ name, email })
-        },
-        "Сейчас не получается обновить профиль."
-      );
-      return (payload == null ? void 0 : payload.user) || null;
-    }
-    async function changePassword({ currentPassword, newPassword }) {
-      return requestJson(
-        API_ACCOUNT_CHANGE_PASSWORD_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({ currentPassword, newPassword })
-        },
-        "Сейчас не получается сменить пароль."
-      );
-    }
-    async function getPaymentStatus({ donationId } = {}) {
-      const url = new URL(API_PAYMENT_STATUS_URL, window.location.origin);
-      if (donationId) {
-        url.searchParams.set("donationId", donationId);
-      }
-      return requestJson(
-        `${url.pathname}${url.search}`,
-        {
-          headers: {
-            Accept: "application/json"
-          }
-        },
-        "Сейчас не получается проверить статус поддержки."
-      );
-    }
-    async function createDonationSession({ amount }) {
-      return requestJson(
-        API_CREATE_DONATION_SESSION_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json"
-          },
-          body: JSON.stringify({ amount })
-        },
-        "Сейчас не получается открыть страницу оплаты."
-      );
-    }
-    return {
-      checkSession,
-      login,
-      register,
-      logout,
-      forgotPassword,
-      resetPassword,
-      getProfile,
-      updateProfile,
-      changePassword,
-      getPaymentStatus,
-      createDonationSession
-    };
-  }
-
   // js/main.js
   var builtinAdvices = [
     "Выпить стакан чистой воды",
@@ -5674,7 +5901,7 @@
     return app;
   }
   async function initApp({ elements }) {
-    var _a, _b;
+    var _a, _b, _c;
     const store = createStore();
     const auth = createAuthService();
     const app = {
@@ -5782,7 +6009,8 @@
         persistenceStatus: ((_a = store.getPersistenceStatus) == null ? void 0 : _a.call(store)) || {
           mode: "local-fallback",
           message: "",
-          hasPendingOfflineChanges: false
+          hasPendingOfflineChanges: false,
+          privateDataAvailableOffline: true
         }
       }
     };
@@ -5856,6 +6084,7 @@
       const session = await auth.checkSession();
       if (!session.authenticated || !session.user) {
         clearOfflineAuthSnapshot();
+        await ((_c = store.clearOfflineCache) == null ? void 0 : _c.call(store, { includeGuest: true }));
         app.runtime.auth.mode = "login";
         app.runtime.auth.status = "guest";
         app.runtime.auth.user = null;

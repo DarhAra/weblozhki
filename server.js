@@ -2,9 +2,11 @@ const express = require('express');
 const crypto = require('crypto');
 const path = require('path');
 const { config, getSafeRuntimeSummary } = require('./server/config');
+const { createDataEncryptor, createPasswordService } = require('./server/crypto-utils');
 const { createDatabase } = require('./server/db');
 const { createRepositories } = require('./server/repositories');
 const { createMailer } = require('./server/mailer');
+const { ensureValidStateSegment, mergeAppState, splitAppState } = require('./server/state-storage');
 const { createPaymentError, createYookassaClient } = require('./server/yookassa');
 
 const app = express();
@@ -19,9 +21,15 @@ const { db, databasePath } = createDatabase({
         userStateDir: config.legacyUserStateDir,
     },
 });
-const repositories = createRepositories(db);
+const dataEncryptor = createDataEncryptor({
+    secret: config.dataEncryptionKey,
+    isProduction: config.isProduction,
+});
+const passwordService = createPasswordService();
+const repositories = createRepositories(db, { encryptor: dataEncryptor });
 const mailer = createMailer(config);
 const yookassa = createYookassaClient(config);
+const rateLimitStore = new Map();
 
 app.set('trust proxy', config.trustProxy);
 
@@ -69,13 +77,22 @@ function isValidPassword(password) {
     return typeof password === 'string' && password.length >= 6 && password.length <= 200;
 }
 
-function isValidDisplayName(name) {
-    return typeof name === 'string' && name.trim().length >= 2 && name.trim().length <= 80;
+function hasStrongEnoughPassword(password) {
+    if (typeof password !== 'string') {
+        return false;
+    }
+
+    const checks = [
+        /[a-z]/.test(password),
+        /[A-Z]/.test(password),
+        /\d/.test(password),
+    ];
+
+    return checks.filter(Boolean).length >= 2;
 }
 
-function hashPassword(password, salt = crypto.randomBytes(16).toString('hex')) {
-    const hash = crypto.scryptSync(password, salt, 64).toString('hex');
-    return { salt, hash };
+function isValidDisplayName(name) {
+    return typeof name === 'string' && name.trim().length >= 2 && name.trim().length <= 80;
 }
 
 function hashToken(rawToken) {
@@ -145,6 +162,21 @@ function buildSessionCookie(sessionId, maxAgeMs = config.sessionTtlMs) {
     return parts.join('; ');
 }
 
+function buildCsrfCookie(token, maxAgeMs = config.sessionTtlMs) {
+    const parts = [
+        `${config.csrfCookieName}=${encodeURIComponent(token)}`,
+        'Path=/',
+        `SameSite=${config.sessionCookieSameSite}`,
+        `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
+    ];
+
+    if (config.sessionCookieSecure) {
+        parts.push('Secure');
+    }
+
+    return parts.join('; ');
+}
+
 function buildClearSessionCookie() {
     const parts = [
         `${config.sessionCookieName}=`,
@@ -161,12 +193,46 @@ function buildClearSessionCookie() {
     return parts.join('; ');
 }
 
+function buildClearCsrfCookie() {
+    const parts = [
+        `${config.csrfCookieName}=`,
+        'Path=/',
+        `SameSite=${config.sessionCookieSameSite}`,
+        'Max-Age=0',
+    ];
+
+    if (config.sessionCookieSecure) {
+        parts.push('Secure');
+    }
+
+    return parts.join('; ');
+}
+
+function appendResponseCookie(res, cookieValue) {
+    const current = res.getHeader('Set-Cookie');
+    if (!current) {
+        res.setHeader('Set-Cookie', cookieValue);
+        return;
+    }
+
+    const nextCookies = Array.isArray(current) ? [...current, cookieValue] : [current, cookieValue];
+    res.setHeader('Set-Cookie', nextCookies);
+}
+
 function setSessionCookie(res, sessionId, maxAgeMs = config.sessionTtlMs) {
-    res.setHeader('Set-Cookie', buildSessionCookie(sessionId, maxAgeMs));
+    appendResponseCookie(res, buildSessionCookie(sessionId, maxAgeMs));
+}
+
+function setCsrfCookie(res, token, maxAgeMs = config.sessionTtlMs) {
+    appendResponseCookie(res, buildCsrfCookie(token, maxAgeMs));
 }
 
 function clearSessionCookie(res) {
-    res.setHeader('Set-Cookie', buildClearSessionCookie());
+    appendResponseCookie(res, buildClearSessionCookie());
+}
+
+function clearCsrfCookie(res) {
+    appendResponseCookie(res, buildClearCsrfCookie());
 }
 
 function createSessionRecord(userId, req) {
@@ -180,6 +246,10 @@ function createSessionRecord(userId, req) {
         userAgent: String(req.get('user-agent') || '').slice(0, 512),
         ipHash: hashIp(req.ip),
     };
+}
+
+function createCsrfToken() {
+    return crypto.randomBytes(24).toString('hex');
 }
 
 function parseIsoDate(value) {
@@ -213,6 +283,160 @@ function getBaseUrl() {
 
 function getResetUrl(rawToken) {
     return new URL(`/?resetToken=${encodeURIComponent(rawToken)}`, getBaseUrl()).toString();
+}
+
+function getAllowedOrigin() {
+    if (!config.allowedOrigin) {
+        return '';
+    }
+
+    try {
+        return new URL(config.allowedOrigin).origin;
+    } catch {
+        return '';
+    }
+}
+
+function getRequestOrigin(req) {
+    const rawOrigin = req.get('origin');
+    if (rawOrigin) {
+        return rawOrigin;
+    }
+
+    const rawReferer = req.get('referer');
+    if (!rawReferer) {
+        return '';
+    }
+
+    try {
+        return new URL(rawReferer).origin;
+    } catch {
+        return '';
+    }
+}
+
+function isStateChangingMethod(method) {
+    return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || '').toUpperCase());
+}
+
+function buildRateLimitKey(scope, req, extraKey = '') {
+    return [
+        scope,
+        getRemoteIp(req),
+        String(extraKey || '').toLowerCase(),
+    ].join(':');
+}
+
+function takeRateLimitSlot({ scope, req, extraKey = '', limit, windowMs }) {
+    const now = Date.now();
+    const key = buildRateLimitKey(scope, req, extraKey);
+    const bucket = rateLimitStore.get(key) || [];
+    const nextBucket = bucket.filter(timestamp => now - timestamp < windowMs);
+    if (nextBucket.length >= limit) {
+        const error = new Error('Too many attempts. Please try again later.');
+        error.statusCode = 429;
+        error.code = 'RATE_LIMITED';
+        throw error;
+    }
+
+    nextBucket.push(now);
+    rateLimitStore.set(key, nextBucket);
+}
+
+function validatePublicOrigin(req, res, next) {
+    if (!config.isProduction || !isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook') {
+        return next();
+    }
+
+    const allowedOrigin = getAllowedOrigin();
+    if (!allowedOrigin) {
+        return next();
+    }
+
+    const requestOrigin = getRequestOrigin(req);
+    if (!requestOrigin || requestOrigin !== allowedOrigin) {
+        return res.status(403).json({
+            error: 'ORIGIN_FORBIDDEN',
+            message: 'Request origin is not allowed.',
+        });
+    }
+
+    return next();
+}
+
+function ensureCsrfContext(req, res, next) {
+    const cookies = req.parsedCookies || parseCookies(req.headers.cookie || '');
+    req.parsedCookies = cookies;
+    req.csrfToken = typeof cookies[config.csrfCookieName] === 'string' && cookies[config.csrfCookieName]
+        ? cookies[config.csrfCookieName]
+        : createCsrfToken();
+    req.shouldSetCsrfCookie = !cookies[config.csrfCookieName];
+    if (req.shouldSetCsrfCookie) {
+        setCsrfCookie(res, req.csrfToken);
+    }
+    next();
+}
+
+function requireCsrfToken(req, res, next) {
+    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook') {
+        return next();
+    }
+
+    const csrfHeader = req.get('x-csrf-token');
+    if (!csrfHeader || csrfHeader !== req.csrfToken) {
+        return res.status(403).json({
+            error: 'CSRF_TOKEN_INVALID',
+            message: 'Security token is missing or invalid.',
+        });
+    }
+
+    return next();
+}
+
+function readRuntimeStateForRequest(req) {
+    return req.user
+        ? repositories.getUserRuntimeState(req.user.id)
+        : repositories.getGuestRuntimeState();
+}
+
+function readPrivateStateForRequest(req) {
+    if (!req.user) {
+        return null;
+    }
+
+    return repositories.getUserPrivateState(req.user.id);
+}
+
+function readCombinedStateForRequest(req) {
+    return mergeAppState({
+        runtimeState: readRuntimeStateForRequest(req) || {},
+        privateState: readPrivateStateForRequest(req) || {},
+    });
+}
+
+function saveRuntimeStateForRequest(req, runtimeState) {
+    if (req.user) {
+        repositories.saveUserRuntimeState(req.user.id, runtimeState);
+        return;
+    }
+
+    repositories.saveGuestRuntimeState(runtimeState);
+}
+
+function savePrivateStateForRequest(req, privateState) {
+    if (!req.user) {
+        return;
+    }
+
+    repositories.saveUserPrivateState(req.user.id, privateState);
+}
+
+function validateRuntimeState(runtimeState) {
+    return ensureValidStateSegment(runtimeState, 'Runtime state', config.runtimeStateMaxBytes);
+}
+
+function validatePrivateState(privateState) {
+    return ensureValidStateSegment(privateState, 'Private state', config.privateStateMaxBytes);
 }
 
 function refreshSession(req) {
@@ -280,7 +504,9 @@ function createSessionForUser(res, userId, req) {
     req.sessionId = session.id;
     req.sessionRecord = session;
     req.shouldRefreshSessionCookie = false;
+    req.csrfToken = createCsrfToken();
     setSessionCookie(res, session.id);
+    setCsrfCookie(res, req.csrfToken);
     return session;
 }
 
@@ -445,6 +671,7 @@ app.use((req, _res, next) => {
 app.use((req, _res, next) => {
     try {
         const cookies = parseCookies(req.headers.cookie || '');
+        req.parsedCookies = cookies;
         const sessionId = cookies[config.sessionCookieName];
         if (!sessionId) {
             req.user = null;
@@ -486,7 +713,20 @@ app.use((req, _res, next) => {
         return next(error);
     }
 });
+app.use(validatePublicOrigin);
+app.use(ensureCsrfContext);
+app.use(requireCsrfToken);
 app.use(wrapResponseWithSessionRefresh);
+app.use((req, res, next) => {
+    if (config.isProduction) {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    next();
+});
 app.use(express.static(ROOT_DIR));
 
 app.get('/api/health', (_req, res) => {
@@ -502,16 +742,18 @@ app.get('/api/auth/session', (req, res) => {
         return res.json({
             authenticated: false,
             user: null,
+            csrfToken: req.csrfToken,
         });
     }
 
     return res.json({
         authenticated: true,
         user: toPublicUser(req.user),
+        csrfToken: req.csrfToken,
     });
 });
 
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
     const name = normalizeDisplayName(req.body?.name);
     const email = normalizeEmail(req.body?.email);
     const password = req.body?.password;
@@ -537,7 +779,22 @@ app.post('/api/auth/register', (req, res) => {
         });
     }
 
+    if (!hasStrongEnoughPassword(password)) {
+        return res.status(400).json({
+            error: 'PASSWORD_TOO_WEAK',
+            message: 'Please choose a stronger password.',
+        });
+    }
+
     try {
+        takeRateLimitSlot({
+            scope: 'register',
+            req,
+            extraKey: email,
+            limit: config.registerRateLimitMaxAttempts,
+            windowMs: config.authRateLimitWindowMs,
+        });
+
         if (repositories.findUserByEmail(email)) {
             return res.status(409).json({
                 error: 'EMAIL_EXISTS',
@@ -545,7 +802,7 @@ app.post('/api/auth/register', (req, res) => {
             });
         }
 
-        const { salt, hash } = hashPassword(password);
+        const { salt, hash } = await passwordService.hashPassword(password);
         const now = new Date().toISOString();
         const user = {
             id: `usr_${crypto.randomUUID()}`,
@@ -576,7 +833,7 @@ app.post('/api/auth/register', (req, res) => {
     }
 });
 
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
     const email = normalizeEmail(req.body?.email);
     const password = req.body?.password;
 
@@ -588,6 +845,14 @@ app.post('/api/auth/login', (req, res) => {
     }
 
     try {
+        takeRateLimitSlot({
+            scope: 'login',
+            req,
+            extraKey: email,
+            limit: config.loginRateLimitMaxAttempts,
+            windowMs: config.authRateLimitWindowMs,
+        });
+
         const user = repositories.findUserByEmail(email);
         if (!user) {
             return res.status(401).json({
@@ -596,11 +861,22 @@ app.post('/api/auth/login', (req, res) => {
             });
         }
 
-        const { hash } = hashPassword(password, user.passwordSalt);
-        if (hash !== user.passwordHash) {
+        const verification = await passwordService.verifyPassword(password, user);
+        if (!verification.ok) {
             return res.status(401).json({
                 error: 'AUTH_FAILED',
                 message: 'Invalid email or password.',
+            });
+        }
+
+        if (verification.needsRehash) {
+            const { salt, hash } = await passwordService.hashPassword(password);
+            repositories.updateUserPassword({
+                id: user.id,
+                passwordSalt: salt,
+                passwordHash: hash,
+                updatedAt: new Date().toISOString(),
+                passwordChangedAt: user.passwordChangedAt || user.createdAt,
             });
         }
 
@@ -624,6 +900,7 @@ app.post('/api/auth/login', (req, res) => {
 app.post('/api/auth/logout', (req, res) => {
     revokeCurrentSession(req);
     clearSessionCookie(res);
+    clearCsrfCookie(res);
     res.json({ ok: true });
 });
 
@@ -639,6 +916,14 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 
     try {
+        takeRateLimitSlot({
+            scope: 'forgot-password',
+            req,
+            extraKey: email,
+            limit: config.passwordResetRateLimitMaxAttempts,
+            windowMs: config.authRateLimitWindowMs,
+        });
+
         const user = repositories.findUserByEmail(email);
         if (!user) {
             return res.json(genericResponse);
@@ -666,7 +951,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
     }
 });
 
-app.post('/api/auth/reset-password', (req, res) => {
+app.post('/api/auth/reset-password', async (req, res) => {
     const token = typeof req.body?.token === 'string' ? req.body.token.trim() : '';
     const password = req.body?.password;
 
@@ -678,6 +963,14 @@ app.post('/api/auth/reset-password', (req, res) => {
     }
 
     try {
+        takeRateLimitSlot({
+            scope: 'reset-password',
+            req,
+            extraKey: token.slice(0, 12),
+            limit: config.passwordResetRateLimitMaxAttempts,
+            windowMs: config.authRateLimitWindowMs,
+        });
+
         const tokenRecord = repositories.findPasswordResetTokenByHash(hashToken(token));
         if (!tokenRecord || tokenRecord.usedAt || parseIsoDate(tokenRecord.expiresAt) <= Date.now()) {
             return res.status(400).json({
@@ -694,7 +987,14 @@ app.post('/api/auth/reset-password', (req, res) => {
             });
         }
 
-        const { salt, hash } = hashPassword(password);
+        if (!hasStrongEnoughPassword(password)) {
+            return res.status(400).json({
+                error: 'PASSWORD_TOO_WEAK',
+                message: 'Please choose a stronger password.',
+            });
+        }
+
+        const { salt, hash } = await passwordService.hashPassword(password);
         const now = new Date().toISOString();
         repositories.updateUserPassword({
             id: user.id,
@@ -706,6 +1006,7 @@ app.post('/api/auth/reset-password', (req, res) => {
         repositories.markPasswordResetTokenUsed(tokenRecord.id, now);
         repositories.revokeSessionsForUser(user.id, now);
         clearSessionCookie(res);
+        clearCsrfCookie(res);
 
         return res.json({ ok: true });
     } catch (error) {
@@ -776,7 +1077,7 @@ app.patch('/api/account/profile', requireAuthenticatedUser, (req, res) => {
     }
 });
 
-app.post('/api/account/change-password', requireAuthenticatedUser, (req, res) => {
+app.post('/api/account/change-password', requireAuthenticatedUser, async (req, res) => {
     const currentPassword = req.body?.currentPassword;
     const nextPassword = req.body?.newPassword;
 
@@ -788,15 +1089,22 @@ app.post('/api/account/change-password', requireAuthenticatedUser, (req, res) =>
     }
 
     try {
-        const { hash: currentHash } = hashPassword(currentPassword, req.user.passwordSalt);
-        if (currentHash !== req.user.passwordHash) {
+        const verification = await passwordService.verifyPassword(currentPassword, req.user);
+        if (!verification.ok) {
             return res.status(401).json({
                 error: 'AUTH_FAILED',
                 message: 'Current password is incorrect.',
             });
         }
 
-        const { salt, hash } = hashPassword(nextPassword);
+        if (!hasStrongEnoughPassword(nextPassword)) {
+            return res.status(400).json({
+                error: 'PASSWORD_TOO_WEAK',
+                message: 'Please choose a stronger password.',
+            });
+        }
+
+        const { salt, hash } = await passwordService.hashPassword(nextPassword);
         const now = new Date().toISOString();
         repositories.updateUserPassword({
             id: req.user.id,
@@ -807,6 +1115,7 @@ app.post('/api/account/change-password', requireAuthenticatedUser, (req, res) =>
         });
         repositories.revokeSessionsForUser(req.user.id, now);
         clearSessionCookie(res);
+        clearCsrfCookie(res);
 
         return res.json({
             ok: true,
@@ -1005,11 +1314,89 @@ app.post('/api/payments/yookassa/webhook', async (req, res) => {
     }
 });
 
+app.get('/api/state/runtime', (req, res) => {
+    try {
+        const runtimeState = readRuntimeStateForRequest(req) || {};
+        return res.json({ state: runtimeState });
+    } catch (error) {
+        logServerError('Failed to read runtime state from SQLite', error, {
+            code: 'RUNTIME_STATE_READ_FAILED',
+            userId: req.user?.id || null,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: 'RUNTIME_STATE_READ_FAILED',
+            message: 'Could not read saved runtime state.',
+        });
+    }
+});
+
+app.post('/api/state/runtime', (req, res) => {
+    if (!req.is('application/json')) {
+        return res.status(415).json({
+            error: 'UNSUPPORTED_CONTENT_TYPE',
+            message: 'JSON content expected.',
+        });
+    }
+
+    try {
+        const runtimeState = validateRuntimeState(req.body || {});
+        saveRuntimeStateForRequest(req, runtimeState);
+        return res.json({ ok: true });
+    } catch (error) {
+        logServerError('Failed to write runtime state to SQLite', error, {
+            code: 'RUNTIME_STATE_WRITE_FAILED',
+            userId: req.user?.id || null,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: 'RUNTIME_STATE_WRITE_FAILED',
+            message: 'Could not save runtime state.',
+        });
+    }
+});
+
+app.get('/api/private-state', requireAuthenticatedUser, (req, res) => {
+    try {
+        const privateState = readPrivateStateForRequest(req) || {};
+        return res.json({ state: privateState });
+    } catch (error) {
+        logServerError('Failed to read private state from SQLite', error, {
+            code: 'PRIVATE_STATE_READ_FAILED',
+            userId: req.user?.id || null,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: 'PRIVATE_STATE_READ_FAILED',
+            message: 'Could not read saved private state.',
+        });
+    }
+});
+
+app.post('/api/private-state', requireAuthenticatedUser, (req, res) => {
+    if (!req.is('application/json')) {
+        return res.status(415).json({
+            error: 'UNSUPPORTED_CONTENT_TYPE',
+            message: 'JSON content expected.',
+        });
+    }
+
+    try {
+        const privateState = validatePrivateState(req.body || {});
+        savePrivateStateForRequest(req, privateState);
+        return res.json({ ok: true });
+    } catch (error) {
+        logServerError('Failed to write private state to SQLite', error, {
+            code: 'PRIVATE_STATE_WRITE_FAILED',
+            userId: req.user?.id || null,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: 'PRIVATE_STATE_WRITE_FAILED',
+            message: 'Could not save private state.',
+        });
+    }
+});
+
 app.get('/api/state', (req, res) => {
     try {
-        const state = req.user
-            ? repositories.getUserState(req.user.id)
-            : repositories.getGuestState();
+        const state = readCombinedStateForRequest(req);
         return res.json({ state });
     } catch (error) {
         logServerError('Failed to read state from SQLite', error, {
@@ -1039,18 +1426,18 @@ app.post('/api/state', (req, res) => {
     }
 
     try {
+        const { runtimeState, privateState } = splitAppState(req.body);
+        saveRuntimeStateForRequest(req, validateRuntimeState(runtimeState));
         if (req.user) {
-            repositories.saveUserState(req.user.id, req.body);
-        } else {
-            repositories.saveGuestState(req.body);
+            savePrivateStateForRequest(req, validatePrivateState(privateState));
         }
         return res.json({ ok: true });
     } catch (error) {
-        logServerError('Failed to write state to SQLite', error, {
+        logServerError('Failed to write split state to SQLite', error, {
             code: 'STATE_WRITE_FAILED',
             userId: req.user?.id || null,
         });
-        return res.status(500).json({
+        return res.status(error.statusCode || 500).json({
             error: 'STATE_WRITE_FAILED',
             message: 'Could not save state.',
         });

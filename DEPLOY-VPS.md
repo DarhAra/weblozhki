@@ -111,10 +111,20 @@ NODE_ENV=production
 DATABASE_PATH=data/app.db
 TRUST_PROXY=true
 SESSION_COOKIE_NAME=rtodo_sid
+CSRF_COOKIE_NAME=rtodo_csrf
 SESSION_COOKIE_SAME_SITE=Lax
 SESSION_COOKIE_SECURE=true
 SESSION_TTL_DAYS=30
 PASSWORD_RESET_TTL_MINUTES=30
+DATA_ENCRYPTION_KEY=change-me-to-a-long-random-secret
+RUNTIME_STATE_MAX_BYTES=262144
+PRIVATE_STATE_MAX_BYTES=786432
+OFFLINE_STATE_TTL_HOURS=168
+AUTH_RATE_LIMIT_WINDOW_MINUTES=15
+LOGIN_RATE_LIMIT_MAX_ATTEMPTS=10
+REGISTER_RATE_LIMIT_MAX_ATTEMPTS=5
+PASSWORD_RESET_RATE_LIMIT_MAX_ATTEMPTS=5
+ALLOWED_ORIGIN=https://example.com
 APP_BASE_URL=https://example.com
 SMTP_HOST=smtp.example.com
 SMTP_PORT=587
@@ -269,8 +279,19 @@ pm2 restart resource-todo
 
 - `.env` не отправляется в GitHub.
 - `data/app.db` не отправляется в GitHub.
-- SQLite и in-memory сессии подходят для первого VPS, но это ещё не финальная архитектура для большого количества пользователей.
+- `DATA_ENCRYPTION_KEY` хранится только на сервере и не должен попадать в репозиторий.
+- SQLite подходит для первого VPS, но это ещё не финальная архитектура для большого количества пользователей.
 - Если сервер один, такой вариант вполне годится для первого публичного запуска.
+
+## Бэкапы и hardening
+
+- Делайте ежедневную копию `data/app.db`.
+- Храните backup вне директории приложения и шифруйте его перед выгрузкой.
+- Проверяйте восстановление backup на отдельной копии.
+- После настройки SSH-ключей отключите вход по паролю и root-login по паролю.
+- Оставьте снаружи только `80`, `443` и SSH.
+- Добавьте `fail2ban` или аналог для защиты SSH.
+- В Nginx включите `Strict-Transport-Security`, `X-Frame-Options`, `X-Content-Type-Options`, `Referrer-Policy` и базовый `Content-Security-Policy`.
 
 
 ## SMTP for Password Recovery
