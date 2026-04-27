@@ -7,7 +7,7 @@ const { createDatabase } = require('./server/db');
 const { createRepositories } = require('./server/repositories');
 const { createMailer } = require('./server/mailer');
 const { ensureValidStateSegment, mergeAppState, splitAppState } = require('./server/state-storage');
-const { createPaymentError, createYookassaClient } = require('./server/yookassa');
+const { createPaymentError, createRobokassaClient } = require('./server/robokassa');
 
 const app = express();
 const PORT = config.port;
@@ -28,7 +28,7 @@ const dataEncryptor = createDataEncryptor({
 const passwordService = createPasswordService();
 const repositories = createRepositories(db, { encryptor: dataEncryptor });
 const mailer = createMailer(config);
-const yookassa = createYookassaClient(config);
+const robokassa = createRobokassaClient(config);
 const rateLimitStore = new Map();
 
 app.set('trust proxy', config.trustProxy);
@@ -344,7 +344,7 @@ function takeRateLimitSlot({ scope, req, extraKey = '', limit, windowMs }) {
 }
 
 function validatePublicOrigin(req, res, next) {
-    if (!config.isProduction || !isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook') {
+    if (!config.isProduction || !isStateChangingMethod(req.method) || req.path === '/api/payments/robokassa/result') {
         return next();
     }
 
@@ -378,7 +378,7 @@ function ensureCsrfContext(req, res, next) {
 }
 
 function requireCsrfToken(req, res, next) {
-    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook') {
+    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/robokassa/result') {
         return next();
     }
 
@@ -581,6 +581,15 @@ function buildDonationReturnUrl(donationId) {
     return baseUrl.toString();
 }
 
+function buildDonationFailUrl(donationId) {
+    const baseUrl = ensureSecurePublicBaseUrl();
+    baseUrl.pathname = '/';
+    baseUrl.searchParams.set('paymentReturn', '1');
+    baseUrl.searchParams.set('donationId', donationId);
+    baseUrl.searchParams.set('paymentStatus', 'failed');
+    return baseUrl.toString();
+}
+
 function getDonationCheckoutConfig() {
     return {
         currency: config.donationCurrency,
@@ -607,14 +616,19 @@ function getPaymentSummary(userId, donation = null) {
     };
 }
 
-function createDonationRecord(userId, amountValue) {
+function createDonationInvoiceId() {
+    const randomSuffix = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+    return `${Date.now()}${randomSuffix}`;
+}
+
+function createDonationRecord(userId, amountValue, providerPaymentId) {
     const now = new Date().toISOString();
     const donationId = `don_${crypto.randomUUID()}`;
     return {
         id: donationId,
         userId,
-        provider: 'yookassa',
-        providerPaymentId: null,
+        provider: 'robokassa',
+        providerPaymentId,
         amountValue,
         amountCurrency: config.donationCurrency,
         status: 'pending',
@@ -624,22 +638,6 @@ function createDonationRecord(userId, amountValue) {
         updatedAt: now,
         confirmedAt: null,
     };
-}
-
-function getYookassaWebhookSecretFromRequest(req) {
-    if (typeof req.query?.key !== 'string') {
-        return '';
-    }
-
-    return req.query.key.trim();
-}
-
-function isYookassaWebhookSecretValid(req) {
-    if (!config.yookassaWebhookSecret) {
-        return true;
-    }
-
-    return getYookassaWebhookSecretFromRequest(req) === config.yookassaWebhookSecret;
 }
 
 function getRemoteIp(req) {
@@ -654,7 +652,7 @@ function getRemoteIp(req) {
 function buildWebhookRecord({ eventId, eventType, paymentId, donationId = null }) {
     return {
         id: eventId,
-        provider: 'yookassa',
+        provider: 'robokassa',
         eventType,
         paymentId,
         donationId,
@@ -662,7 +660,43 @@ function buildWebhookRecord({ eventId, eventType, paymentId, donationId = null }
     };
 }
 
+function getRobokassaShpParams(source) {
+    return Object.entries(source || {})
+        .filter(([key]) => key.startsWith('Shp_'))
+        .reduce((accumulator, [key, value]) => {
+            accumulator[key] = value;
+            return accumulator;
+        }, {});
+}
+
+async function trySyncDonationStatusFromProvider(donation) {
+    if (!donation || donation.provider !== 'robokassa' || !donation.providerPaymentId || !robokassa.isConfigured) {
+        return donation;
+    }
+
+    if (!['pending', 'processing'].includes(donation.status)) {
+        return donation;
+    }
+
+    const remoteState = await robokassa.getInvoiceState(donation.providerPaymentId);
+    if (!remoteState || remoteState.status === donation.status) {
+        return donation;
+    }
+
+    if (Number.isFinite(remoteState.amountValue) && Math.round(remoteState.amountValue) !== Math.round(donation.amountValue)) {
+        throw createPaymentError('Payment amount does not match.', 400, 'PAYMENT_AMOUNT_MISMATCH');
+    }
+
+    return repositories.updateDonationStatus({
+        id: donation.id,
+        status: remoteState.status,
+        updatedAt: new Date().toISOString(),
+        confirmedAt: remoteState.status === 'succeeded' ? new Date().toISOString() : null,
+    });
+}
+
 app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false }));
 app.use((req, _res, next) => {
     repositories.pruneExpiredSessions();
     repositories.prunePasswordResetTokens();
@@ -1136,7 +1170,7 @@ app.post('/api/account/change-password', requireAuthenticatedUser, async (req, r
 app.get('/api/payments/status', requireAuthenticatedUser, (req, res) => {
     const donationId = typeof req.query?.donationId === 'string' ? req.query.donationId.trim() : '';
 
-    try {
+    return Promise.resolve().then(async () => {
         let donation = null;
         if (donationId) {
             donation = repositories.findDonationById(donationId);
@@ -1146,10 +1180,14 @@ app.get('/api/payments/status', requireAuthenticatedUser, (req, res) => {
                     message: 'Donation was not found.',
                 });
             }
+
+            donation = await trySyncDonationStatusFromProvider(donation);
+        } else {
+            donation = await trySyncDonationStatusFromProvider(repositories.findLatestDonationByUserId(req.user.id));
         }
 
         return res.json(getPaymentSummary(req.user.id, donation));
-    } catch (error) {
+    }).catch(error => {
         logServerError('Failed to read payment status', error, {
             code: 'PAYMENT_STATUS_FAILED',
             userId: req.user?.id || null,
@@ -1159,7 +1197,7 @@ app.get('/api/payments/status', requireAuthenticatedUser, (req, res) => {
             error: 'PAYMENT_STATUS_FAILED',
             message: 'Could not read payment status right now.',
         });
-    }
+    });
 });
 
 app.post('/api/payments/create-donation-session', requireAuthenticatedUser, async (req, res) => {
@@ -1171,7 +1209,7 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
         });
     }
 
-    if (!yookassa.isConfigured) {
+    if (!robokassa.isConfigured) {
         return res.status(503).json({
             error: 'PAYMENTS_NOT_CONFIGURED',
             message: 'Payments are not configured yet.',
@@ -1179,34 +1217,29 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
     }
 
     try {
-        const donation = createDonationRecord(req.user.id, amount);
+        const invoiceId = createDonationInvoiceId();
+        const donation = createDonationRecord(req.user.id, amount, invoiceId);
         repositories.createDonation(donation);
 
-        const payment = await yookassa.createPayment({
+        const payment = robokassa.createPaymentUrl({
             amount,
-            currency: config.donationCurrency,
             description: 'Поддержка проекта "Мои ложки"',
             returnUrl: donation.returnUrl,
+            failUrl: buildDonationFailUrl(donation.id),
+            invoiceId,
             donationId: donation.id,
-            userId: req.user.id,
+            email: req.user.email,
         });
 
-        const confirmationUrl = payment?.confirmation?.confirmation_url;
-        if (!payment?.id || !confirmationUrl) {
+        const confirmationUrl = payment?.confirmationUrl;
+        if (!payment?.invoiceId || !confirmationUrl) {
             repositories.updateDonationStatus({
                 id: donation.id,
                 status: 'failed',
                 updatedAt: new Date().toISOString(),
             });
-            throw createPaymentError('YooKassa did not return a confirmation URL.', 502, 'PAYMENT_PROVIDER_INVALID_RESPONSE');
+            throw createPaymentError('Robokassa did not return a confirmation URL.', 502, 'PAYMENT_PROVIDER_INVALID_RESPONSE');
         }
-
-        repositories.attachProviderPaymentToDonation({
-            id: donation.id,
-            providerPaymentId: payment.id,
-            status: payment.status || 'pending',
-            updatedAt: new Date().toISOString(),
-        });
 
         return res.status(201).json({
             donationId: donation.id,
@@ -1224,27 +1257,24 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
     }
 });
 
-app.post('/api/payments/yookassa/webhook', async (req, res) => {
+app.all('/api/payments/robokassa/result', async (req, res) => {
     const remoteIp = getRemoteIp(req);
-    if (!isYookassaWebhookSecretValid(req)) {
-        return res.status(403).json({
-            error: 'WEBHOOK_FORBIDDEN',
-            message: 'Webhook secret is invalid.',
-        });
-    }
-
-    if (!yookassa.isAllowedWebhookIp(remoteIp)) {
+    if (!robokassa.isAllowedWebhookIp(remoteIp)) {
         return res.status(403).json({
             error: 'WEBHOOK_FORBIDDEN',
             message: 'Webhook IP is not allowed.',
         });
     }
 
-    const eventType = typeof req.body?.event === 'string' ? req.body.event.trim() : '';
-    const paymentId = typeof req.body?.object?.id === 'string' ? req.body.object.id.trim() : '';
-    const eventId = paymentId ? `yookassa:${eventType}:${paymentId}` : '';
+    const payload = req.method === 'POST' ? req.body : req.query;
+    const outSum = typeof payload?.OutSum === 'string' ? payload.OutSum.trim() : String(payload?.OutSum || '').trim();
+    const paymentId = typeof payload?.InvId === 'string' ? payload.InvId.trim() : String(payload?.InvId || '').trim();
+    const signatureValue = typeof payload?.SignatureValue === 'string' ? payload.SignatureValue.trim() : '';
+    const shpParams = getRobokassaShpParams(payload);
+    const eventType = 'result';
+    const eventId = paymentId ? `robokassa:${eventType}:${paymentId}` : '';
 
-    if (!eventType || !eventId || !paymentId) {
+    if (!eventType || !eventId || !paymentId || !outSum || !signatureValue) {
         return res.status(400).json({
             error: 'INVALID_WEBHOOK',
             message: 'Webhook payload is incomplete.',
@@ -1254,7 +1284,7 @@ app.post('/api/payments/yookassa/webhook', async (req, res) => {
     try {
         const alreadyProcessed = repositories.findProcessedWebhookById(eventId);
         if (alreadyProcessed) {
-            return res.json({ ok: true, duplicate: true });
+            return res.type('text/plain').send('OK');
         }
 
         const donation = repositories.findDonationByProviderPaymentId(paymentId);
@@ -1266,15 +1296,18 @@ app.post('/api/payments/yookassa/webhook', async (req, res) => {
                     paymentId,
                 }),
             });
-            return res.json({ ok: true, skipped: true });
+            return res.type('text/plain').send('OK');
         }
 
-        const remotePayment = await yookassa.getPayment(paymentId);
-        if (!remotePayment?.id || remotePayment.id !== paymentId) {
-            throw createPaymentError('Payment verification failed.', 400, 'PAYMENT_VERIFICATION_FAILED');
+        if (shpParams.Shp_donationId && shpParams.Shp_donationId !== donation.id) {
+            throw createPaymentError('Payment metadata does not match.', 400, 'PAYMENT_METADATA_MISMATCH');
         }
 
-        const remoteAmount = Number(remotePayment.amount?.value);
+        if (!robokassa.verifyResultSignature({ outSum, invoiceId: paymentId, signatureValue, shpParams })) {
+            throw createPaymentError('Payment signature is invalid.', 403, 'PAYMENT_SIGNATURE_INVALID');
+        }
+
+        const remoteAmount = Number(outSum);
         if (!Number.isFinite(remoteAmount) || Math.round(remoteAmount) !== Math.round(donation.amountValue)) {
             throw createPaymentError('Payment amount does not match.', 400, 'PAYMENT_AMOUNT_MISMATCH');
         }
@@ -1285,23 +1318,18 @@ app.post('/api/payments/yookassa/webhook', async (req, res) => {
             paymentId,
             donationId: donation.id,
         });
-        const remoteStatus = typeof remotePayment.status === 'string' ? remotePayment.status : 'pending';
 
         repositories.markDonationWebhookProcessed({
             donationId: donation.id,
-            status: remoteStatus === 'succeeded'
-                ? 'succeeded'
-                : remoteStatus === 'canceled'
-                    ? 'canceled'
-                    : 'pending',
+            status: 'succeeded',
             updatedAt: new Date().toISOString(),
-            confirmedAt: remoteStatus === 'succeeded' ? new Date().toISOString() : null,
+            confirmedAt: new Date().toISOString(),
             webhook,
         });
 
-        return res.json({ ok: true });
+        return res.type('text/plain').send('OK');
     } catch (error) {
-        logServerError('Failed to process YooKassa webhook', error, {
+        logServerError('Failed to process Robokassa result callback', error, {
             code: 'WEBHOOK_PROCESSING_FAILED',
             donationId: repositories.findDonationByProviderPaymentId(paymentId)?.id || null,
             paymentId,
@@ -1479,5 +1507,5 @@ app.listen(PORT, () => {
     console.log(`Cookie: ${summary.sessionCookieName}, SameSite=${summary.sessionCookieSameSite}, Secure=${summary.sessionCookieSecure}`);
     console.log(`Session TTL days: ${summary.sessionTtlDays}`);
     console.log(`SMTP configured: ${summary.smtpConfigured ? 'yes' : 'no'}`);
-    console.log(`YooKassa configured: ${summary.yookassaConfigured ? 'yes' : 'no'}`);
+    console.log(`Robokassa configured: ${summary.robokassaConfigured ? 'yes' : 'no'}`);
 });

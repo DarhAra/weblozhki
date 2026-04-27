@@ -323,6 +323,15 @@
                 </div>
             </div>
 
+            <button id="open-support-cta-btn" class="support-cta-btn" type="button">
+                <span class="support-cta-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" focusable="false">
+                        <path d="M12 20c0-5.2 2.2-9.2 6.6-12 1.1-.7 2.4-1.2 3.4-1.4-.2 1.1-.6 2.4-1.3 3.5C17.9 14.6 14 17 8.8 17" />
+                        <path d="M12 20c0-3.8-1.4-6.8-4.3-8.8-1.3-.9-2.8-1.5-4.5-1.8.2 1.4.7 2.8 1.6 4.2 2 3 4.7 4.5 8.4 4.5" />
+                    </svg>
+                </span>
+                <span>Поддержать проект</span>
+            </button>
         </div>
 
         <div id="history-screen" class="screen hidden">
@@ -443,11 +452,33 @@
                         <p id="account-profile-error" class="auth-error hidden"></p>
                         <button id="account-profile-submit-btn" class="primary-btn auth-submit-btn" type="submit">Сохранить изменения</button>
                     </form>
-                    <section class="account-support-card hidden">
+                    <div class="account-actions">
+                        <button id="open-change-password-btn" class="secondary-btn" type="button">Сменить пароль</button>
+                        <button id="account-logout-btn" class="secondary-btn account-logout-btn" type="button">Выйти</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="support-modal" class="modal hidden">
+            <div class="modal-content account-modal-card">
+                <div class="modal-header">
+                    <h3>Поддержать проект</h3>
+                    <button id="close-support-btn" class="close-btn">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-subtitle">Если хочется поддержать проект, оплата проходит отдельно, на защищённой стороне Robokassa.</p>
+                    <p class="support-legal-note">
+                        Перед оплатой можно прочитать
+                        <a href="support-project.html" target="_blank" rel="noopener noreferrer">условия поддержки</a>
+                        и
+                        <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer">политику персональных данных</a>.
+                    </p>
+                    <section id="account-support-card" class="account-support-card support-modal-card">
                         <div class="account-support-header">
                             <div>
-                                <h4>Поддержать проект</h4>
-                                <p id="account-support-summary" class="account-support-summary">Оплата проходит на защищённой стороне YooKassa.</p>
+                                <h4>Разовая поддержка</h4>
+                                <p id="account-support-summary" class="account-support-summary">Оплата проходит на защищённой стороне Robokassa.</p>
                             </div>
                             <span id="account-support-badge" class="account-support-badge hidden">Спасибо за поддержку</span>
                         </div>
@@ -464,10 +495,6 @@
                         <p id="account-support-error" class="auth-error hidden"></p>
                         <button id="account-support-submit-btn" class="primary-btn auth-submit-btn" type="button">Перейти к оплате</button>
                     </section>
-                    <div class="account-actions">
-                        <button id="open-change-password-btn" class="secondary-btn" type="button">Сменить пароль</button>
-                        <button id="account-logout-btn" class="secondary-btn account-logout-btn" type="button">Выйти</button>
-                    </div>
                 </div>
             </div>
         </div>
@@ -759,6 +786,11 @@
                 </div>
             </div>
         </div>
+
+        <footer class="app-footer">
+            <a href="support-project.html" target="_blank" rel="noopener noreferrer">Поддержка проекта и условия оплаты</a>
+            <a href="privacy-policy.html" target="_blank" rel="noopener noreferrer">Политика персональных данных</a>
+        </footer>
     </div>
 
     <script src="js/app.bundle.js?v=20260415-payments"></script>

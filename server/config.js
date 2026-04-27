@@ -87,10 +87,12 @@ const config = {
     smtpPassword: process.env.SMTP_PASSWORD || '',
     smtpFromEmail: process.env.SMTP_FROM_EMAIL || '',
     smtpFromName: process.env.SMTP_FROM_NAME || 'Мои ложки',
-    yookassaShopId: process.env.YOOKASSA_SHOP_ID || '',
-    yookassaSecretKey: process.env.YOOKASSA_SECRET_KEY || '',
-    yookassaWebhookSecret: process.env.YOOKASSA_WEBHOOK_SECRET || '',
-    yookassaWebhookAllowedIps: parseCsvList(process.env.YOOKASSA_WEBHOOK_ALLOWED_IPS),
+    robokassaMerchantLogin: process.env.ROBOKASSA_MERCHANT_LOGIN || '',
+    robokassaPassword1: process.env.ROBOKASSA_PASSWORD_1 || '',
+    robokassaPassword2: process.env.ROBOKASSA_PASSWORD_2 || '',
+    robokassaHashAlgorithm: process.env.ROBOKASSA_HASH_ALGORITHM || 'md5',
+    robokassaIsTest: parseBoolean(process.env.ROBOKASSA_IS_TEST, false),
+    robokassaWebhookAllowedIps: parseCsvList(process.env.ROBOKASSA_WEBHOOK_ALLOWED_IPS),
     donationAllowedAmounts: parseCsvList(process.env.DONATION_ALLOWED_AMOUNTS)
         .map(value => Number(value))
         .filter(value => Number.isFinite(value) && value > 0),
@@ -117,7 +119,7 @@ function getSafeRuntimeSummary() {
         allowedOrigin: config.allowedOrigin,
         dataEncryptionConfigured: Boolean(config.dataEncryptionKey || !config.isProduction),
         smtpConfigured: Boolean(config.smtpHost && config.smtpUser && config.smtpPassword && config.smtpFromEmail),
-        yookassaConfigured: Boolean(config.yookassaShopId && config.yookassaSecretKey),
+        robokassaConfigured: Boolean(config.robokassaMerchantLogin && config.robokassaPassword1 && config.robokassaPassword2),
     };
 }
 

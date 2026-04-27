@@ -266,12 +266,16 @@ export async function initApp({ elements }) {
         const resetToken = params.get('resetToken');
         const paymentReturn = params.get('paymentReturn');
         const paymentDonationId = params.get('donationId');
+        const paymentStatus = params.get('paymentStatus');
         if (resetToken) {
             app.runtime.auth.mode = 'reset-password';
             app.runtime.auth.resetToken = resetToken;
         }
         if (paymentReturn === '1' && paymentDonationId) {
             app.runtime.auth.payments.returnDonationId = paymentDonationId;
+            if (paymentStatus === 'failed') {
+                app.runtime.auth.payments.returnStatus = 'canceled';
+            }
         }
 
         window.addEventListener('online', async () => {
