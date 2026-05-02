@@ -22,6 +22,9 @@ function mapUserRow(row) {
         createdAt: row.created_at,
         updatedAt: row.updated_at,
         passwordChangedAt: row.password_changed_at,
+        vkUserId: row.vk_user_id,
+        vkLinkedAt: row.vk_linked_at,
+        vkFirstSeenAt: row.vk_first_seen_at,
     };
 }
 
@@ -65,14 +68,19 @@ const { splitAppState } = require('./state-storage');
 
 function createRepositories(db, { encryptor } = {}) {
     const selectUserByEmail = db.prepare(`
-        SELECT id, name, email, password_salt, password_hash, created_at, updated_at, password_changed_at
+        SELECT id, name, email, password_salt, password_hash, created_at, updated_at, password_changed_at, vk_user_id, vk_linked_at, vk_first_seen_at
         FROM users
         WHERE email = ?
     `);
     const selectUserById = db.prepare(`
-        SELECT id, name, email, password_salt, password_hash, created_at, updated_at, password_changed_at
+        SELECT id, name, email, password_salt, password_hash, created_at, updated_at, password_changed_at, vk_user_id, vk_linked_at, vk_first_seen_at
         FROM users
         WHERE id = ?
+    `);
+    const selectUserByVkUserId = db.prepare(`
+        SELECT id, name, email, password_salt, password_hash, created_at, updated_at, password_changed_at, vk_user_id, vk_linked_at, vk_first_seen_at
+        FROM users
+        WHERE vk_user_id = ?
     `);
     const insertUser = db.prepare(`
         INSERT INTO users (
@@ -83,7 +91,10 @@ function createRepositories(db, { encryptor } = {}) {
             password_hash,
             created_at,
             updated_at,
-            password_changed_at
+            password_changed_at,
+            vk_user_id,
+            vk_linked_at,
+            vk_first_seen_at
         )
         VALUES (
             @id,
@@ -93,7 +104,10 @@ function createRepositories(db, { encryptor } = {}) {
             @password_hash,
             @created_at,
             @updated_at,
-            @password_changed_at
+            @password_changed_at,
+            @vk_user_id,
+            @vk_linked_at,
+            @vk_first_seen_at
         )
     `);
     const updateUserProfile = db.prepare(`
@@ -109,6 +123,14 @@ function createRepositories(db, { encryptor } = {}) {
             password_hash = @password_hash,
             updated_at = @updated_at,
             password_changed_at = @password_changed_at
+        WHERE id = @id
+    `);
+    const linkVkToUser = db.prepare(`
+        UPDATE users
+        SET vk_user_id = @vk_user_id,
+            vk_linked_at = @vk_linked_at,
+            vk_first_seen_at = COALESCE(vk_first_seen_at, @vk_first_seen_at),
+            updated_at = @updated_at
         WHERE id = @id
     `);
     const selectGuestState = db.prepare(`
@@ -380,6 +402,10 @@ function createRepositories(db, { encryptor } = {}) {
             return mapUserRow(selectUserById.get(id));
         },
 
+        findUserByVkUserId(vkUserId) {
+            return mapUserRow(selectUserByVkUserId.get(vkUserId));
+        },
+
         createUser(user) {
             insertUser.run({
                 id: user.id,
@@ -390,6 +416,9 @@ function createRepositories(db, { encryptor } = {}) {
                 created_at: user.createdAt,
                 updated_at: user.updatedAt,
                 password_changed_at: user.passwordChangedAt,
+                vk_user_id: user.vkUserId || null,
+                vk_linked_at: user.vkLinkedAt || null,
+                vk_first_seen_at: user.vkFirstSeenAt || null,
             });
             return user;
         },
@@ -413,6 +442,17 @@ function createRepositories(db, { encryptor } = {}) {
                 password_changed_at: user.passwordChangedAt,
             });
             return this.findUserById(user.id);
+        },
+
+        linkVkUser({ id, vkUserId, vkLinkedAt, vkFirstSeenAt, updatedAt }) {
+            linkVkToUser.run({
+                id,
+                vk_user_id: vkUserId,
+                vk_linked_at: vkLinkedAt,
+                vk_first_seen_at: vkFirstSeenAt,
+                updated_at: updatedAt,
+            });
+            return this.findUserById(id);
         },
 
         getGuestRuntimeState() {

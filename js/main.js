@@ -9,6 +9,7 @@ import { getOverdueTasks } from './domain/tasks.js';
 import { buildMoodHistoryEntry, createCurrentDayMeta, upsertMoodHistoryEntry } from './domain/history.js';
 import { applyDailyTemplatesForDate } from './domain/templates.js';
 import { createAuthService } from './services/auth.js';
+import { createVkService } from './services/vk.js';
 import {
     clearOfflineAuthSnapshot,
     readOfflineAuthSnapshot,
@@ -119,10 +120,12 @@ async function startAuthenticatedFlow(app) {
 export async function initApp({ elements }) {
     const store = createStore();
     const auth = createAuthService();
+    const vk = createVkService();
     const app = {
         elements,
         store,
         auth,
+        vk,
         runtime: {
             builtinAdvices,
             currentAdvice: '',
@@ -169,6 +172,12 @@ export async function initApp({ elements }) {
                     error: '',
                     message: '',
                 },
+            },
+            vk: {
+                isMiniApp: false,
+                launchParams: {},
+                rawLaunchParams: '',
+                linkingRequired: false,
             },
             voice: {
                 isSupported: false,
@@ -262,6 +271,10 @@ export async function initApp({ elements }) {
     app.screens.showAuthScreen();
 
     if (typeof window !== 'undefined') {
+        const vkContext = await vk.init();
+        app.runtime.vk.isMiniApp = Boolean(vkContext?.isVkMiniApp);
+        app.runtime.vk.launchParams = vkContext?.launchParams || {};
+        app.runtime.vk.rawLaunchParams = vkContext?.rawLaunchParams || '';
         const params = new URLSearchParams(window.location.search);
         const resetToken = params.get('resetToken');
         const paymentReturn = params.get('paymentReturn');
@@ -306,6 +319,32 @@ export async function initApp({ elements }) {
     }
 
     try {
+        if (app.runtime.vk.isMiniApp && app.runtime.vk.rawLaunchParams) {
+            const vkSession = await auth.authenticateWithVk({
+                launchParams: app.runtime.vk.rawLaunchParams,
+            });
+            if (vkSession.authenticated && vkSession.user) {
+                app.runtime.vk.linkingRequired = false;
+                await app.startAuthenticatedFlow(vkSession.user);
+                return app;
+            }
+
+            if (vkSession.linkingRequired) {
+                clearOfflineAuthSnapshot();
+                await store.clearOfflineCache?.({ includeGuest: true });
+                app.runtime.vk.linkingRequired = true;
+                app.runtime.auth.mode = 'login';
+                app.runtime.auth.status = 'guest';
+                app.runtime.auth.user = null;
+                app.runtime.auth.error = '';
+                app.runtime.auth.notice = 'Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK.';
+                app.runtime.auth.isOfflineAuthenticated = false;
+                store.setSessionContext({ authenticated: false, userId: null });
+                app.screens.showAuthScreen();
+                return app;
+            }
+        }
+
         const session = await auth.checkSession();
         if (!session.authenticated || !session.user) {
             clearOfflineAuthSnapshot();
@@ -314,6 +353,9 @@ export async function initApp({ elements }) {
             app.runtime.auth.status = 'guest';
             app.runtime.auth.user = null;
             app.runtime.auth.error = '';
+            app.runtime.auth.notice = app.runtime.vk.isMiniApp
+                ? 'Войдите, чтобы связать текущий аккаунт с вашим профилем VK.'
+                : '';
             app.runtime.auth.isOfflineAuthenticated = false;
             store.setSessionContext({ authenticated: false, userId: null });
             app.screens.showAuthScreen();

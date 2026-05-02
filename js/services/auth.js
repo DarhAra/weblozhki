@@ -4,7 +4,9 @@ const API_AUTH_REGISTER_URL = '/api/auth/register';
 const API_AUTH_LOGOUT_URL = '/api/auth/logout';
 const API_AUTH_FORGOT_PASSWORD_URL = '/api/auth/forgot-password';
 const API_AUTH_RESET_PASSWORD_URL = '/api/auth/reset-password';
+const API_VK_AUTH_URL = '/api/vk/auth';
 const API_ACCOUNT_PROFILE_URL = '/api/account/profile';
+const API_ACCOUNT_LINK_VK_URL = '/api/account/link-vk';
 const API_ACCOUNT_CHANGE_PASSWORD_URL = '/api/account/change-password';
 const API_PAYMENT_STATUS_URL = '/api/payments/status';
 const API_CREATE_DONATION_SESSION_URL = '/api/payments/create-donation-session';
@@ -80,6 +82,18 @@ function buildFriendlyAuthError(payload, fallbackMessage) {
     if (errorCode === 'ORIGIN_FORBIDDEN') {
         return 'Запрос отклонён из соображений безопасности.';
     }
+    if (errorCode === 'VK_AUTH_NOT_CONFIGURED') {
+        return 'VK-вход пока не настроен на сервере.';
+    }
+    if (errorCode === 'VK_SIGN_INVALID' || errorCode === 'VK_PARAMS_INVALID' || errorCode === 'VK_APP_ID_MISMATCH') {
+        return 'Не удалось проверить запуск из VK. Откройте приложение заново из ВКонтакте.';
+    }
+    if (errorCode === 'VK_ALREADY_LINKED') {
+        return 'Этот аккаунт VK уже привязан к другому профилю.';
+    }
+    if (errorCode === 'VK_LINK_FAILED') {
+        return 'Сейчас не получается привязать аккаунт VK.';
+    }
     return fallbackMessage;
 }
 
@@ -132,6 +146,27 @@ export function createAuthService() {
 
         return {
             authenticated: Boolean(payload?.authenticated),
+            user: payload?.user || null,
+            csrfToken: payload?.csrfToken || '',
+        };
+    }
+
+    async function authenticateWithVk({ launchParams }) {
+        const payload = await requestJson(
+            API_VK_AUTH_URL,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ launchParams }),
+            },
+            'Сейчас не получается проверить вход через VK.',
+        );
+
+        return {
+            authenticated: Boolean(payload?.authenticated),
+            linkingRequired: Boolean(payload?.linkingRequired),
             user: payload?.user || null,
             csrfToken: payload?.csrfToken || '',
         };
@@ -234,6 +269,22 @@ export function createAuthService() {
         return payload?.user || null;
     }
 
+    async function linkVkAccount({ launchParams }) {
+        const payload = await requestJson(
+            API_ACCOUNT_LINK_VK_URL,
+            {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ launchParams }),
+            },
+            'Сейчас не получается привязать аккаунт VK.',
+        );
+
+        return payload?.user || null;
+    }
+
     async function changePassword({ currentPassword, newPassword }) {
         return requestJson(
             API_ACCOUNT_CHANGE_PASSWORD_URL,
@@ -261,7 +312,7 @@ export function createAuthService() {
         );
     }
 
-    async function createDonationSession({ amount }) {
+    async function createDonationSession({ amount, launchParams = '' }) {
         return requestJson(
             API_CREATE_DONATION_SESSION_URL,
             {
@@ -269,7 +320,7 @@ export function createAuthService() {
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                body: JSON.stringify({ amount }),
+                body: JSON.stringify({ amount, launchParams }),
             },
             'Сейчас не получается открыть страницу оплаты.',
         );
@@ -277,6 +328,7 @@ export function createAuthService() {
 
     return {
         checkSession,
+        authenticateWithVk,
         login,
         register,
         logout,
@@ -284,6 +336,7 @@ export function createAuthService() {
         resetPassword,
         getProfile,
         updateProfile,
+        linkVkAccount,
         changePassword,
         getPaymentStatus,
         createDonationSession,

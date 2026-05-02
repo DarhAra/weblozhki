@@ -1,5 +1,328 @@
 /* Generated from js/main.js. Run `npm run build` after editing source modules. */
 (() => {
+  var __create = Object.create;
+  var __defProp = Object.defineProperty;
+  var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
+  var __getOwnPropNames = Object.getOwnPropertyNames;
+  var __getProtoOf = Object.getPrototypeOf;
+  var __hasOwnProp = Object.prototype.hasOwnProperty;
+  var __commonJS = (cb, mod) => function __require() {
+    return mod || (0, cb[__getOwnPropNames(cb)[0]])((mod = { exports: {} }).exports, mod), mod.exports;
+  };
+  var __copyProps = (to, from, except, desc) => {
+    if (from && typeof from === "object" || typeof from === "function") {
+      for (let key of __getOwnPropNames(from))
+        if (!__hasOwnProp.call(to, key) && key !== except)
+          __defProp(to, key, { get: () => from[key], enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable });
+    }
+    return to;
+  };
+  var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+    // If the importer is in node compatibility mode or this is not an ESM
+    // file that has been converted to a CommonJS file using a Babel-
+    // compatible transform (i.e. "__esModule" has not been set), then set
+    // "default" to the CommonJS "module.exports" for node compatibility.
+    isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+    mod
+  ));
+
+  // node_modules/@vkontakte/vk-bridge/dist/index.umd.js
+  var require_index_umd = __commonJS({
+    "node_modules/@vkontakte/vk-bridge/dist/index.umd.js"(exports, module) {
+      !(function(e, n) {
+        "object" == typeof exports && "undefined" != typeof module ? n(exports) : "function" == typeof define && define.amd ? define(["exports"], n) : n((e = "undefined" != typeof globalThis ? globalThis : e || self).vkBridge = {});
+      })(exports, (function(e) {
+        "use strict";
+        var n = function() {
+          return n = Object.assign || function(e2) {
+            for (var n2, t2 = 1, r2 = arguments.length; t2 < r2; t2++) for (var o2 in n2 = arguments[t2]) Object.prototype.hasOwnProperty.call(n2, o2) && (e2[o2] = n2[o2]);
+            return e2;
+          }, n.apply(this, arguments);
+        };
+        function t(e2, n2, t2, r2) {
+          return new (t2 || (t2 = Promise))((function(o2, a2) {
+            function i2(e3) {
+              try {
+                s2(r2.next(e3));
+              } catch (e4) {
+                a2(e4);
+              }
+            }
+            function p2(e3) {
+              try {
+                s2(r2.throw(e3));
+              } catch (e4) {
+                a2(e4);
+              }
+            }
+            function s2(e3) {
+              var n3;
+              e3.done ? o2(e3.value) : (n3 = e3.value, n3 instanceof t2 ? n3 : new t2((function(e4) {
+                e4(n3);
+              }))).then(i2, p2);
+            }
+            s2((r2 = r2.apply(e2, n2 || [])).next());
+          }));
+        }
+        function r(e2, n2) {
+          var t2, r2, o2, a2, i2 = { label: 0, sent: function() {
+            if (1 & o2[0]) throw o2[1];
+            return o2[1];
+          }, trys: [], ops: [] };
+          return a2 = { next: p2(0), throw: p2(1), return: p2(2) }, "function" == typeof Symbol && (a2[Symbol.iterator] = function() {
+            return this;
+          }), a2;
+          function p2(p3) {
+            return function(s2) {
+              return (function(p4) {
+                if (t2) throw new TypeError("Generator is already executing.");
+                for (; a2 && (a2 = 0, p4[0] && (i2 = 0)), i2; ) try {
+                  if (t2 = 1, r2 && (o2 = 2 & p4[0] ? r2.return : p4[0] ? r2.throw || ((o2 = r2.return) && o2.call(r2), 0) : r2.next) && !(o2 = o2.call(r2, p4[1])).done) return o2;
+                  switch (r2 = 0, o2 && (p4 = [2 & p4[0], o2.value]), p4[0]) {
+                    case 0:
+                    case 1:
+                      o2 = p4;
+                      break;
+                    case 4:
+                      return i2.label++, { value: p4[1], done: false };
+                    case 5:
+                      i2.label++, r2 = p4[1], p4 = [0];
+                      continue;
+                    case 7:
+                      p4 = i2.ops.pop(), i2.trys.pop();
+                      continue;
+                    default:
+                      if (!(o2 = i2.trys, (o2 = o2.length > 0 && o2[o2.length - 1]) || 6 !== p4[0] && 2 !== p4[0])) {
+                        i2 = 0;
+                        continue;
+                      }
+                      if (3 === p4[0] && (!o2 || p4[1] > o2[0] && p4[1] < o2[3])) {
+                        i2.label = p4[1];
+                        break;
+                      }
+                      if (6 === p4[0] && i2.label < o2[1]) {
+                        i2.label = o2[1], o2 = p4;
+                        break;
+                      }
+                      if (o2 && i2.label < o2[2]) {
+                        i2.label = o2[2], i2.ops.push(p4);
+                        break;
+                      }
+                      o2[2] && i2.ops.pop(), i2.trys.pop();
+                      continue;
+                  }
+                  p4 = n2.call(e2, i2);
+                } catch (e3) {
+                  p4 = [6, e3], r2 = 0;
+                } finally {
+                  t2 = o2 = 0;
+                }
+                if (5 & p4[0]) throw p4[1];
+                return { value: p4[0] ? p4[1] : void 0, done: true };
+              })([p3, s2]);
+            };
+          }
+        }
+        function o(e2, n2, t2) {
+          if (t2 || 2 === arguments.length) for (var r2, o2 = 0, a2 = n2.length; o2 < a2; o2++) !r2 && o2 in n2 || (r2 || (r2 = Array.prototype.slice.call(n2, 0, o2)), r2[o2] = n2[o2]);
+          return e2.concat(r2 || Array.prototype.slice.call(n2));
+        }
+        function a(e2, t2, r2) {
+          var o2 = /* @__PURE__ */ (function(e3) {
+            var n2 = { current: 0, next: function() {
+              return ++this.current;
+            } }, t3 = {};
+            return { add: function(r3, o3) {
+              var a2 = null != o3 ? o3 : "".concat(n2.next(), "_").concat(e3);
+              return t3[a2] = r3, a2;
+            }, resolve: function(e4, n3, r3) {
+              var o3 = t3[e4];
+              o3 && (r3(n3) ? o3.resolve(n3) : o3.reject(n3), t3[e4] = null);
+            } };
+          })(r2);
+          return t2((function(e3) {
+            if (e3.detail && e3.detail.data && "object" == typeof e3.detail.data && "request_id" in e3.detail.data) {
+              var n2 = e3.detail.data, t3 = n2.request_id, r3 = (function(e4, n3) {
+                var t4 = {};
+                for (var r4 in e4) Object.prototype.hasOwnProperty.call(e4, r4) && n3.indexOf(r4) < 0 && (t4[r4] = e4[r4]);
+                if (null != e4 && "function" == typeof Object.getOwnPropertySymbols) {
+                  var o3 = 0;
+                  for (r4 = Object.getOwnPropertySymbols(e4); o3 < r4.length; o3++) n3.indexOf(r4[o3]) < 0 && Object.prototype.propertyIsEnumerable.call(e4, r4[o3]) && (t4[r4[o3]] = e4[r4[o3]]);
+                }
+                return t4;
+              })(n2, ["request_id"]);
+              t3 && o2.resolve(t3, r3, (function(e4) {
+                return !("error_type" in e4);
+              }));
+            }
+          })), function(t3, r3) {
+            return void 0 === r3 && (r3 = {}), new Promise((function(a2, i2) {
+              var p2 = o2.add({ resolve: a2, reject: i2 }, r3.request_id);
+              e2(t3, n(n({}, r3), { request_id: p2 }));
+            }));
+          };
+        }
+        var i, p = "undefined" != typeof window, s = Boolean(p && window.AndroidBridge), u = Boolean(p && window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.VKWebAppClose), c = Boolean(p && window.ReactNativeWebView && "function" == typeof window.ReactNativeWebView.postMessage), d = p && !s && !u, l = d && /(^\?|&)vk_platform=mobile_web(&|$)/.test(location.search), f = d ? "message" : "VKWebAppEvent", b = o(["VKWebAppInit", "VKWebAppGetCommunityAuthToken", "VKWebAppAddToCommunity", "VKWebAppAddToHomeScreenInfo", "VKWebAppClose", "VKWebAppCopyText", "VKWebAppCreateHash", "VKWebAppGetUserInfo", "VKWebAppSetLocation", "VKWebAppSendToClient", "VKWebAppGetClientVersion", "VKWebAppGetPhoneNumber", "VKWebAppGetEmail", "VKWebAppGetGroupInfo", "VKWebAppGetGeodata", "VKWebAppGetCommunityToken", "VKWebAppGetConfig", "VKWebAppGetLaunchParams", "VKWebAppSetTitle", "VKWebAppGetAuthToken", "VKWebAppCallAPIMethod", "VKWebAppJoinGroup", "VKWebAppLeaveGroup", "VKWebAppAllowMessagesFromGroup", "VKWebAppDenyNotifications", "VKWebAppAllowNotifications", "VKWebAppOpenPayForm", "VKWebAppOpenApp", "VKWebAppShare", "VKWebAppShowWallPostBox", "VKWebAppScroll", "VKWebAppShowOrderBox", "VKWebAppShowLeaderBoardBox", "VKWebAppShowInviteBox", "VKWebAppShowRequestBox", "VKWebAppAddToFavorites", "VKWebAppShowStoryBox", "VKWebAppStorageGet", "VKWebAppStorageGetKeys", "VKWebAppStorageSet", "VKWebAppFlashGetInfo", "VKWebAppSubscribeStoryApp", "VKWebAppOpenWallPost", "VKWebAppCheckAllowedScopes", "VKWebAppCheckBannerAd", "VKWebAppHideBannerAd", "VKWebAppShowBannerAd", "VKWebAppCheckNativeAds", "VKWebAppShowNativeAds", "VKWebAppRetargetingPixel", "VKWebAppConversionHit", "VKWebAppShowSubscriptionBox", "VKWebAppCheckSurvey", "VKWebAppShowSurvey", "VKWebAppScrollTop", "VKWebAppScrollTopStart", "VKWebAppScrollTopStop", "VKWebAppShowSlidesSheet", "VKWebAppTranslate", "VKWebAppRecommend", "VKWebAppAddToProfile", "VKWebAppGetFriends"], d && !l ? ["VKWebAppResizeWindow", "VKWebAppAddToMenu", "VKWebAppShowInstallPushBox", "VKWebAppShowCommunityWidgetPreviewBox", "VKWebAppCallStart", "VKWebAppCallJoin", "VKWebAppCallGetStatus"] : ["VKWebAppShowImages"], true), A = p ? window.AndroidBridge : void 0, v = u ? window.webkit.messageHandlers : void 0, h = d ? parent : void 0;
+        var m, w, W, y, V, K, _, g, S, E;
+        e.EAdsFormats = void 0, (m = e.EAdsFormats || (e.EAdsFormats = {})).REWARD = "reward", m.INTERSTITIAL = "interstitial", e.BannerAdLayoutType = void 0, (w = e.BannerAdLayoutType || (e.BannerAdLayoutType = {})).RESIZE = "resize", w.OVERLAY = "overlay", e.BannerAdLocation = void 0, (W = e.BannerAdLocation || (e.BannerAdLocation = {})).TOP = "top", W.BOTTOM = "bottom", e.BannerAdAlign = void 0, (y = e.BannerAdAlign || (e.BannerAdAlign = {})).LEFT = "left", y.RIGHT = "right", y.CENTER = "center", e.BannerAdHeightType = void 0, (V = e.BannerAdHeightType || (e.BannerAdHeightType = {})).COMPACT = "compact", V.REGULAR = "regular", e.BannerAdOrientation = void 0, (K = e.BannerAdOrientation || (e.BannerAdOrientation = {})).HORIZONTAL = "horizontal", K.VERTICAL = "vertical", e.EGrantedPermission = void 0, (_ = e.EGrantedPermission || (e.EGrantedPermission = {})).CAMERA = "camera", _.LOCATION = "location", _.PHOTO = "photo", e.EGetLaunchParamsResponseLanguages = void 0, (g = e.EGetLaunchParamsResponseLanguages || (e.EGetLaunchParamsResponseLanguages = {})).RU = "ru", g.UK = "uk", g.UA = "ua", g.EN = "en", g.BE = "be", g.KZ = "kz", g.PT = "pt", g.ES = "es", e.EGetLaunchParamsResponseGroupRole = void 0, (S = e.EGetLaunchParamsResponseGroupRole || (e.EGetLaunchParamsResponseGroupRole = {})).ADMIN = "admin", S.EDITOR = "editor", S.MEMBER = "member", S.MODER = "moder", S.NONE = "none", e.EGetLaunchParamsResponsePlatforms = void 0, (E = e.EGetLaunchParamsResponsePlatforms || (e.EGetLaunchParamsResponsePlatforms = {})).DESKTOP_WEB = "desktop_web", E.DESKTOP_WEB_MESSENGER = "desktop_web_messenger", E.DESKTOP_APP_MESSENGER = "desktop_app_messenger", E.MOBILE_WEB = "mobile_web", E.MOBILE_ANDROID = "mobile_android", E.MOBILE_ANDROID_MESSENGER = "mobile_android_messenger", E.MOBILE_IPHONE = "mobile_iphone", E.MOBILE_IPHONE_MESSENGER = "mobile_iphone_messenger", E.MOBILE_IPAD = "mobile_ipad";
+        var O = (function(e2) {
+          var n2 = void 0, p2 = [], l2 = Math.random().toString(36).substring(2, 5);
+          function m2(e3) {
+            p2.push(e3);
+          }
+          function w2(e3) {
+            return s ? !(!A || "function" != typeof A[e3]) : u ? !(!v || !v[e3] || "function" != typeof v[e3].postMessage) : !!d && b.includes(e3);
+          }
+          function W2() {
+            return u || s;
+          }
+          function y2() {
+            return d && window.parent !== window;
+          }
+          function V2() {
+            return W2() || y2();
+          }
+          function K2(e3) {
+            if (u || s) return o([], p2, true).map((function(n3) {
+              return n3.call(null, e3);
+            }));
+            var t2 = null == e3 ? void 0 : e3.data;
+            if (d && t2) {
+              if (c && "string" == typeof t2) try {
+                t2 = JSON.parse(t2);
+              } catch (e4) {
+              }
+              var r2 = t2.type, a2 = t2.data, i2 = t2.frameId;
+              r2 && ("VKWebAppSettings" !== r2 ? o([], p2, true).map((function(e4) {
+                return e4({ detail: { type: r2, data: a2 } });
+              })) : n2 = i2);
+            }
+          }
+          c && /(android)/i.test(navigator.userAgent) ? document.addEventListener(f, K2) : "undefined" != typeof window && "addEventListener" in window && window.addEventListener(f, K2);
+          var _2 = a((function(t2, r2) {
+            A && A[t2] ? A[t2](JSON.stringify(r2)) : v && v[t2] && "function" == typeof v[t2].postMessage ? v[t2].postMessage(r2) : c ? window.ReactNativeWebView.postMessage(JSON.stringify({ handler: t2, params: r2 })) : h && "function" == typeof h.postMessage && h.postMessage({ handler: t2, params: r2, type: "vk-connect", webFrameId: n2, connectVersion: e2 }, "*");
+          }), m2, l2);
+          return m2((function(e3) {
+            if (e3.detail && "SetSupportedHandlers" === e3.detail.type) i = new Set(e3.detail.data.supportedHandlers);
+          })), { send: _2, sendPromise: _2, subscribe: m2, unsubscribe: function(e3) {
+            var n3 = p2.indexOf(e3);
+            n3 > -1 && p2.splice(n3, 1);
+          }, supports: function(e3) {
+            return console.warn("bridge.supports method is deprecated. Use bridge.supportsAsync instead."), w2(e3);
+          }, supportsAsync: function(e3) {
+            return t(this, void 0, void 0, (function() {
+              var n3;
+              return r(this, (function(t2) {
+                switch (t2.label) {
+                  case 0:
+                    if (s || u) return [2, w2(e3)];
+                    if (i) return [2, i.has(e3)];
+                    t2.label = 1;
+                  case 1:
+                    return t2.trys.push([1, 3, , 4]), [4, _2("SetSupportedHandlers")];
+                  case 2:
+                    return n3 = t2.sent(), i = new Set(n3.supportedHandlers), [3, 4];
+                  case 3:
+                    return t2.sent(), i = /* @__PURE__ */ new Set(["VKWebAppInit"]), [3, 4];
+                  case 4:
+                    return [2, i.has(e3)];
+                }
+              }));
+            }));
+          }, isWebView: W2, isIframe: y2, isEmbedded: V2, isStandalone: function() {
+            return !V2();
+          } };
+        })("2.15.12");
+        e.applyMiddleware = function e2() {
+          for (var t2 = [], r2 = 0; r2 < arguments.length; r2++) t2[r2] = arguments[r2];
+          return t2.includes(void 0) || t2.includes(null) ? e2.apply(void 0, t2.filter((function(e3) {
+            return "function" == typeof e3;
+          }))) : function(e3) {
+            if (0 === t2.length) return e3;
+            var r3, o2 = { subscribe: e3.subscribe, send: function() {
+              for (var n2 = [], t3 = 0; t3 < arguments.length; t3++) n2[t3] = arguments[t3];
+              return e3.send.apply(e3, n2);
+            } }, a2 = t2.filter((function(e4) {
+              return "function" == typeof e4;
+            })).map((function(e4) {
+              return e4(o2);
+            })).reduce((function(e4, n2) {
+              return function(t3) {
+                return e4(n2(t3));
+              };
+            }));
+            return r3 = a2(e3.send), n(n({}, e3), { send: r3 });
+          };
+        }, e.default = O, e.parseURLSearchParamsForGetLaunchParams = function(n2) {
+          var t2 = {};
+          try {
+            var r2 = new URLSearchParams(n2);
+            r2.forEach((function(n3, r3) {
+              switch (r3) {
+                case "vk_ts":
+                case "vk_is_recommended":
+                case "vk_profile_id":
+                case "vk_has_profile_button":
+                case "vk_testing_group_id":
+                case "vk_user_id":
+                case "vk_app_id":
+                case "vk_group_id":
+                  t2[r3] = Number(n3);
+                  break;
+                case "sign":
+                case "vk_chat_id":
+                case "vk_ref":
+                case "vk_access_token_settings":
+                  t2[r3] = n3;
+                  break;
+                case "odr_enabled":
+                  t2.odr_enabled = "1" === n3 ? 1 : void 0;
+                  break;
+                case "vk_is_app_user":
+                case "vk_are_notifications_enabled":
+                case "vk_is_favorite":
+                  t2[r3] = (function(e2) {
+                    switch (e2) {
+                      case "0":
+                        return 0;
+                      case "1":
+                        return 1;
+                      default:
+                        return;
+                    }
+                  })(n3);
+                  break;
+                case "vk_language":
+                  t2.vk_language = (function(n4) {
+                    return Object.values(e.EGetLaunchParamsResponseLanguages).some((function(e2) {
+                      return e2 === n4;
+                    }));
+                  })(n3) ? n3 : void 0;
+                  break;
+                case "vk_viewer_group_role":
+                  t2.vk_viewer_group_role = (function(n4) {
+                    return Object.values(e.EGetLaunchParamsResponseGroupRole).some((function(e2) {
+                      return e2 === n4;
+                    }));
+                  })(n3) ? n3 : void 0;
+                  break;
+                case "vk_platform":
+                  t2.vk_platform = (function(n4) {
+                    return Object.values(e.EGetLaunchParamsResponsePlatforms).some((function(e2) {
+                      return e2 === n4;
+                    }));
+                  })(n3) ? n3 : void 0;
+              }
+            }));
+          } catch (e2) {
+            console.warn(e2);
+          }
+          return t2;
+        }, Object.defineProperty(e, "__esModule", { value: true });
+      }));
+    }
+  });
+
   // js/ui/elements.js
   function collectElements(doc = document) {
     return {
@@ -960,7 +1283,9 @@
   var API_AUTH_LOGOUT_URL = "/api/auth/logout";
   var API_AUTH_FORGOT_PASSWORD_URL = "/api/auth/forgot-password";
   var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
+  var API_VK_AUTH_URL = "/api/vk/auth";
   var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
+  var API_ACCOUNT_LINK_VK_URL = "/api/account/link-vk";
   var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
   var API_PAYMENT_STATUS_URL = "/api/payments/status";
   var API_CREATE_DONATION_SESSION_URL = "/api/payments/create-donation-session";
@@ -1029,6 +1354,18 @@
     if (errorCode === "ORIGIN_FORBIDDEN") {
       return "Запрос отклонён из соображений безопасности.";
     }
+    if (errorCode === "VK_AUTH_NOT_CONFIGURED") {
+      return "VK-вход пока не настроен на сервере.";
+    }
+    if (errorCode === "VK_SIGN_INVALID" || errorCode === "VK_PARAMS_INVALID" || errorCode === "VK_APP_ID_MISMATCH") {
+      return "Не удалось проверить запуск из VK. Откройте приложение заново из ВКонтакте.";
+    }
+    if (errorCode === "VK_ALREADY_LINKED") {
+      return "Этот аккаунт VK уже привязан к другому профилю.";
+    }
+    if (errorCode === "VK_LINK_FAILED") {
+      return "Сейчас не получается привязать аккаунт VK.";
+    }
     return fallbackMessage;
   }
   async function requestJson(url, options = {}, fallbackMessage = "Сейчас не получается связаться с сервером.") {
@@ -1073,6 +1410,25 @@
       );
       return {
         authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
+        user: (payload == null ? void 0 : payload.user) || null,
+        csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
+      };
+    }
+    async function authenticateWithVk({ launchParams }) {
+      const payload = await requestJson(
+        API_VK_AUTH_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ launchParams })
+        },
+        "Сейчас не получается проверить вход через VK."
+      );
+      return {
+        authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
+        linkingRequired: Boolean(payload == null ? void 0 : payload.linkingRequired),
         user: (payload == null ? void 0 : payload.user) || null,
         csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
       };
@@ -1163,6 +1519,20 @@
       );
       return (payload == null ? void 0 : payload.user) || null;
     }
+    async function linkVkAccount({ launchParams }) {
+      const payload = await requestJson(
+        API_ACCOUNT_LINK_VK_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({ launchParams })
+        },
+        "Сейчас не получается привязать аккаунт VK."
+      );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
     async function changePassword({ currentPassword, newPassword }) {
       return requestJson(
         API_ACCOUNT_CHANGE_PASSWORD_URL,
@@ -1187,7 +1557,7 @@
         "Сейчас не получается проверить статус поддержки."
       );
     }
-    async function createDonationSession({ amount }) {
+    async function createDonationSession({ amount, launchParams = "" }) {
       return requestJson(
         API_CREATE_DONATION_SESSION_URL,
         {
@@ -1195,13 +1565,14 @@
           headers: {
             "Content-Type": "application/json"
           },
-          body: JSON.stringify({ amount })
+          body: JSON.stringify({ amount, launchParams })
         },
         "Сейчас не получается открыть страницу оплаты."
       );
     }
     return {
       checkSession,
+      authenticateWithVk,
       login,
       register,
       logout,
@@ -1209,6 +1580,7 @@
       resetPassword,
       getProfile,
       updateProfile,
+      linkVkAccount,
       changePassword,
       getPaymentStatus,
       createDonationSession,
@@ -4047,10 +4419,7 @@
       elements.paymentReturnError.textContent = "";
       elements.paymentReturnError.classList.add("hidden");
       if (typeof window !== "undefined") {
-        const url = new URL(window.location.href);
-        url.searchParams.delete("paymentReturn");
-        url.searchParams.delete("donationId");
-        window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+        replaceHistoryWithoutParams(["paymentReturn", "donationId", "paymentStatus"]);
       }
     }
     function getSelectedSupportAmount() {
@@ -4151,10 +4520,13 @@
       authState.payments.status = "submitting";
       renderPaymentSummary();
       try {
-        const payload = await app.auth.createDonationSession({ amount });
+        const payload = await app.auth.createDonationSession({
+          amount,
+          launchParams: app.vk.getLaunchParamsQuery()
+        });
         authState.payments.status = "idle";
         if (payload == null ? void 0 : payload.confirmationUrl) {
-          window.location.href = payload.confirmationUrl;
+          await app.vk.openUrl(payload.confirmationUrl);
           return;
         }
         elements.accountSupportError.textContent = "Сервер не вернул ссылку на оплату.";
@@ -4214,6 +4586,16 @@
       elements.appMenuPopover.classList.toggle("hidden", !shouldOpen);
       elements.openAppMenuBtn.setAttribute("aria-expanded", String(shouldOpen));
     }
+    function replaceHistoryWithoutParams(paramNames = []) {
+      if (typeof window === "undefined") {
+        return;
+      }
+      const url = new URL(window.location.href);
+      paramNames.forEach((paramName) => {
+        url.searchParams.delete(paramName);
+      });
+      window.history.replaceState({}, "", `${url.pathname}${url.search}`);
+    }
     function resetAuthForm({ preserveEmail = true } = {}) {
       if (!preserveEmail) {
         elements.authEmail.value = "";
@@ -4225,7 +4607,7 @@
     function switchAuthMode(mode) {
       authState.mode = mode === "register" ? "register" : "login";
       authState.error = "";
-      authState.notice = "";
+      authState.notice = runtime.vk.isMiniApp && runtime.vk.linkingRequired ? "Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK." : "";
       authState.resetToken = null;
       authState.status = "guest";
       app.renderers.renderAuthScreen();
@@ -4264,7 +4646,7 @@
           authState.error = "";
           resetAuthForm({ preserveEmail: false });
           if (typeof window !== "undefined") {
-            window.history.replaceState({}, "", window.location.pathname);
+            replaceHistoryWithoutParams(["resetToken"]);
           }
           app.renderers.renderAuthScreen();
         } catch (error) {
@@ -4291,8 +4673,15 @@
       authState.notice = "";
       app.renderers.renderAuthScreen();
       try {
-        const user = authState.mode === "register" ? await app.auth.register({ name, email, password }) : await app.auth.login({ email, password });
+        let user = authState.mode === "register" ? await app.auth.register({ name, email, password }) : await app.auth.login({ email, password });
+        if (runtime.vk.isMiniApp && runtime.vk.linkingRequired && runtime.vk.rawLaunchParams) {
+          user = await app.auth.linkVkAccount({
+            launchParams: runtime.vk.rawLaunchParams
+          });
+          runtime.vk.linkingRequired = false;
+        }
         resetAuthForm();
+        authState.notice = "";
         await app.startAuthenticatedFlow(user);
       } catch (error) {
         authState.status = "guest";
@@ -4558,6 +4947,7 @@
       authState.user = null;
       authState.mode = "login";
       authState.status = "guest";
+      authState.notice = runtime.vk.isMiniApp ? "Войдите, чтобы снова связать аккаунт с вашим профилем VK." : "";
       authState.isOfflineAuthenticated = false;
       resetAuthForm({ preserveEmail: false });
       app.screens.showAuthScreen();
@@ -5858,6 +6248,86 @@
     });
   }
 
+  // js/services/vk.js
+  var import_vk_bridge = __toESM(require_index_umd());
+  function hasLaunchParams(params) {
+    return Boolean((params == null ? void 0 : params.vk_app_id) && (params == null ? void 0 : params.vk_user_id) && (params == null ? void 0 : params.sign));
+  }
+  function collectLaunchParamsFromLocation() {
+    if (typeof window === "undefined") {
+      return {
+        isVkMiniApp: false,
+        rawLaunchParams: "",
+        launchParams: {}
+      };
+    }
+    const parsed = (0, import_vk_bridge.parseURLSearchParamsForGetLaunchParams)(window.location.search);
+    const params = {};
+    Object.entries(parsed || {}).forEach(([key, value]) => {
+      if (value === void 0 || value === null || value === "") {
+        return;
+      }
+      params[key] = String(value);
+    });
+    const rawLaunchParams = new URLSearchParams(params).toString();
+    return {
+      isVkMiniApp: hasLaunchParams(params),
+      rawLaunchParams,
+      launchParams: params
+    };
+  }
+  function createVkService() {
+    const state = {
+      isVkMiniApp: false,
+      rawLaunchParams: "",
+      launchParams: {},
+      initialized: false
+    };
+    async function init() {
+      const detected = collectLaunchParamsFromLocation();
+      state.isVkMiniApp = detected.isVkMiniApp;
+      state.rawLaunchParams = detected.rawLaunchParams;
+      state.launchParams = detected.launchParams;
+      if (state.isVkMiniApp && !state.initialized) {
+        state.initialized = true;
+        try {
+          await import_vk_bridge.default.send("VKWebAppInit");
+        } catch {
+        }
+      }
+      return {
+        isVkMiniApp: state.isVkMiniApp,
+        rawLaunchParams: state.rawLaunchParams,
+        launchParams: { ...state.launchParams }
+      };
+    }
+    async function openUrl(url) {
+      if (!url) {
+        return false;
+      }
+      if (state.isVkMiniApp) {
+        try {
+          await import_vk_bridge.default.send("VKWebAppOpenURL", { url });
+          return true;
+        } catch {
+        }
+      }
+      if (typeof window !== "undefined") {
+        window.location.href = url;
+        return true;
+      }
+      return false;
+    }
+    function getLaunchParamsQuery() {
+      return state.rawLaunchParams;
+    }
+    return {
+      init,
+      openUrl,
+      getLaunchParamsQuery
+    };
+  }
+
   // js/main.js
   var builtinAdvices = [
     "Выпить стакан чистой воды",
@@ -5943,13 +6413,15 @@
     return app;
   }
   async function initApp({ elements }) {
-    var _a, _b, _c;
+    var _a, _b, _c, _d;
     const store = createStore();
     const auth = createAuthService();
+    const vk = createVkService();
     const app = {
       elements,
       store,
       auth,
+      vk,
       runtime: {
         builtinAdvices,
         currentAdvice: "",
@@ -5996,6 +6468,12 @@
             error: "",
             message: ""
           }
+        },
+        vk: {
+          isMiniApp: false,
+          launchParams: {},
+          rawLaunchParams: "",
+          linkingRequired: false
         },
         voice: {
           isSupported: false,
@@ -6086,6 +6564,10 @@
     });
     app.screens.showAuthScreen();
     if (typeof window !== "undefined") {
+      const vkContext = await vk.init();
+      app.runtime.vk.isMiniApp = Boolean(vkContext == null ? void 0 : vkContext.isVkMiniApp);
+      app.runtime.vk.launchParams = (vkContext == null ? void 0 : vkContext.launchParams) || {};
+      app.runtime.vk.rawLaunchParams = (vkContext == null ? void 0 : vkContext.rawLaunchParams) || "";
       const params = new URLSearchParams(window.location.search);
       const resetToken = params.get("resetToken");
       const paymentReturn = params.get("paymentReturn");
@@ -6127,14 +6609,39 @@
       });
     }
     try {
+      if (app.runtime.vk.isMiniApp && app.runtime.vk.rawLaunchParams) {
+        const vkSession = await auth.authenticateWithVk({
+          launchParams: app.runtime.vk.rawLaunchParams
+        });
+        if (vkSession.authenticated && vkSession.user) {
+          app.runtime.vk.linkingRequired = false;
+          await app.startAuthenticatedFlow(vkSession.user);
+          return app;
+        }
+        if (vkSession.linkingRequired) {
+          clearOfflineAuthSnapshot();
+          await ((_c = store.clearOfflineCache) == null ? void 0 : _c.call(store, { includeGuest: true }));
+          app.runtime.vk.linkingRequired = true;
+          app.runtime.auth.mode = "login";
+          app.runtime.auth.status = "guest";
+          app.runtime.auth.user = null;
+          app.runtime.auth.error = "";
+          app.runtime.auth.notice = "Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK.";
+          app.runtime.auth.isOfflineAuthenticated = false;
+          store.setSessionContext({ authenticated: false, userId: null });
+          app.screens.showAuthScreen();
+          return app;
+        }
+      }
       const session = await auth.checkSession();
       if (!session.authenticated || !session.user) {
         clearOfflineAuthSnapshot();
-        await ((_c = store.clearOfflineCache) == null ? void 0 : _c.call(store, { includeGuest: true }));
+        await ((_d = store.clearOfflineCache) == null ? void 0 : _d.call(store, { includeGuest: true }));
         app.runtime.auth.mode = "login";
         app.runtime.auth.status = "guest";
         app.runtime.auth.user = null;
         app.runtime.auth.error = "";
+        app.runtime.auth.notice = app.runtime.vk.isMiniApp ? "Войдите, чтобы связать текущий аккаунт с вашим профилем VK." : "";
         app.runtime.auth.isOfflineAuthenticated = false;
         store.setSessionContext({ authenticated: false, userId: null });
         app.screens.showAuthScreen();

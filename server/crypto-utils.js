@@ -89,7 +89,7 @@ function parsePasswordHashMeta(passwordHash) {
         return null;
     }
 
-    const [, , rawN, rawR, rawP, rawKeylen] = parts;
+    const [, rawN, rawR, rawP, rawKeylen] = parts;
     const params = {
         N: Number(rawN),
         r: Number(rawR),

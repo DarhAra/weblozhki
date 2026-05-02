@@ -8,6 +8,7 @@ const { createRepositories } = require('./server/repositories');
 const { createMailer } = require('./server/mailer');
 const { ensureValidStateSegment, mergeAppState, splitAppState } = require('./server/state-storage');
 const { createPaymentError, createRobokassaClient } = require('./server/robokassa');
+const { createVkLaunchParamsService } = require('./server/vk');
 
 const app = express();
 const PORT = config.port;
@@ -29,6 +30,7 @@ const passwordService = createPasswordService();
 const repositories = createRepositories(db, { encryptor: dataEncryptor });
 const mailer = createMailer(config);
 const robokassa = createRobokassaClient(config);
+const vkLaunchParams = createVkLaunchParamsService(config);
 const rateLimitStore = new Map();
 
 app.set('trust proxy', config.trustProxy);
@@ -109,6 +111,7 @@ function toPublicUser(user) {
         name: user.name,
         email: user.email,
         createdAt: user.createdAt,
+        vkLinked: Boolean(user.vkUserId),
     };
 }
 
@@ -126,6 +129,33 @@ function toPublicDonation(donation) {
         createdAt: donation.createdAt,
         confirmedAt: donation.confirmedAt,
     };
+}
+
+function getLaunchParamsPayload(input) {
+    return vkLaunchParams.getReturnParams(input);
+}
+
+function getVkAuthErrorStatus(code) {
+    if (code === 'VK_AUTH_NOT_CONFIGURED') {
+        return 503;
+    }
+
+    if (code === 'VK_APP_ID_MISMATCH' || code === 'VK_PARAMS_INVALID' || code === 'VK_SIGN_INVALID') {
+        return 400;
+    }
+
+    return 500;
+}
+
+function linkVkToUserAccount(userId, params) {
+    const now = new Date().toISOString();
+    return repositories.linkVkUser({
+        id: userId,
+        vkUserId: String(params.vk_user_id),
+        vkLinkedAt: now,
+        vkFirstSeenAt: now,
+        updatedAt: now,
+    });
 }
 
 function parseCookies(cookieHeader = '') {
@@ -378,7 +408,7 @@ function ensureCsrfContext(req, res, next) {
 }
 
 function requireCsrfToken(req, res, next) {
-    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/robokassa/result') {
+    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/robokassa/result' || req.path === '/api/vk/auth') {
         return next();
     }
 
@@ -573,17 +603,28 @@ function ensureSecurePublicBaseUrl() {
     return parsedUrl;
 }
 
-function buildDonationReturnUrl(donationId) {
+function appendLaunchParamsToUrl(url, launchParamsInput) {
+    const params = getLaunchParamsPayload(launchParamsInput);
+    Object.entries(params).forEach(([key, value]) => {
+        if (typeof value === 'string' && value) {
+            url.searchParams.set(key, value);
+        }
+    });
+}
+
+function buildDonationReturnUrl(donationId, launchParamsInput = null) {
     const baseUrl = ensureSecurePublicBaseUrl();
     baseUrl.pathname = '/';
+    appendLaunchParamsToUrl(baseUrl, launchParamsInput);
     baseUrl.searchParams.set('paymentReturn', '1');
     baseUrl.searchParams.set('donationId', donationId);
     return baseUrl.toString();
 }
 
-function buildDonationFailUrl(donationId) {
+function buildDonationFailUrl(donationId, launchParamsInput = null) {
     const baseUrl = ensureSecurePublicBaseUrl();
     baseUrl.pathname = '/';
+    appendLaunchParamsToUrl(baseUrl, launchParamsInput);
     baseUrl.searchParams.set('paymentReturn', '1');
     baseUrl.searchParams.set('donationId', donationId);
     baseUrl.searchParams.set('paymentStatus', 'failed');
@@ -621,7 +662,7 @@ function createDonationInvoiceId() {
     return `${Date.now()}${randomSuffix}`;
 }
 
-function createDonationRecord(userId, amountValue, providerPaymentId) {
+function createDonationRecord(userId, amountValue, providerPaymentId, launchParamsInput = null) {
     const now = new Date().toISOString();
     const donationId = `don_${crypto.randomUUID()}`;
     return {
@@ -633,7 +674,7 @@ function createDonationRecord(userId, amountValue, providerPaymentId) {
         amountCurrency: config.donationCurrency,
         status: 'pending',
         type: 'one_time',
-        returnUrl: buildDonationReturnUrl(donationId),
+        returnUrl: buildDonationReturnUrl(donationId, launchParamsInput),
         createdAt: now,
         updatedAt: now,
         confirmedAt: null,
@@ -755,10 +796,9 @@ app.use((req, res, next) => {
     if (config.isProduction) {
         res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     }
-    res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
     next();
 });
 app.use(express.static(ROOT_DIR));
@@ -783,6 +823,64 @@ app.get('/api/auth/session', (req, res) => {
     return res.json({
         authenticated: true,
         user: toPublicUser(req.user),
+        csrfToken: req.csrfToken,
+    });
+});
+
+app.post('/api/vk/auth', (req, res) => {
+    const verification = vkLaunchParams.verify(req.body?.launchParams);
+    if (!verification.ok) {
+        return res.status(getVkAuthErrorStatus(verification.code)).json({
+            error: verification.code,
+            message: 'Could not verify VK launch parameters.',
+            authenticated: false,
+            linkingRequired: false,
+            csrfToken: req.csrfToken,
+        });
+    }
+
+    const vkUserId = String(verification.params.vk_user_id);
+    const linkedUser = repositories.findUserByVkUserId(vkUserId);
+    if (linkedUser) {
+        createSessionForUser(res, linkedUser.id, req);
+        req.user = linkedUser;
+        return res.json({
+            authenticated: true,
+            linkingRequired: false,
+            user: toPublicUser(linkedUser),
+            csrfToken: req.csrfToken,
+        });
+    }
+
+    if (req.user) {
+        try {
+            const updatedUser = linkVkToUserAccount(req.user.id, verification.params);
+            req.user = updatedUser;
+            return res.json({
+                authenticated: true,
+                linkingRequired: false,
+                user: toPublicUser(updatedUser),
+                csrfToken: req.csrfToken,
+            });
+        } catch (error) {
+            logServerError('Failed to auto-link VK account', error, {
+                code: 'VK_LINK_FAILED',
+                userId: req.user?.id || null,
+            });
+            return res.status(error.statusCode || 500).json({
+                error: 'VK_LINK_FAILED',
+                message: 'Could not link the VK account right now.',
+                authenticated: false,
+                linkingRequired: false,
+                csrfToken: req.csrfToken,
+            });
+        }
+    }
+
+    return res.json({
+        authenticated: false,
+        linkingRequired: true,
+        user: null,
         csrfToken: req.csrfToken,
     });
 });
@@ -1111,6 +1209,44 @@ app.patch('/api/account/profile', requireAuthenticatedUser, (req, res) => {
     }
 });
 
+app.post('/api/account/link-vk', requireAuthenticatedUser, (req, res) => {
+    const verification = vkLaunchParams.verify(req.body?.launchParams);
+    if (!verification.ok) {
+        return res.status(getVkAuthErrorStatus(verification.code)).json({
+            error: verification.code,
+            message: 'Could not verify VK launch parameters.',
+        });
+    }
+
+    const vkUserId = String(verification.params.vk_user_id);
+    const existingUser = repositories.findUserByVkUserId(vkUserId);
+    if (existingUser && existingUser.id !== req.user.id) {
+        return res.status(409).json({
+            error: 'VK_ALREADY_LINKED',
+            message: 'This VK account is already linked to another user.',
+        });
+    }
+
+    try {
+        const user = linkVkToUserAccount(req.user.id, verification.params);
+        req.user = user;
+        return res.json({
+            ok: true,
+            user: toPublicUser(user),
+            csrfToken: req.csrfToken,
+        });
+    } catch (error) {
+        logServerError('Failed to link VK account', error, {
+            code: 'VK_LINK_FAILED',
+            userId: req.user?.id || null,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: 'VK_LINK_FAILED',
+            message: 'Could not link the VK account right now.',
+        });
+    }
+});
+
 app.post('/api/account/change-password', requireAuthenticatedUser, async (req, res) => {
     const currentPassword = req.body?.currentPassword;
     const nextPassword = req.body?.newPassword;
@@ -1202,6 +1338,7 @@ app.get('/api/payments/status', requireAuthenticatedUser, (req, res) => {
 
 app.post('/api/payments/create-donation-session', requireAuthenticatedUser, async (req, res) => {
     const amount = parseDonationAmount(req.body?.amount);
+    const launchParams = req.body?.launchParams || null;
     if (!isAllowedDonationAmount(amount)) {
         return res.status(400).json({
             error: 'INVALID_DONATION_AMOUNT',
@@ -1218,14 +1355,14 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
 
     try {
         const invoiceId = createDonationInvoiceId();
-        const donation = createDonationRecord(req.user.id, amount, invoiceId);
+        const donation = createDonationRecord(req.user.id, amount, invoiceId, launchParams);
         repositories.createDonation(donation);
 
         const payment = robokassa.createPaymentUrl({
             amount,
             description: 'Поддержка проекта "Мои ложки"',
             returnUrl: donation.returnUrl,
-            failUrl: buildDonationFailUrl(donation.id),
+            failUrl: buildDonationFailUrl(donation.id, launchParams),
             invoiceId,
             donationId: donation.id,
             email: req.user.email,

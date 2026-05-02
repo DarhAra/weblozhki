@@ -87,6 +87,8 @@ const config = {
     smtpPassword: process.env.SMTP_PASSWORD || '',
     smtpFromEmail: process.env.SMTP_FROM_EMAIL || '',
     smtpFromName: process.env.SMTP_FROM_NAME || 'Мои ложки',
+    vkAppId: process.env.VK_APP_ID || '',
+    vkAppSecret: process.env.VK_APP_SECRET || '',
     robokassaMerchantLogin: process.env.ROBOKASSA_MERCHANT_LOGIN || '',
     robokassaPassword1: process.env.ROBOKASSA_PASSWORD_1 || '',
     robokassaPassword2: process.env.ROBOKASSA_PASSWORD_2 || '',
@@ -119,6 +121,7 @@ function getSafeRuntimeSummary() {
         allowedOrigin: config.allowedOrigin,
         dataEncryptionConfigured: Boolean(config.dataEncryptionKey || !config.isProduction),
         smtpConfigured: Boolean(config.smtpHost && config.smtpUser && config.smtpPassword && config.smtpFromEmail),
+        vkAuthConfigured: Boolean(config.vkAppSecret),
         robokassaConfigured: Boolean(config.robokassaMerchantLogin && config.robokassaPassword1 && config.robokassaPassword2),
     };
 }

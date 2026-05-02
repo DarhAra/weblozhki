@@ -509,10 +509,7 @@ export function bindAppEvents(app) {
         elements.paymentReturnError.textContent = '';
         elements.paymentReturnError.classList.add('hidden');
         if (typeof window !== 'undefined') {
-            const url = new URL(window.location.href);
-            url.searchParams.delete('paymentReturn');
-            url.searchParams.delete('donationId');
-            window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+            replaceHistoryWithoutParams(['paymentReturn', 'donationId', 'paymentStatus']);
         }
     }
 
@@ -637,10 +634,13 @@ export function bindAppEvents(app) {
         renderPaymentSummary();
 
         try {
-            const payload = await app.auth.createDonationSession({ amount });
+            const payload = await app.auth.createDonationSession({
+                amount,
+                launchParams: app.vk.getLaunchParamsQuery(),
+            });
             authState.payments.status = 'idle';
             if (payload?.confirmationUrl) {
-                window.location.href = payload.confirmationUrl;
+                await app.vk.openUrl(payload.confirmationUrl);
                 return;
             }
 
@@ -710,6 +710,18 @@ export function bindAppEvents(app) {
         elements.openAppMenuBtn.setAttribute('aria-expanded', String(shouldOpen));
     }
 
+    function replaceHistoryWithoutParams(paramNames = []) {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const url = new URL(window.location.href);
+        paramNames.forEach(paramName => {
+            url.searchParams.delete(paramName);
+        });
+        window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+    }
+
     function resetAuthForm({ preserveEmail = true } = {}) {
         if (!preserveEmail) {
             elements.authEmail.value = '';
@@ -722,7 +734,9 @@ export function bindAppEvents(app) {
     function switchAuthMode(mode) {
         authState.mode = mode === 'register' ? 'register' : 'login';
         authState.error = '';
-        authState.notice = '';
+        authState.notice = runtime.vk.isMiniApp && runtime.vk.linkingRequired
+            ? 'Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK.'
+            : '';
         authState.resetToken = null;
         authState.status = 'guest';
         app.renderers.renderAuthScreen();
@@ -767,7 +781,7 @@ export function bindAppEvents(app) {
                 authState.error = '';
                 resetAuthForm({ preserveEmail: false });
                 if (typeof window !== 'undefined') {
-                    window.history.replaceState({}, '', window.location.pathname);
+                    replaceHistoryWithoutParams(['resetToken']);
                 }
                 app.renderers.renderAuthScreen();
             } catch (error) {
@@ -798,11 +812,19 @@ export function bindAppEvents(app) {
         app.renderers.renderAuthScreen();
 
         try {
-            const user = authState.mode === 'register'
+            let user = authState.mode === 'register'
                 ? await app.auth.register({ name, email, password })
                 : await app.auth.login({ email, password });
 
+            if (runtime.vk.isMiniApp && runtime.vk.linkingRequired && runtime.vk.rawLaunchParams) {
+                user = await app.auth.linkVkAccount({
+                    launchParams: runtime.vk.rawLaunchParams,
+                });
+                runtime.vk.linkingRequired = false;
+            }
+
             resetAuthForm();
+            authState.notice = '';
             await app.startAuthenticatedFlow(user);
         } catch (error) {
             authState.status = 'guest';
@@ -1116,6 +1138,9 @@ export function bindAppEvents(app) {
         authState.user = null;
         authState.mode = 'login';
         authState.status = 'guest';
+        authState.notice = runtime.vk.isMiniApp
+            ? 'Войдите, чтобы снова связать аккаунт с вашим профилем VK.'
+            : '';
         authState.isOfflineAuthenticated = false;
         resetAuthForm({ preserveEmail: false });
         app.screens.showAuthScreen();
