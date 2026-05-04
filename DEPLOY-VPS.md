@@ -318,27 +318,25 @@ pm2 restart resource-todo
 
 Check: open the "Forgot password?" form, send a test email to yourself, and verify that the link opens your domain.
 
-## Robokassa for project support
+## YooKassa for project support
 
 Add these variables to `.env` on the server:
 
 ```env
-ROBOKASSA_MERCHANT_LOGIN=your-merchant-login
-ROBOKASSA_PASSWORD_1=your-password-1
-ROBOKASSA_PASSWORD_2=your-password-2
-ROBOKASSA_HASH_ALGORITHM=md5
-ROBOKASSA_IS_TEST=true
-ROBOKASSA_WEBHOOK_ALLOWED_IPS=185.59.216.65,185.59.217.65
+YOOKASSA_SHOP_ID=your-shop-id
+YOOKASSA_SECRET_KEY=your-secret-key
+YOOKASSA_WEBHOOK_SECRET=random-long-secret
+YOOKASSA_WEBHOOK_ALLOWED_IPS=
 DONATION_ALLOWED_AMOUNTS=149,299,499
 DONATION_MIN_AMOUNT=100
 DONATION_MAX_AMOUNT=5000
 DONATION_CURRENCY=RUB
 ```
 
-ResultURL for Robokassa:
+Webhook URL for YooKassa:
 
 ```text
-https://your-domain.ru/api/payments/robokassa/result
+https://your-domain.ru/api/payments/yookassa/webhook?key=YOUR_YOOKASSA_WEBHOOK_SECRET
 ```
 
 Important:

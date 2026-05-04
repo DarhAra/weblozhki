@@ -7,7 +7,7 @@ const { createDatabase } = require('./server/db');
 const { createRepositories } = require('./server/repositories');
 const { createMailer } = require('./server/mailer');
 const { ensureValidStateSegment, mergeAppState, splitAppState } = require('./server/state-storage');
-const { createPaymentError, createRobokassaClient } = require('./server/robokassa');
+const { createPaymentError, createYookassaClient } = require('./server/yookassa');
 const { createVkLaunchParamsService } = require('./server/vk');
 
 const app = express();
@@ -29,7 +29,7 @@ const dataEncryptor = createDataEncryptor({
 const passwordService = createPasswordService();
 const repositories = createRepositories(db, { encryptor: dataEncryptor });
 const mailer = createMailer(config);
-const robokassa = createRobokassaClient(config);
+const yookassa = createYookassaClient(config);
 const vkLaunchParams = createVkLaunchParamsService(config);
 const rateLimitStore = new Map();
 
@@ -314,7 +314,6 @@ function getBaseUrl() {
 function getResetUrl(rawToken) {
     return new URL(`/?resetToken=${encodeURIComponent(rawToken)}`, getBaseUrl()).toString();
 }
-
 function getAllowedOrigin() {
     if (!config.allowedOrigin) {
         return '';
@@ -326,564 +325,6 @@ function getAllowedOrigin() {
         return '';
     }
 }
-
-function getRequestOrigin(req) {
-    const rawOrigin = req.get('origin');
-    if (rawOrigin) {
-        return rawOrigin;
-    }
-
-    const rawReferer = req.get('referer');
-    if (!rawReferer) {
-        return '';
-    }
-
-    try {
-        return new URL(rawReferer).origin;
-    } catch {
-        return '';
-    }
-}
-
-function isStateChangingMethod(method) {
-    return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || '').toUpperCase());
-}
-
-function buildRateLimitKey(scope, req, extraKey = '') {
-    return [
-        scope,
-        getRemoteIp(req),
-        String(extraKey || '').toLowerCase(),
-    ].join(':');
-}
-
-function takeRateLimitSlot({ scope, req, extraKey = '', limit, windowMs }) {
-    const now = Date.now();
-    const key = buildRateLimitKey(scope, req, extraKey);
-    const bucket = rateLimitStore.get(key) || [];
-    const nextBucket = bucket.filter(timestamp => now - timestamp < windowMs);
-    if (nextBucket.length >= limit) {
-        const error = new Error('Too many attempts. Please try again later.');
-        error.statusCode = 429;
-        error.code = 'RATE_LIMITED';
-        throw error;
-    }
-
-    nextBucket.push(now);
-    rateLimitStore.set(key, nextBucket);
-}
-
-function validatePublicOrigin(req, res, next) {
-    if (!config.isProduction || !isStateChangingMethod(req.method) || req.path === '/api/payments/robokassa/result') {
-        return next();
-    }
-
-    const allowedOrigin = getAllowedOrigin();
-    if (!allowedOrigin) {
-        return next();
-    }
-
-    const requestOrigin = getRequestOrigin(req);
-    if (!requestOrigin || requestOrigin !== allowedOrigin) {
-        return res.status(403).json({
-            error: 'ORIGIN_FORBIDDEN',
-            message: 'Request origin is not allowed.',
-        });
-    }
-
-    return next();
-}
-
-function ensureCsrfContext(req, res, next) {
-    const cookies = req.parsedCookies || parseCookies(req.headers.cookie || '');
-    req.parsedCookies = cookies;
-    req.csrfToken = typeof cookies[config.csrfCookieName] === 'string' && cookies[config.csrfCookieName]
-        ? cookies[config.csrfCookieName]
-        : createCsrfToken();
-    req.shouldSetCsrfCookie = !cookies[config.csrfCookieName];
-    if (req.shouldSetCsrfCookie) {
-        setCsrfCookie(res, req.csrfToken);
-    }
-    next();
-}
-
-function requireCsrfToken(req, res, next) {
-    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/robokassa/result' || req.path === '/api/vk/auth') {
-        return next();
-    }
-
-    const csrfHeader = req.get('x-csrf-token');
-    if (!csrfHeader || csrfHeader !== req.csrfToken) {
-        return res.status(403).json({
-            error: 'CSRF_TOKEN_INVALID',
-            message: 'Security token is missing or invalid.',
-        });
-    }
-
-    return next();
-}
-
-function readRuntimeStateForRequest(req) {
-    return req.user
-        ? repositories.getUserRuntimeState(req.user.id)
-        : repositories.getGuestRuntimeState();
-}
-
-function readPrivateStateForRequest(req) {
-    if (!req.user) {
-        return null;
-    }
-
-    return repositories.getUserPrivateState(req.user.id);
-}
-
-function readCombinedStateForRequest(req) {
-    return mergeAppState({
-        runtimeState: readRuntimeStateForRequest(req) || {},
-        privateState: readPrivateStateForRequest(req) || {},
-    });
-}
-
-function saveRuntimeStateForRequest(req, runtimeState) {
-    if (req.user) {
-        repositories.saveUserRuntimeState(req.user.id, runtimeState);
-        return;
-    }
-
-    repositories.saveGuestRuntimeState(runtimeState);
-}
-
-function savePrivateStateForRequest(req, privateState) {
-    if (!req.user) {
-        return;
-    }
-
-    repositories.saveUserPrivateState(req.user.id, privateState);
-}
-
-function validateRuntimeState(runtimeState) {
-    return ensureValidStateSegment(runtimeState, 'Runtime state', config.runtimeStateMaxBytes);
-}
-
-function validatePrivateState(privateState) {
-    return ensureValidStateSegment(privateState, 'Private state', config.privateStateMaxBytes);
-}
-
-function refreshSession(req) {
-    if (!req.sessionRecord) {
-        return null;
-    }
-
-    const now = new Date();
-    const refreshedExpiresAt = new Date(now.getTime() + config.sessionTtlMs).toISOString();
-
-    repositories.touchSession({
-        id: req.sessionRecord.id,
-        lastSeenAt: now.toISOString(),
-        expiresAt: refreshedExpiresAt,
-    });
-
-    req.sessionRecord.lastSeenAt = now.toISOString();
-    req.sessionRecord.expiresAt = refreshedExpiresAt;
-    req.shouldRefreshSessionCookie = true;
-    return req.sessionRecord;
-}
-
-function applySessionRefresh(req, res) {
-    if (req.shouldRefreshSessionCookie && req.sessionRecord?.id) {
-        setSessionCookie(res, req.sessionRecord.id);
-    }
-}
-
-function wrapResponseWithSessionRefresh(req, res, next) {
-    const originalJson = res.json.bind(res);
-    const originalSend = res.send.bind(res);
-    const originalSendFile = res.sendFile.bind(res);
-
-    res.json = body => {
-        applySessionRefresh(req, res);
-        return originalJson(body);
-    };
-    res.send = body => {
-        applySessionRefresh(req, res);
-        return originalSend(body);
-    };
-    res.sendFile = (...args) => {
-        applySessionRefresh(req, res);
-        return originalSendFile(...args);
-    };
-
-    next();
-}
-
-function revokeCurrentSession(req) {
-    if (!req.sessionRecord?.id) {
-        return;
-    }
-
-    repositories.revokeSession(req.sessionRecord.id);
-    req.sessionId = null;
-    req.sessionRecord = null;
-    req.shouldRefreshSessionCookie = false;
-}
-
-function createSessionForUser(res, userId, req) {
-    revokeCurrentSession(req);
-    const session = createSessionRecord(userId, req);
-    repositories.createSession(session);
-    req.sessionId = session.id;
-    req.sessionRecord = session;
-    req.shouldRefreshSessionCookie = false;
-    req.csrfToken = createCsrfToken();
-    setSessionCookie(res, session.id);
-    setCsrfCookie(res, req.csrfToken);
-    return session;
-}
-
-function requireAuthenticatedUser(req, res, next) {
-    if (!req.user) {
-        return res.status(401).json({
-            error: 'AUTH_REQUIRED',
-            message: 'Please sign in first.',
-        });
-    }
-
-    return next();
-}
-
-function getAllowedDonationAmounts() {
-    if (Array.isArray(config.donationAllowedAmounts) && config.donationAllowedAmounts.length > 0) {
-        return [...new Set(config.donationAllowedAmounts)]
-            .filter(value => Number.isFinite(value) && value >= config.donationMinAmount && value <= config.donationMaxAmount)
-            .sort((left, right) => left - right);
-    }
-
-    return [149, 299, 499].filter(value => value >= config.donationMinAmount && value <= config.donationMaxAmount);
-}
-
-function parseDonationAmount(rawAmount) {
-    const amount = Number(rawAmount);
-    if (!Number.isFinite(amount)) {
-        return null;
-    }
-
-    return Math.round(amount);
-}
-
-function isAllowedDonationAmount(amount) {
-    if (!Number.isFinite(amount) || amount < config.donationMinAmount || amount > config.donationMaxAmount) {
-        return false;
-    }
-
-    const allowedAmounts = getAllowedDonationAmounts();
-    if (allowedAmounts.length === 0) {
-        return true;
-    }
-
-    return allowedAmounts.includes(amount);
-}
-
-function ensureSecurePublicBaseUrl() {
-    const baseUrl = config.appBaseUrl;
-    if (!baseUrl) {
-        throw createPaymentError('APP_BASE_URL is required for payments.', 500, 'PAYMENT_PUBLIC_URL_MISSING');
-    }
-
-    let parsedUrl;
-    try {
-        parsedUrl = new URL(baseUrl);
-    } catch {
-        throw createPaymentError('APP_BASE_URL is invalid.', 500, 'PAYMENT_PUBLIC_URL_INVALID');
-    }
-
-    if (config.isProduction && parsedUrl.protocol !== 'https:') {
-        throw createPaymentError('Payments require HTTPS in production.', 500, 'PAYMENT_PUBLIC_URL_INSECURE');
-    }
-
-    return parsedUrl;
-}
-
-function appendLaunchParamsToUrl(url, launchParamsInput) {
-    const params = getLaunchParamsPayload(launchParamsInput);
-    Object.entries(params).forEach(([key, value]) => {
-        if (typeof value === 'string' && value) {
-            url.searchParams.set(key, value);
-        }
-    });
-}
-
-function buildDonationReturnUrl(donationId, launchParamsInput = null) {
-    const baseUrl = ensureSecurePublicBaseUrl();
-    baseUrl.pathname = '/';
-    appendLaunchParamsToUrl(baseUrl, launchParamsInput);
-    baseUrl.searchParams.set('paymentReturn', '1');
-    baseUrl.searchParams.set('donationId', donationId);
-    return baseUrl.toString();
-}
-
-function buildDonationFailUrl(donationId, launchParamsInput = null) {
-    const baseUrl = ensureSecurePublicBaseUrl();
-    baseUrl.pathname = '/';
-    appendLaunchParamsToUrl(baseUrl, launchParamsInput);
-    baseUrl.searchParams.set('paymentReturn', '1');
-    baseUrl.searchParams.set('donationId', donationId);
-    baseUrl.searchParams.set('paymentStatus', 'failed');
-    return baseUrl.toString();
-}
-
-function getDonationCheckoutConfig() {
-    return {
-        currency: config.donationCurrency,
-        allowedAmounts: getAllowedDonationAmounts(),
-        minAmount: config.donationMinAmount,
-        maxAmount: config.donationMaxAmount,
-    };
-}
-
-function getPaymentSummary(userId, donation = null) {
-    const latestDonation = donation || repositories.findLatestDonationByUserId(userId);
-    const latestSucceededDonation = repositories.findLatestSucceededDonationByUserId(userId);
-
-    return {
-        support: {
-            hasSupported: Boolean(latestSucceededDonation),
-            lastDonationAt: latestSucceededDonation?.confirmedAt || latestSucceededDonation?.createdAt || null,
-            lastDonationAmount: latestSucceededDonation?.amountValue || null,
-            lastDonationCurrency: latestSucceededDonation?.amountCurrency || config.donationCurrency,
-            lastDonationStatus: latestDonation?.status || latestSucceededDonation?.status || null,
-        },
-        latestDonation: toPublicDonation(latestDonation),
-        checkout: getDonationCheckoutConfig(),
-    };
-}
-
-function createDonationInvoiceId() {
-    const randomSuffix = String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-    return `${Date.now()}${randomSuffix}`;
-}
-
-function createDonationRecord(userId, amountValue, providerPaymentId, launchParamsInput = null) {
-    const now = new Date().toISOString();
-    const donationId = `don_${crypto.randomUUID()}`;
-    return {
-        id: donationId,
-        userId,
-        provider: 'robokassa',
-        providerPaymentId,
-        amountValue,
-        amountCurrency: config.donationCurrency,
-        status: 'pending',
-        type: 'one_time',
-        returnUrl: buildDonationReturnUrl(donationId, launchParamsInput),
-        createdAt: now,
-        updatedAt: now,
-        confirmedAt: null,
-    };
-}
-
-function getRemoteIp(req) {
-    const forwardedFor = req.headers['x-forwarded-for'];
-    if (typeof forwardedFor === 'string' && forwardedFor.trim()) {
-        return forwardedFor.split(',')[0].trim();
-    }
-
-    return req.ip || req.socket?.remoteAddress || '';
-}
-
-function buildWebhookRecord({ eventId, eventType, paymentId, donationId = null }) {
-    return {
-        id: eventId,
-        provider: 'robokassa',
-        eventType,
-        paymentId,
-        donationId,
-        createdAt: new Date().toISOString(),
-    };
-}
-
-function getRobokassaShpParams(source) {
-    return Object.entries(source || {})
-        .filter(([key]) => key.startsWith('Shp_'))
-        .reduce((accumulator, [key, value]) => {
-            accumulator[key] = value;
-            return accumulator;
-        }, {});
-}
-
-async function trySyncDonationStatusFromProvider(donation) {
-    if (!donation || donation.provider !== 'robokassa' || !donation.providerPaymentId || !robokassa.isConfigured) {
-        return donation;
-    }
-
-    if (!['pending', 'processing'].includes(donation.status)) {
-        return donation;
-    }
-
-    const remoteState = await robokassa.getInvoiceState(donation.providerPaymentId);
-    if (!remoteState || remoteState.status === donation.status) {
-        return donation;
-    }
-
-    if (Number.isFinite(remoteState.amountValue) && Math.round(remoteState.amountValue) !== Math.round(donation.amountValue)) {
-        throw createPaymentError('Payment amount does not match.', 400, 'PAYMENT_AMOUNT_MISMATCH');
-    }
-
-    return repositories.updateDonationStatus({
-        id: donation.id,
-        status: remoteState.status,
-        updatedAt: new Date().toISOString(),
-        confirmedAt: remoteState.status === 'succeeded' ? new Date().toISOString() : null,
-    });
-}
-
-app.use(express.json({ limit: '2mb' }));
-app.use(express.urlencoded({ extended: false }));
-app.use((req, _res, next) => {
-    repositories.pruneExpiredSessions();
-    repositories.prunePasswordResetTokens();
-    next();
-});
-app.use((req, _res, next) => {
-    try {
-        const cookies = parseCookies(req.headers.cookie || '');
-        req.parsedCookies = cookies;
-        const sessionId = cookies[config.sessionCookieName];
-        if (!sessionId) {
-            req.user = null;
-            req.sessionId = null;
-            req.sessionRecord = null;
-            req.shouldRefreshSessionCookie = false;
-            return next();
-        }
-
-        const session = repositories.findSessionById(sessionId);
-        if (!session || session.revokedAt || isSessionExpired(session)) {
-            if (session?.id) {
-                repositories.revokeSession(session.id);
-            }
-            req.user = null;
-            req.sessionId = null;
-            req.sessionRecord = null;
-            req.shouldRefreshSessionCookie = false;
-            return next();
-        }
-
-        const user = repositories.findUserById(session.userId);
-        if (!user) {
-            repositories.revokeSession(session.id);
-            req.user = null;
-            req.sessionId = null;
-            req.sessionRecord = null;
-            req.shouldRefreshSessionCookie = false;
-            return next();
-        }
-
-        req.user = user;
-        req.sessionId = session.id;
-        req.sessionRecord = session;
-        req.shouldRefreshSessionCookie = true;
-        refreshSession(req);
-        return next();
-    } catch (error) {
-        return next(error);
-    }
-});
-app.use(validatePublicOrigin);
-app.use(ensureCsrfContext);
-app.use(requireCsrfToken);
-app.use(wrapResponseWithSessionRefresh);
-app.use((req, res, next) => {
-    if (config.isProduction) {
-        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
-    }
-    res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
-    next();
-});
-app.use(express.static(ROOT_DIR));
-
-app.get('/api/health', (_req, res) => {
-    res.json({ ok: true });
-});
-
-app.get('/favicon.ico', (_req, res) => {
-    res.status(204).end();
-});
-
-app.get('/api/auth/session', (req, res) => {
-    if (!req.user) {
-        return res.json({
-            authenticated: false,
-            user: null,
-            csrfToken: req.csrfToken,
-        });
-    }
-
-    return res.json({
-        authenticated: true,
-        user: toPublicUser(req.user),
-        csrfToken: req.csrfToken,
-    });
-});
-
-app.post('/api/vk/auth', (req, res) => {
-    const verification = vkLaunchParams.verify(req.body?.launchParams);
-    if (!verification.ok) {
-        return res.status(getVkAuthErrorStatus(verification.code)).json({
-            error: verification.code,
-            message: 'Could not verify VK launch parameters.',
-            authenticated: false,
-            linkingRequired: false,
-            csrfToken: req.csrfToken,
-        });
-    }
-
-    const vkUserId = String(verification.params.vk_user_id);
-    const linkedUser = repositories.findUserByVkUserId(vkUserId);
-    if (linkedUser) {
-        createSessionForUser(res, linkedUser.id, req);
-        req.user = linkedUser;
-        return res.json({
-            authenticated: true,
-            linkingRequired: false,
-            user: toPublicUser(linkedUser),
-            csrfToken: req.csrfToken,
-        });
-    }
-
-    if (req.user) {
-        try {
-            const updatedUser = linkVkToUserAccount(req.user.id, verification.params);
-            req.user = updatedUser;
-            return res.json({
-                authenticated: true,
-                linkingRequired: false,
-                user: toPublicUser(updatedUser),
-                csrfToken: req.csrfToken,
-            });
-        } catch (error) {
-            logServerError('Failed to auto-link VK account', error, {
-                code: 'VK_LINK_FAILED',
-                userId: req.user?.id || null,
-            });
-            return res.status(error.statusCode || 500).json({
-                error: 'VK_LINK_FAILED',
-                message: 'Could not link the VK account right now.',
-                authenticated: false,
-                linkingRequired: false,
-                csrfToken: req.csrfToken,
-            });
-        }
-    }
-
-    return res.json({
-        authenticated: false,
-        linkingRequired: true,
-        user: null,
-        csrfToken: req.csrfToken,
-    });
-});
 
 app.post('/api/auth/register', async (req, res) => {
     const name = normalizeDisplayName(req.body?.name);
@@ -1346,7 +787,7 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
         });
     }
 
-    if (!robokassa.isConfigured) {
+    if (!yookassa.isConfigured) {
         return res.status(503).json({
             error: 'PAYMENTS_NOT_CONFIGURED',
             message: 'Payments are not configured yet.',
@@ -1354,29 +795,34 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
     }
 
     try {
-        const invoiceId = createDonationInvoiceId();
-        const donation = createDonationRecord(req.user.id, amount, invoiceId, launchParams);
+        const donation = createDonationRecord(req.user.id, amount, launchParams);
         repositories.createDonation(donation);
 
-        const payment = robokassa.createPaymentUrl({
+        const payment = await yookassa.createPayment({
             amount,
-            description: 'Поддержка проекта "Мои ложки"',
+            currency: config.donationCurrency,
+            description: '????????? ??????? "??? ?????"',
             returnUrl: donation.returnUrl,
-            failUrl: buildDonationFailUrl(donation.id, launchParams),
-            invoiceId,
             donationId: donation.id,
-            email: req.user.email,
+            userId: req.user.id,
         });
 
-        const confirmationUrl = payment?.confirmationUrl;
-        if (!payment?.invoiceId || !confirmationUrl) {
+        const confirmationUrl = payment?.confirmation?.confirmation_url;
+        if (!payment?.id || !confirmationUrl) {
             repositories.updateDonationStatus({
                 id: donation.id,
                 status: 'failed',
                 updatedAt: new Date().toISOString(),
             });
-            throw createPaymentError('Robokassa did not return a confirmation URL.', 502, 'PAYMENT_PROVIDER_INVALID_RESPONSE');
+            throw createPaymentError('YooKassa did not return a confirmation URL.', 502, 'PAYMENT_PROVIDER_INVALID_RESPONSE');
         }
+
+        repositories.attachProviderPaymentToDonation({
+            id: donation.id,
+            providerPaymentId: payment.id,
+            status: payment.status || 'pending',
+            updatedAt: new Date().toISOString(),
+        });
 
         return res.status(201).json({
             donationId: donation.id,
@@ -1394,24 +840,27 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
     }
 });
 
-app.all('/api/payments/robokassa/result', async (req, res) => {
+app.post('/api/payments/yookassa/webhook', async (req, res) => {
     const remoteIp = getRemoteIp(req);
-    if (!robokassa.isAllowedWebhookIp(remoteIp)) {
+    if (!isYookassaWebhookSecretValid(req)) {
+        return res.status(403).json({
+            error: 'WEBHOOK_FORBIDDEN',
+            message: 'Webhook secret is invalid.',
+        });
+    }
+
+    if (!yookassa.isAllowedWebhookIp(remoteIp)) {
         return res.status(403).json({
             error: 'WEBHOOK_FORBIDDEN',
             message: 'Webhook IP is not allowed.',
         });
     }
 
-    const payload = req.method === 'POST' ? req.body : req.query;
-    const outSum = typeof payload?.OutSum === 'string' ? payload.OutSum.trim() : String(payload?.OutSum || '').trim();
-    const paymentId = typeof payload?.InvId === 'string' ? payload.InvId.trim() : String(payload?.InvId || '').trim();
-    const signatureValue = typeof payload?.SignatureValue === 'string' ? payload.SignatureValue.trim() : '';
-    const shpParams = getRobokassaShpParams(payload);
-    const eventType = 'result';
-    const eventId = paymentId ? `robokassa:${eventType}:${paymentId}` : '';
+    const eventType = typeof req.body?.event === 'string' ? req.body.event.trim() : '';
+    const paymentId = typeof req.body?.object?.id === 'string' ? req.body.object.id.trim() : '';
+    const eventId = paymentId ? `yookassa:${eventType}:${paymentId}` : '';
 
-    if (!eventType || !eventId || !paymentId || !outSum || !signatureValue) {
+    if (!eventType || !eventId || !paymentId) {
         return res.status(400).json({
             error: 'INVALID_WEBHOOK',
             message: 'Webhook payload is incomplete.',
@@ -1421,7 +870,7 @@ app.all('/api/payments/robokassa/result', async (req, res) => {
     try {
         const alreadyProcessed = repositories.findProcessedWebhookById(eventId);
         if (alreadyProcessed) {
-            return res.type('text/plain').send('OK');
+            return res.json({ ok: true, duplicate: true });
         }
 
         const donation = repositories.findDonationByProviderPaymentId(paymentId);
@@ -1433,18 +882,15 @@ app.all('/api/payments/robokassa/result', async (req, res) => {
                     paymentId,
                 }),
             });
-            return res.type('text/plain').send('OK');
+            return res.json({ ok: true, skipped: true });
         }
 
-        if (shpParams.Shp_donationId && shpParams.Shp_donationId !== donation.id) {
-            throw createPaymentError('Payment metadata does not match.', 400, 'PAYMENT_METADATA_MISMATCH');
+        const remotePayment = await yookassa.getPayment(paymentId);
+        if (!remotePayment?.id || remotePayment.id !== paymentId) {
+            throw createPaymentError('Payment verification failed.', 400, 'PAYMENT_VERIFICATION_FAILED');
         }
 
-        if (!robokassa.verifyResultSignature({ outSum, invoiceId: paymentId, signatureValue, shpParams })) {
-            throw createPaymentError('Payment signature is invalid.', 403, 'PAYMENT_SIGNATURE_INVALID');
-        }
-
-        const remoteAmount = Number(outSum);
+        const remoteAmount = Number(remotePayment.amount?.value);
         if (!Number.isFinite(remoteAmount) || Math.round(remoteAmount) !== Math.round(donation.amountValue)) {
             throw createPaymentError('Payment amount does not match.', 400, 'PAYMENT_AMOUNT_MISMATCH');
         }
@@ -1456,17 +902,22 @@ app.all('/api/payments/robokassa/result', async (req, res) => {
             donationId: donation.id,
         });
 
+        const remoteStatus = typeof remotePayment.status === 'string' ? remotePayment.status : 'pending';
         repositories.markDonationWebhookProcessed({
             donationId: donation.id,
-            status: 'succeeded',
+            status: remoteStatus === 'succeeded'
+                ? 'succeeded'
+                : remoteStatus === 'canceled'
+                    ? 'canceled'
+                    : 'pending',
             updatedAt: new Date().toISOString(),
-            confirmedAt: new Date().toISOString(),
+            confirmedAt: remoteStatus === 'succeeded' ? new Date().toISOString() : null,
             webhook,
         });
 
-        return res.type('text/plain').send('OK');
+        return res.json({ ok: true });
     } catch (error) {
-        logServerError('Failed to process Robokassa result callback', error, {
+        logServerError('Failed to process YooKassa webhook', error, {
             code: 'WEBHOOK_PROCESSING_FAILED',
             donationId: repositories.findDonationByProviderPaymentId(paymentId)?.id || null,
             paymentId,
@@ -1644,5 +1095,5 @@ app.listen(PORT, () => {
     console.log(`Cookie: ${summary.sessionCookieName}, SameSite=${summary.sessionCookieSameSite}, Secure=${summary.sessionCookieSecure}`);
     console.log(`Session TTL days: ${summary.sessionTtlDays}`);
     console.log(`SMTP configured: ${summary.smtpConfigured ? 'yes' : 'no'}`);
-    console.log(`Robokassa configured: ${summary.robokassaConfigured ? 'yes' : 'no'}`);
+    console.log(`YooKassa configured: ${summary.yookassaConfigured ? 'yes' : 'no'}`);
 });

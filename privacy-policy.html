@@ -16,11 +16,7 @@
             --border: #e6ebe7;
             --shadow: 0 18px 44px rgba(70, 87, 77, 0.08);
         }
-
-        * {
-            box-sizing: border-box;
-        }
-
+        * { box-sizing: border-box; }
         body {
             margin: 0;
             font-family: Inter, system-ui, sans-serif;
@@ -29,13 +25,7 @@
                 linear-gradient(180deg, #fcfdfc 0%, var(--bg) 100%);
             color: var(--text);
         }
-
-        .page {
-            max-width: 900px;
-            margin: 0 auto;
-            padding: 32px 20px 60px;
-        }
-
+        .page { max-width: 900px; margin: 0 auto; padding: 32px 20px 60px; }
         .card {
             background: var(--card);
             border: 1px solid var(--border);
@@ -43,40 +33,13 @@
             box-shadow: var(--shadow);
             padding: 28px;
         }
-
-        h1, h2 {
-            margin: 0 0 14px;
-            line-height: 1.2;
-        }
-
-        h1 {
-            font-size: 32px;
-        }
-
-        h2 {
-            font-size: 22px;
-            margin-top: 28px;
-        }
-
-        p, li {
-            line-height: 1.7;
-            font-size: 16px;
-        }
-
-        .lead {
-            color: var(--muted);
-            font-size: 17px;
-        }
-
-        ul {
-            margin: 0;
-            padding-left: 22px;
-        }
-
-        li + li {
-            margin-top: 8px;
-        }
-
+        h1, h2 { margin: 0 0 14px; line-height: 1.2; }
+        h1 { font-size: 32px; }
+        h2 { font-size: 22px; margin-top: 28px; }
+        p, li { line-height: 1.7; font-size: 16px; }
+        .lead { color: var(--muted); font-size: 17px; }
+        ul { margin: 0; padding-left: 22px; }
+        li + li { margin-top: 8px; }
         .meta {
             padding: 14px 16px;
             border: 1px solid var(--border);
@@ -84,7 +47,6 @@
             background: #fbfcfb;
             margin-top: 16px;
         }
-
         .label {
             display: block;
             margin-bottom: 6px;
@@ -93,49 +55,15 @@
             text-transform: uppercase;
             letter-spacing: 0.06em;
         }
-
-        .placeholder {
-            color: #b06e54;
-            font-weight: 600;
-        }
-
-        .links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 10px 18px;
-            margin-top: 28px;
-        }
-
-        .links a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-
-        .links a:hover {
-            text-decoration: underline;
-        }
-
+        .links { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 28px; }
+        .links a { color: var(--accent); text-decoration: none; }
+        .links a:hover { text-decoration: underline; }
         @media (max-width: 720px) {
-            .page {
-                padding: 18px 14px 36px;
-            }
-
-            .card {
-                padding: 22px 18px;
-                border-radius: 22px;
-            }
-
-            h1 {
-                font-size: 28px;
-            }
-
-            h2 {
-                font-size: 20px;
-            }
-
-            p, li {
-                font-size: 15px;
-            }
+            .page { padding: 18px 14px 36px; }
+            .card { padding: 22px 18px; border-radius: 22px; }
+            h1 { font-size: 28px; }
+            h2 { font-size: 20px; }
+            p, li { font-size: 15px; }
         }
     </style>
 </head>
@@ -144,7 +72,7 @@
     <main class="page">
         <article class="card">
             <h1>Политика обработки персональных данных</h1>
-            <p class="lead">Этот документ описывает, какие персональные данные могут обрабатываться при использовании проекта «Мои ложки», для чего это делается и как пользователь может обратиться по вопросам своих данных.</p>
+            <p class="lead">Этот документ описывает, какие персональные данные могут обрабатываться при использовании проекта «Мои ложки», для каких целей это делается и как пользователь может обратиться по вопросам своих данных.</p>
 
             <h2>1. Оператор персональных данных</h2>
             <div class="meta">
@@ -184,7 +112,7 @@
             <h2>5. Передача третьим лицам</h2>
             <p>Данные могут передаваться только в объёме, необходимом для работы сайта и связанных сервисов, например:</p>
             <ul>
-                <li>платёжному сервису Robokassa — для проведения добровольной поддержки проекта;</li>
+                <li>платёжному сервису YooKassa — для проведения добровольной поддержки проекта;</li>
                 <li>почтовому сервису — для отправки писем, связанных с аккаунтом и восстановлением доступа;</li>
                 <li>хостинг- и серверной инфраструктуре — в объёме, необходимом для технической работы проекта.</li>
             </ul>
@@ -193,7 +121,6 @@
             <p>Персональные данные хранятся не дольше, чем это необходимо для целей обработки, либо до момента обращения пользователя с запросом на удаление, если иное не требуется по закону.</p>
 
             <h2>7. Права пользователя</h2>
-            <p>Пользователь вправе:</p>
             <ul>
                 <li>получить информацию о своих персональных данных;</li>
                 <li>потребовать их уточнения;</li>
@@ -213,7 +140,8 @@
             <p>Проект использует технические и организационные меры для защиты персональных данных от неправомерного доступа, изменения, раскрытия или уничтожения.</p>
 
             <div class="links">
-                <a href="support-project.html">Условия поддержки проекта</a>
+                <a href="support-project.html">Публичная оферта и условия поддержки</a>
+                <a href="user-agreement.html">Пользовательское соглашение</a>
                 <a href="index.html">Вернуться в приложение</a>
             </div>
         </article>
