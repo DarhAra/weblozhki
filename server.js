@@ -655,6 +655,7 @@ app.post('/api/vk/auth', (req, res) => {
 });
 
 app.post('/api/auth/register', async (req, res) => {
+    console.log('[LOGIN] Attempt:', { email: req.body?.email, ip: req.ip });
     const name = normalizeDisplayName(req.body?.name);
     const email = normalizeEmail(req.body?.email);
     const password = req.body?.password;
