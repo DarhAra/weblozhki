@@ -326,6 +326,334 @@ function getAllowedOrigin() {
     }
 }
 
+function getRequestOrigin(req) {
+    const rawOrigin = req.get('origin');
+    if (rawOrigin) {
+        return rawOrigin;
+    }
+
+    const rawReferer = req.get('referer');
+    if (!rawReferer) {
+        return '';
+    }
+
+    try {
+        return new URL(rawReferer).origin;
+    } catch {
+        return '';
+    }
+}
+
+function isStateChangingMethod(method) {
+    return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || '').toUpperCase());
+}
+
+function buildRateLimitKey(scope, req, extraKey = '') {
+    return [
+        scope,
+        getRemoteIp(req),
+        String(extraKey || '').toLowerCase(),
+    ].join(':');
+}
+
+function takeRateLimitSlot({ scope, req, extraKey = '', limit, windowMs }) {
+    const now = Date.now();
+    const key = buildRateLimitKey(scope, req, extraKey);
+    const bucket = rateLimitStore.get(key) || [];
+    const nextBucket = bucket.filter(timestamp => now - timestamp < windowMs);
+    if (nextBucket.length >= limit) {
+        const error = new Error('Too many attempts. Please try again later.');
+        error.statusCode = 429;
+        error.code = 'RATE_LIMITED';
+        throw error;
+    }
+
+    nextBucket.push(now);
+    rateLimitStore.set(key, nextBucket);
+}
+
+function validatePublicOrigin(req, res, next) {
+    if (!config.isProduction || !isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook') {
+        return next();
+    }
+
+    const allowedOrigin = getAllowedOrigin();
+    if (!allowedOrigin) {
+        return next();
+    }
+
+    const requestOrigin = getRequestOrigin(req);
+    if (!requestOrigin || requestOrigin !== allowedOrigin) {
+        return res.status(403).json({
+            error: 'ORIGIN_FORBIDDEN',
+            message: 'Request origin is not allowed.',
+        });
+    }
+
+    return next();
+}
+
+function ensureCsrfContext(req, res, next) {
+    const cookies = req.parsedCookies || parseCookies(req.headers.cookie || '');
+    req.parsedCookies = cookies;
+    req.csrfToken = typeof cookies[config.csrfCookieName] === 'string' && cookies[config.csrfCookieName]
+        ? cookies[config.csrfCookieName]
+        : createCsrfToken();
+    req.shouldSetCsrfCookie = !cookies[config.csrfCookieName];
+    if (req.shouldSetCsrfCookie) {
+        setCsrfCookie(res, req.csrfToken);
+    }
+    next();
+}
+
+function requireCsrfToken(req, res, next) {
+    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook' || req.path === '/api/vk/auth') {
+        return next();
+    }
+
+    const csrfHeader = req.get('x-csrf-token');
+    if (!csrfHeader || csrfHeader !== req.csrfToken) {
+        return res.status(403).json({
+            error: 'CSRF_TOKEN_INVALID',
+            message: 'Security token is missing or invalid.',
+        });
+    }
+
+    return next();
+}
+
+function readRuntimeStateForRequest(req) {
+    return req.user
+        ? repositories.getUserRuntimeState(req.user.id)
+        : repositories.getGuestRuntimeState();
+}
+
+function readPrivateStateForRequest(req) {
+    if (!req.user) {
+        return null;
+    }
+
+    return repositories.getUserPrivateState(req.user.id);
+}
+
+function readCombinedStateForRequest(req) {
+    return mergeAppState({
+        runtimeState: readRuntimeStateForRequest(req) || {},
+        privateState: readPrivateStateForRequest(req) || {},
+    });
+}
+
+function saveRuntimeStateForRequest(req, runtimeState) {
+    if (req.user) {
+        repositories.saveUserRuntimeState(req.user.id, runtimeState);
+        return;
+    }
+
+    repositories.saveGuestRuntimeState(runtimeState);
+}
+
+function savePrivateStateForRequest(req, privateState) {
+    if (!req.user) {
+        return;
+    }
+
+    repositories.saveUserPrivateState(req.user.id, privateState);
+}
+
+function validateRuntimeState(runtimeState) {
+    return ensureValidStateSegment(runtimeState, 'Runtime state', config.runtimeStateMaxBytes);
+}
+
+function validatePrivateState(privateState) {
+    return ensureValidStateSegment(privateState, 'Private state', config.privateStateMaxBytes);
+}
+
+function refreshSession(req) {
+    if (!req.sessionRecord) {
+        return null;
+    }
+
+    const now = new Date();
+    const refreshedExpiresAt = new Date(now.getTime() + config.sessionTtlMs).toISOString();
+
+    repositories.touchSession({
+        id: req.sessionRecord.id,
+        lastSeenAt: now.toISOString(),
+        expiresAt: refreshedExpiresAt,
+    });
+
+    req.sessionRecord.lastSeenAt = now.toISOString();
+    req.sessionRecord.expiresAt = refreshedExpiresAt;
+    req.shouldRefreshSessionCookie = true;
+    return req.sessionRecord;
+}
+
+function applySessionRefresh(req, res) {
+    if (req.shouldRefreshSessionCookie && req.sessionRecord?.id) {
+        setSessionCookie(res, req.sessionRecord.id);
+    }
+}
+
+function wrapResponseWithSessionRefresh(req, res, next) {
+    const originalJson = res.json.bind(res);
+    const originalSend = res.send.bind(res);
+    const originalSendFile = res.sendFile.bind(res);
+
+    res.json = body => {
+        applySessionRefresh(req, res);
+        return originalJson(body);
+    };
+    res.send = body => {
+        applySessionRefresh(req, res);
+        return originalSend(body);
+    };
+    res.sendFile = (...args) => {
+        applySessionRefresh(req, res);
+        return originalSendFile(...args);
+    };
+
+    next();
+}
+
+function revokeCurrentSession(req) {
+    if (!req.sessionRecord?.id) {
+        return;
+    }
+
+    repositories.revokeSession(req.sessionRecord.id);
+    req.sessionId = null;
+    req.sessionRecord = null;
+    req.shouldRefreshSessionCookie = false;
+}
+
+function createSessionForUser(res, userId, req) {
+    revokeCurrentSession(req);
+    const session = createSessionRecord(userId, req);
+    repositories.createSession(session);
+    req.sessionId = session.id;
+    req.sessionRecord = session;
+    req.shouldRefreshSessionCookie = false;
+    req.csrfToken = createCsrfToken();
+    setSessionCookie(res, session.id);
+    setCsrfCookie(res, req.csrfToken);
+    return session;
+}
+
+function requireAuthenticatedUser(req, res, next) {
+    if (!req.user) {
+        return res.status(401).json({
+            error: 'AUTH_REQUIRED',
+            message: 'Please sign in first.',
+        });
+    }
+
+    return next();
+}
+
+app.use(validatePublicOrigin);
+app.use(ensureCsrfContext);
+app.use(requireCsrfToken);
+app.use(wrapResponseWithSessionRefresh);
+app.use((req, res, next) => {
+    if (config.isProduction) {
+        res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
+    next();
+});
+app.use(express.static(ROOT_DIR));
+
+app.get('/api/health', (_req, res) => {
+    res.json({ ok: true });
+});
+
+app.get('/favicon.ico', (_req, res) => {
+    res.status(204).end();
+});
+
+app.get('/api/auth/session', (req, res) => {
+    if (!req.user) {
+        return res.json({
+            authenticated: false,
+            user: null,
+            csrfToken: req.csrfToken,
+        });
+    }
+
+    return res.json({
+        authenticated: true,
+        user: toPublicUser(req.user),
+        csrfToken: req.csrfToken,
+    });
+});
+
+app.post('/api/vk/auth', (req, res) => {
+    const verification = vkLaunchParams.verify(req.body?.launchParams);
+    if (!verification.ok) {
+        return res.status(getVkAuthErrorStatus(verification.code)).json({
+            error: verification.code,
+            message: 'Could not verify VK launch parameters.',
+            authenticated: false,
+            linkingRequired: false,
+            csrfToken: req.csrfToken,
+        });
+    }
+
+    const vkUserId = String(verification.params.vk_user_id);
+    const linkedUser = repositories.findUserByVkUserId(vkUserId);
+    if (linkedUser) {
+        createSessionForUser(res, linkedUser.id, req);
+        req.user = linkedUser;
+        return res.json({
+            authenticated: true,
+            linkingRequired: false,
+            user: toPublicUser(linkedUser),
+            csrfToken: req.csrfToken,
+        });
+    }
+
+    if (req.user) {
+        try {
+            const updatedUser = linkVkToUserAccount(req.user.id, verification.params);
+            req.user = updatedUser;
+            return res.json({
+                authenticated: true,
+                linkingRequired: false,
+                user: toPublicUser(updatedUser),
+                csrfToken: req.csrfToken,
+            });
+        } catch (error) {
+            logServerError('Failed to auto-link VK account', error, {
+                code: 'VK_LINK_FAILED',
+                userId: req.user?.id || null,
+            });
+            return res.status(error.statusCode || 500).json({
+                error: 'VK_LINK_FAILED',
+                message: 'Could not link VK account right now.',
+                authenticated: true,
+                linkingRequired: false,
+                csrfToken: req.csrfToken,
+            });
+        }
+    }
+
+    return res.status(409).json({
+        error: 'VK_LINK_REQUIRED',
+        message: 'Please sign in or register first to link this VK account.',
+        authenticated: false,
+        linkingRequired: true,
+        vkProfile: {
+            id: vkUserId,
+            firstName: verification.params.vk_first_name || '',
+            lastName: verification.params.vk_last_name || '',
+            avatar: verification.params.vk_photo_200 || '',
+        },
+        csrfToken: req.csrfToken,
+    });
+});
+
 app.post('/api/auth/register', async (req, res) => {
     const name = normalizeDisplayName(req.body?.name);
     const email = normalizeEmail(req.body?.email);
