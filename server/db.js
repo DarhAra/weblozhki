@@ -180,7 +180,6 @@ function initSchema(db) {
         CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id);
         CREATE INDEX IF NOT EXISTS idx_user_runtime_state_updated_at ON user_runtime_state(updated_at);
         CREATE INDEX IF NOT EXISTS idx_user_private_state_updated_at ON user_private_state(updated_at);
-        CREATE UNIQUE INDEX IF NOT EXISTS idx_users_vk_user_id ON users(vk_user_id);
         CREATE INDEX IF NOT EXISTS idx_donations_user_id ON donations(user_id);
         CREATE INDEX IF NOT EXISTS idx_donations_provider_payment_id ON donations(provider_payment_id);
         CREATE INDEX IF NOT EXISTS idx_donations_status ON donations(status);
@@ -188,6 +187,10 @@ function initSchema(db) {
     `);
 
     ensureUserColumns(db);
+
+    if (hasColumn(db, 'users', 'vk_user_id')) {
+        db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_vk_user_id ON users(vk_user_id)`);
+    }
 }
 
 function migrateLegacyJsonFiles(db, paths) {

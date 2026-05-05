@@ -348,6 +348,10 @@ function isStateChangingMethod(method) {
     return ['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(method || '').toUpperCase());
 }
 
+function getRemoteIp(req) {
+    return req.ip || req.connection?.remoteAddress || 'unknown';
+}
+
 function buildRateLimitKey(scope, req, extraKey = '') {
     return [
         scope,
@@ -550,6 +554,58 @@ function requireAuthenticatedUser(req, res, next) {
     return next();
 }
 
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: false }));
+app.use((req, _res, next) => {
+    repositories.pruneExpiredSessions();
+    repositories.prunePasswordResetTokens();
+    next();
+});
+app.use((req, _res, next) => {
+    try {
+        const cookies = parseCookies(req.headers.cookie || '');
+        req.parsedCookies = cookies;
+        const sessionId = cookies[config.sessionCookieName];
+        if (!sessionId) {
+            req.user = null;
+            req.sessionId = null;
+            req.sessionRecord = null;
+            req.shouldRefreshSessionCookie = false;
+            return next();
+        }
+
+        const session = repositories.findSessionById(sessionId);
+        if (!session || session.revokedAt || isSessionExpired(session)) {
+            if (session?.id) {
+                repositories.revokeSession(session.id);
+            }
+            req.user = null;
+            req.sessionId = null;
+            req.sessionRecord = null;
+            req.shouldRefreshSessionCookie = false;
+            return next();
+        }
+
+        const user = repositories.findUserById(session.userId);
+        if (!user) {
+            repositories.revokeSession(session.id);
+            req.user = null;
+            req.sessionId = null;
+            req.sessionRecord = null;
+            req.shouldRefreshSessionCookie = false;
+            return next();
+        }
+
+        req.user = user;
+        req.sessionId = session.id;
+        req.sessionRecord = session;
+        req.shouldRefreshSessionCookie = true;
+        refreshSession(req);
+        return next();
+    } catch (error) {
+        return next(error);
+    }
+});
 app.use(validatePublicOrigin);
 app.use(ensureCsrfContext);
 app.use(requireCsrfToken);
@@ -723,6 +779,7 @@ app.post('/api/auth/register', async (req, res) => {
         return res.status(201).json({
             ok: true,
             user: toPublicUser(user),
+            csrfToken: req.csrfToken,
         });
     } catch (error) {
         logServerError('Failed to register user', error, {
@@ -1059,7 +1116,8 @@ app.post('/api/account/change-password', requireAuthenticatedUser, async (req, r
 
         return res.json({
             ok: true,
-            requireLogin: true,
+            user: toPublicUser(user),
+            csrfToken: req.csrfToken,
         });
     } catch (error) {
         logServerError('Failed to change password', error, {
@@ -1416,13 +1474,5 @@ app.use((error, req, res, _next) => {
 });
 
 app.listen(PORT, () => {
-    const summary = getSafeRuntimeSummary();
     console.log(`Server started: http://localhost:${PORT}`);
-    console.log(`SQLite ready: ${databasePath}`);
-    console.log(`Mode: ${summary.mode}`);
-    console.log(`Trust proxy: ${summary.trustProxy ? 'enabled' : 'disabled'}`);
-    console.log(`Cookie: ${summary.sessionCookieName}, SameSite=${summary.sessionCookieSameSite}, Secure=${summary.sessionCookieSecure}`);
-    console.log(`Session TTL days: ${summary.sessionTtlDays}`);
-    console.log(`SMTP configured: ${summary.smtpConfigured ? 'yes' : 'no'}`);
-    console.log(`YooKassa configured: ${summary.yookassaConfigured ? 'yes' : 'no'}`);
 });
