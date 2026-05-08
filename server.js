@@ -1131,6 +1131,108 @@ app.post('/api/account/change-password', requireAuthenticatedUser, async (req, r
     }
 });
 
+function parseDonationAmount(amount) {
+    const value = Number(amount);
+    if (!Number.isFinite(value) || value <= 0) {
+        throw createPaymentError('Invalid donation amount.', 400, 'INVALID_DONATION_AMOUNT');
+    }
+    return value;
+}
+
+function isAllowedDonationAmount(amount) {
+    if (!Number.isFinite(amount) || amount <= 0) {
+        return false;
+    }
+    if (amount < config.donationMinAmount || amount > config.donationMaxAmount) {
+        return false;
+    }
+    if (config.donationAllowedAmounts.length > 0 && !config.donationAllowedAmounts.includes(amount)) {
+        return false;
+    }
+    return true;
+}
+
+function createDonationRecord(userId, amount, launchParams) {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    return {
+        id,
+        userId,
+        provider: 'yookassa',
+        providerPaymentId: null,
+        amountValue: amount,
+        amountCurrency: config.donationCurrency,
+        status: 'pending',
+        type: 'one-time',
+        returnUrl: `${config.appBaseUrl}/?donationId=${id}`,
+        createdAt: now,
+        updatedAt: now,
+        confirmedAt: null,
+    };
+}
+
+function getPaymentSummary(userId, donation) {
+    const latestDonation = donation || repositories.findLatestSucceededDonationByUserId(userId) || null;
+    return {
+        support: {
+            hasSupported: Boolean(latestDonation && latestDonation.status === 'succeeded'),
+            lastDonationAt: latestDonation?.confirmedAt || null,
+        },
+        latestDonation: donation || null,
+        checkout: {
+            minAmount: config.donationMinAmount,
+            maxAmount: config.donationMaxAmount,
+            allowedAmounts: config.donationAllowedAmounts,
+        },
+    };
+}
+
+async function trySyncDonationStatusFromProvider(donation) {
+    if (!donation || donation.status !== 'pending' || !donation.providerPaymentId) {
+        return donation;
+    }
+
+    try {
+        const remotePayment = await yookassa.getPayment(donation.providerPaymentId);
+        if (!remotePayment?.id) {
+            return donation;
+        }
+
+        const remoteStatus = typeof remotePayment.status === 'string' ? remotePayment.status : '';
+
+        if (remoteStatus === 'succeeded' || remoteStatus === 'canceled') {
+            const newStatus = remoteStatus === 'succeeded' ? 'succeeded' : 'canceled';
+            repositories.updateDonationStatus({
+                id: donation.id,
+                status: newStatus,
+                updatedAt: new Date().toISOString(),
+                confirmedAt: newStatus === 'succeeded' ? new Date().toISOString() : null,
+            });
+            return repositories.findDonationById(donation.id);
+        }
+
+        return donation;
+    } catch {
+        return donation;
+    }
+}
+
+function isYookassaWebhookSecretValid(req) {
+    const key = typeof req.query?.key === 'string' ? req.query.key.trim() : '';
+    return Boolean(key && config.yookassaWebhookSecret && key === config.yookassaWebhookSecret);
+}
+
+function buildWebhookRecord({ eventId, eventType, paymentId, donationId }) {
+    return {
+        id: eventId,
+        provider: 'yookassa',
+        eventType,
+        paymentId: paymentId || null,
+        donationId: donationId || null,
+        createdAt: new Date().toISOString(),
+    };
+}
+
 app.get('/api/payments/status', requireAuthenticatedUser, (req, res) => {
     const donationId = typeof req.query?.donationId === 'string' ? req.query.donationId.trim() : '';
 
@@ -1188,7 +1290,7 @@ app.post('/api/payments/create-donation-session', requireAuthenticatedUser, asyn
         const payment = await yookassa.createPayment({
             amount,
             currency: config.donationCurrency,
-            description: '????????? ??????? "??? ?????"',
+            description: 'Поддержка проекта "Мои ложки"',
             returnUrl: donation.returnUrl,
             donationId: donation.id,
             userId: req.user.id,
