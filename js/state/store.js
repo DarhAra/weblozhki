@@ -10,7 +10,7 @@ import {
     removeOfflineStateCache,
     writeOfflineStateCache,
 } from '../services/offline-state-cache.js';
-import { getCsrfTokenValue } from '../services/auth.js';
+import { getCsrfTokenValue, setCsrfTokenValue } from '../services/auth.js';
 
 const OFFLINE_STATE_KEY = 'resourceTodoOfflineState';
 const API_RUNTIME_STATE_URL = '/api/state/runtime';
@@ -512,7 +512,7 @@ export function createStore() {
             : 'Сохранение: локально, сеть недоступна.';
     }
 
-    async function requestJson(url, options = {}) {
+    async function requestJson(url, options = {}, _isRetry = false) {
         const headers = new Headers(options.headers || {});
         if (!headers.has('Accept')) {
             headers.set('Accept', 'application/json');
@@ -528,11 +528,20 @@ export function createStore() {
             headers,
         });
 
+        const payload = await response.json().catch(() => null);
+        if (payload?.csrfToken) {
+            setCsrfTokenValue(payload.csrfToken);
+        }
+
         if (!response.ok) {
+            if (!_isRetry && payload?.error === 'CSRF_TOKEN_INVALID') {
+                return requestJson(url, options, true);
+            }
+
             throw new Error(`Request failed with status ${response.status}`);
         }
 
-        return response.json().catch(() => null);
+        return payload;
     }
 
     async function fetchServerState() {

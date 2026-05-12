@@ -728,6 +728,15 @@ export function bindAppEvents(app) {
         elements.authName.value = '';
         elements.authPassword.value = '';
         elements.authPasswordConfirm.value = '';
+
+        elements.authEmail.readOnly = true;
+        elements.authPassword.readOnly = true;
+        elements.authPasswordConfirm.readOnly = true;
+        setTimeout(() => {
+            elements.authEmail.readOnly = false;
+            elements.authPassword.readOnly = false;
+            elements.authPasswordConfirm.readOnly = false;
+        }, 600);
     }
 
     function switchAuthMode(mode) {
@@ -1822,6 +1831,25 @@ export function bindAppEvents(app) {
         closeAppMenu();
         app.screens.showHistoryScreen();
     });
+
+    function togglePasswordVisibility(inputEl, toggleEl) {
+        const isVisible = inputEl.type === 'text';
+        inputEl.type = isVisible ? 'password' : 'text';
+        toggleEl.classList.toggle('is-visible', !isVisible);
+        toggleEl.setAttribute('aria-label', isVisible ? 'Показать пароль' : 'Скрыть пароль');
+    }
+
+    if (elements.authPasswordToggle) {
+        elements.authPasswordToggle.addEventListener('click', () => {
+            togglePasswordVisibility(elements.authPassword, elements.authPasswordToggle);
+        });
+    }
+
+    if (elements.authPasswordConfirmToggle) {
+        elements.authPasswordConfirmToggle.addEventListener('click', () => {
+            togglePasswordVisibility(elements.authPasswordConfirm, elements.authPasswordConfirmToggle);
+        });
+    }
 
     if (elements.openSupportCtaBtn) {
         elements.openSupportCtaBtn.addEventListener('click', () => {

@@ -41,7 +41,7 @@ body {
     border-radius: 20px;
     box-shadow: var(--shadow);
     position: relative;
-    padding: 24px;
+    padding: 24px 24px 80px;
     display: flex;
     flex-direction: column;
 }
@@ -156,6 +156,54 @@ body {
     outline: none;
     border-color: #bfd4c7;
     box-shadow: 0 0 0 4px rgba(123, 168, 146, 0.12);
+}
+
+.auth-password-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.auth-password-wrapper input {
+    flex: 1;
+    padding-right: 44px;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 8px;
+    color: #8a9e93;
+    line-height: 0;
+    border-radius: 8px;
+    transition: background-color 0.15s;
+}
+
+.password-toggle:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.eye-icon {
+    width: 20px;
+    height: 20px;
+    display: block;
+}
+
+.eye-icon--hidden {
+    display: none;
+}
+
+.is-visible .eye-icon--visible {
+    display: none;
+}
+
+.is-visible .eye-icon--hidden {
+    display: block;
 }
 
 .auth-error {
@@ -2825,18 +2873,26 @@ header h2 {
     }
 
     .support-cta-btn {
-        left: 16px;
-        right: 16px;
-        bottom: 16px;
-        justify-content: center;
-        padding: 11px 16px 11px 14px;
-        min-height: 50px;
+        position: static;
+        left: auto;
+        right: auto;
+        bottom: auto;
+        margin-top: 16px;
+        justify-content: flex-start;
+        padding: 8px 16px;
+        min-height: 42px;
         font-size: 13px;
+        width: auto;
     }
 
     .support-cta-icon {
-        width: 30px;
-        height: 30px;
+        width: 26px;
+        height: 26px;
+    }
+
+    .support-cta-icon svg {
+        width: 14px;
+        height: 14px;
     }
 
     .balance-header {

@@ -420,6 +420,7 @@ function requireCsrfToken(req, res, next) {
         return res.status(403).json({
             error: 'CSRF_TOKEN_INVALID',
             message: 'Security token is missing or invalid.',
+            csrfToken: req.csrfToken,
         });
     }
 
@@ -496,6 +497,17 @@ function applySessionRefresh(req, res) {
     if (req.shouldRefreshSessionCookie && req.sessionRecord?.id) {
         setSessionCookie(res, req.sessionRecord.id);
     }
+}
+
+function wrapResponseWithCsrfToken(req, res, next) {
+    const originalJson = res.json.bind(res);
+    res.json = body => {
+        if (body && typeof body === 'object' && !body.csrfToken && req.csrfToken) {
+            body = { ...body, csrfToken: req.csrfToken };
+        }
+        return originalJson(body);
+    };
+    next();
 }
 
 function wrapResponseWithSessionRefresh(req, res, next) {
@@ -608,6 +620,7 @@ app.use((req, _res, next) => {
 });
 app.use(validatePublicOrigin);
 app.use(ensureCsrfContext);
+app.use(wrapResponseWithCsrfToken);
 app.use(requireCsrfToken);
 app.use(wrapResponseWithSessionRefresh);
 app.use((req, res, next) => {
@@ -800,6 +813,7 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(400).json({
             error: 'INVALID_CREDENTIALS',
             message: 'Email and password are required.',
+            csrfToken: req.csrfToken,
         });
     }
 
@@ -817,6 +831,7 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({
                 error: 'AUTH_FAILED',
                 message: 'Invalid email or password.',
+                csrfToken: req.csrfToken,
             });
         }
 
@@ -825,6 +840,7 @@ app.post('/api/auth/login', async (req, res) => {
             return res.status(401).json({
                 error: 'AUTH_FAILED',
                 message: 'Invalid email or password.',
+                csrfToken: req.csrfToken,
             });
         }
 
@@ -844,6 +860,7 @@ app.post('/api/auth/login', async (req, res) => {
         return res.json({
             ok: true,
             user: toPublicUser(user),
+            csrfToken: req.csrfToken,
         });
     } catch (error) {
         logServerError('Failed to log in', error, {
@@ -852,6 +869,7 @@ app.post('/api/auth/login', async (req, res) => {
         return res.status(error.statusCode || 500).json({
             error: 'LOGIN_FAILED',
             message: 'Could not log in right now.',
+            csrfToken: req.csrfToken,
         });
     }
 });

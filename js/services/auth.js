@@ -25,6 +25,10 @@ export function getCsrfTokenValue() {
     return getCsrfToken();
 }
 
+export function setCsrfTokenValue(nextToken) {
+    setCsrfToken(nextToken);
+}
+
 async function readJsonResponse(response) {
     const contentType = response.headers.get('content-type') || '';
     if (!contentType.includes('application/json')) {
@@ -97,7 +101,7 @@ function buildFriendlyAuthError(payload, fallbackMessage) {
     return fallbackMessage;
 }
 
-async function requestJson(url, options = {}, fallbackMessage = 'Сейчас не получается связаться с сервером.') {
+async function requestJson(url, options = {}, fallbackMessage = 'Сейчас не получается связаться с сервером.', _isRetry = false) {
     let response;
 
     try {
@@ -127,6 +131,10 @@ async function requestJson(url, options = {}, fallbackMessage = 'Сейчас н
     }
 
     if (!response.ok) {
+        if (!_isRetry && payload?.error === 'CSRF_TOKEN_INVALID') {
+            return requestJson(url, options, fallbackMessage, true);
+        }
+
         const requestError = new Error(`Request failed with status ${response.status}`);
         requestError.friendlyMessage = buildFriendlyAuthError(payload, fallbackMessage);
         requestError.payload = payload;

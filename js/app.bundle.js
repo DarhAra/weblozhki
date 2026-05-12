@@ -364,8 +364,10 @@
       authName: doc.getElementById("auth-name"),
       authEmail: doc.getElementById("auth-email"),
       authPassword: doc.getElementById("auth-password"),
+      authPasswordToggle: doc.getElementById("auth-password-toggle"),
       authPasswordConfirmField: doc.getElementById("auth-password-confirm-field"),
       authPasswordConfirm: doc.getElementById("auth-password-confirm"),
+      authPasswordConfirmToggle: doc.getElementById("auth-password-confirm-toggle"),
       authNotice: doc.getElementById("auth-notice"),
       authForgotPasswordBtn: doc.getElementById("auth-forgot-password-btn"),
       authError: doc.getElementById("auth-error"),
@@ -1299,6 +1301,9 @@
   function getCsrfTokenValue() {
     return getCsrfToken();
   }
+  function setCsrfTokenValue(nextToken) {
+    setCsrfToken(nextToken);
+  }
   async function readJsonResponse(response) {
     const contentType = response.headers.get("content-type") || "";
     if (!contentType.includes("application/json")) {
@@ -1368,7 +1373,7 @@
     }
     return fallbackMessage;
   }
-  async function requestJson(url, options = {}, fallbackMessage = "Сейчас не получается связаться с сервером.") {
+  async function requestJson(url, options = {}, fallbackMessage = "Сейчас не получается связаться с сервером.", _isRetry = false) {
     let response;
     try {
       const headers = new Headers(options.headers || {});
@@ -1394,6 +1399,9 @@
       setCsrfToken(payload.csrfToken);
     }
     if (!response.ok) {
+      if (!_isRetry && (payload == null ? void 0 : payload.error) === "CSRF_TOKEN_INVALID") {
+        return requestJson(url, options, fallbackMessage, true);
+      }
       const requestError = new Error(`Request failed with status ${response.status}`);
       requestError.friendlyMessage = buildFriendlyAuthError(payload, fallbackMessage);
       requestError.payload = payload;
@@ -2009,7 +2017,7 @@
     function getOfflineStatusMessage() {
       return sessionContext.authenticated ? "Офлайн-режим: данные сохраняются на этом устройстве и будут синхронизированы позже." : "Сохранение: локально, сеть недоступна.";
     }
-    async function requestJson2(url, options = {}) {
+    async function requestJson2(url, options = {}, _isRetry = false) {
       const headers = new Headers(options.headers || {});
       if (!headers.has("Accept")) {
         headers.set("Accept", "application/json");
@@ -2023,10 +2031,17 @@
         ...options,
         headers
       });
+      const payload = await response.json().catch(() => null);
+      if (payload == null ? void 0 : payload.csrfToken) {
+        setCsrfTokenValue(payload.csrfToken);
+      }
       if (!response.ok) {
+        if (!_isRetry && (payload == null ? void 0 : payload.error) === "CSRF_TOKEN_INVALID") {
+          return requestJson2(url, options, true);
+        }
         throw new Error(`Request failed with status ${response.status}`);
       }
-      return response.json().catch(() => null);
+      return payload;
     }
     async function fetchServerState() {
       const runtimePayload = await requestJson2(API_RUNTIME_STATE_URL);
@@ -2855,6 +2870,20 @@
       if (elements.authError) {
         elements.authError.textContent = auth.error || "";
         elements.authError.classList.toggle("hidden", !auth.error);
+      }
+      if (elements.authPassword && elements.authPassword.type !== "password") {
+        elements.authPassword.type = "password";
+      }
+      if (elements.authPasswordToggle) {
+        elements.authPasswordToggle.classList.remove("is-visible");
+        elements.authPasswordToggle.setAttribute("aria-label", "Показать пароль");
+      }
+      if (elements.authPasswordConfirm && elements.authPasswordConfirm.type !== "password") {
+        elements.authPasswordConfirm.type = "password";
+      }
+      if (elements.authPasswordConfirmToggle) {
+        elements.authPasswordConfirmToggle.classList.remove("is-visible");
+        elements.authPasswordConfirmToggle.setAttribute("aria-label", "Показать пароль");
       }
     }
     function renderVoiceUi() {
@@ -4602,6 +4631,14 @@
       elements.authName.value = "";
       elements.authPassword.value = "";
       elements.authPasswordConfirm.value = "";
+      elements.authEmail.readOnly = true;
+      elements.authPassword.readOnly = true;
+      elements.authPasswordConfirm.readOnly = true;
+      setTimeout(() => {
+        elements.authEmail.readOnly = false;
+        elements.authPassword.readOnly = false;
+        elements.authPasswordConfirm.readOnly = false;
+      }, 600);
     }
     function switchAuthMode(mode) {
       authState.mode = mode === "register" ? "register" : "login";
@@ -5528,6 +5565,22 @@
       closeAppMenu();
       app.screens.showHistoryScreen();
     });
+    function togglePasswordVisibility(inputEl, toggleEl) {
+      const isVisible = inputEl.type === "text";
+      inputEl.type = isVisible ? "password" : "text";
+      toggleEl.classList.toggle("is-visible", !isVisible);
+      toggleEl.setAttribute("aria-label", isVisible ? "Показать пароль" : "Скрыть пароль");
+    }
+    if (elements.authPasswordToggle) {
+      elements.authPasswordToggle.addEventListener("click", () => {
+        togglePasswordVisibility(elements.authPassword, elements.authPasswordToggle);
+      });
+    }
+    if (elements.authPasswordConfirmToggle) {
+      elements.authPasswordConfirmToggle.addEventListener("click", () => {
+        togglePasswordVisibility(elements.authPasswordConfirm, elements.authPasswordConfirmToggle);
+      });
+    }
     if (elements.openSupportCtaBtn) {
       elements.openSupportCtaBtn.addEventListener("click", () => {
         void openProjectSupport();

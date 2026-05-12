@@ -262,6 +262,21 @@ export function createRenderers(app) {
             elements.authError.textContent = auth.error || '';
             elements.authError.classList.toggle('hidden', !auth.error);
         }
+
+        if (elements.authPassword && elements.authPassword.type !== 'password') {
+            elements.authPassword.type = 'password';
+        }
+        if (elements.authPasswordToggle) {
+            elements.authPasswordToggle.classList.remove('is-visible');
+            elements.authPasswordToggle.setAttribute('aria-label', 'Показать пароль');
+        }
+        if (elements.authPasswordConfirm && elements.authPasswordConfirm.type !== 'password') {
+            elements.authPasswordConfirm.type = 'password';
+        }
+        if (elements.authPasswordConfirmToggle) {
+            elements.authPasswordConfirmToggle.classList.remove('is-visible');
+            elements.authPasswordConfirmToggle.setAttribute('aria-label', 'Показать пароль');
+        }
     }
 
     function renderVoiceUi() {
