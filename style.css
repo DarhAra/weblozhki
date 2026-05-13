@@ -1174,8 +1174,10 @@ header h2 {
 
 .task-desc {
     flex: 1;
+    min-width: 0;
     font-size: 15px;
     word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 .task-main {
@@ -2124,7 +2126,9 @@ header h2 {
 
 .weekly-task-text {
     flex: 1;
+    min-width: 0;
     word-break: break-word;
+    overflow-wrap: break-word;
 }
 
 /* Адаптивность для десктопа */
