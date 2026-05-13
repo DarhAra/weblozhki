@@ -112,10 +112,12 @@ function renderTaskElement(task, editTaskState = null) {
             ${taskMetaHtml}
         </div>
         <div class="task-weight ${weightClass}">${weightLabel}</div>
-        ${breakdownButtonHtml}
-        ${controlsHtml}
-        ${copyButtonHtml}
-        <button class="delete-btn" title="Удалить" data-action="delete-task" data-task-id="${task.id}">&times;</button>
+        <div class="task-actions">
+            ${breakdownButtonHtml}
+            ${controlsHtml}
+            ${copyButtonHtml}
+            <button class="delete-btn" title="Удалить" data-action="delete-task" data-task-id="${task.id}">&times;</button>
+        </div>
     `;
 
     return taskEl;

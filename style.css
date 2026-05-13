@@ -1185,6 +1185,12 @@ header h2 {
     min-width: 0;
 }
 
+.task-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .task-meta {
     margin-top: 4px;
     font-size: 12px;
@@ -2975,6 +2981,10 @@ header h2 {
     .task-main {
         flex: 1 1 auto;
         min-width: 0;
+    }
+
+    .task-actions {
+        flex-basis: 100%;
     }
 
     .tasks-header {
