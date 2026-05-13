@@ -2967,6 +2967,16 @@ header h2 {
         gap: 10px;
     }
 
+    .task-item {
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+
+    .task-main {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
     .tasks-header {
         display: flex;
         flex-direction: column;
