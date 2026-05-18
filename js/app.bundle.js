@@ -6323,6 +6323,7 @@
         launchParams: {}
       };
     }
+    const rawSearch = (window.location.search || "").replace(/^\?/, "");
     const parsed = (0, import_vk_bridge.parseURLSearchParamsForGetLaunchParams)(window.location.search);
     const params = {};
     Object.entries(parsed || {}).forEach(([key, value]) => {
@@ -6331,10 +6332,9 @@
       }
       params[key] = String(value);
     });
-    const rawLaunchParams = new URLSearchParams(params).toString();
     return {
       isVkMiniApp: hasLaunchParams(params),
-      rawLaunchParams,
+      rawLaunchParams: rawSearch,
       launchParams: params
     };
   }

@@ -13,6 +13,7 @@ function collectLaunchParamsFromLocation() {
         };
     }
 
+    const rawSearch = (window.location.search || '').replace(/^\?/, '');
     const parsed = parseURLSearchParamsForGetLaunchParams(window.location.search);
     const params = {};
 
@@ -23,10 +24,9 @@ function collectLaunchParamsFromLocation() {
         params[key] = String(value);
     });
 
-    const rawLaunchParams = new URLSearchParams(params).toString();
     return {
         isVkMiniApp: hasLaunchParams(params),
-        rawLaunchParams,
+        rawLaunchParams: rawSearch,
         launchParams: params,
     };
 }
