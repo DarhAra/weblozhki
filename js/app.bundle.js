@@ -1424,23 +1424,36 @@
       };
     }
     async function authenticateWithVk({ launchParams }) {
-      const payload = await requestJson(
-        API_VK_AUTH_URL,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
+      var _a, _b;
+      try {
+        const payload = await requestJson(
+          API_VK_AUTH_URL,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ launchParams })
           },
-          body: JSON.stringify({ launchParams })
-        },
-        "Сейчас не получается проверить вход через VK."
-      );
-      return {
-        authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
-        linkingRequired: Boolean(payload == null ? void 0 : payload.linkingRequired),
-        user: (payload == null ? void 0 : payload.user) || null,
-        csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
-      };
+          "Сейчас не получается проверить вход через VK."
+        );
+        return {
+          authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
+          linkingRequired: Boolean(payload == null ? void 0 : payload.linkingRequired),
+          user: (payload == null ? void 0 : payload.user) || null,
+          csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
+        };
+      } catch (error) {
+        if ((_a = error.payload) == null ? void 0 : _a.linkingRequired) {
+          return {
+            authenticated: false,
+            linkingRequired: true,
+            user: null,
+            csrfToken: ((_b = error.payload) == null ? void 0 : _b.csrfToken) || ""
+          };
+        }
+        throw error;
+      }
     }
     async function login({ email, password }) {
       const payload = await requestJson(

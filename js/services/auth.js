@@ -160,24 +160,36 @@ export function createAuthService() {
     }
 
     async function authenticateWithVk({ launchParams }) {
-        const payload = await requestJson(
-            API_VK_AUTH_URL,
-            {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
+        try {
+            const payload = await requestJson(
+                API_VK_AUTH_URL,
+                {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ launchParams }),
                 },
-                body: JSON.stringify({ launchParams }),
-            },
-            'Сейчас не получается проверить вход через VK.',
-        );
+                'Сейчас не получается проверить вход через VK.',
+            );
 
-        return {
-            authenticated: Boolean(payload?.authenticated),
-            linkingRequired: Boolean(payload?.linkingRequired),
-            user: payload?.user || null,
-            csrfToken: payload?.csrfToken || '',
-        };
+            return {
+                authenticated: Boolean(payload?.authenticated),
+                linkingRequired: Boolean(payload?.linkingRequired),
+                user: payload?.user || null,
+                csrfToken: payload?.csrfToken || '',
+            };
+        } catch (error) {
+            if (error.payload?.linkingRequired) {
+                return {
+                    authenticated: false,
+                    linkingRequired: true,
+                    user: null,
+                    csrfToken: error.payload?.csrfToken || '',
+                };
+            }
+            throw error;
+        }
     }
 
     async function login({ email, password }) {
