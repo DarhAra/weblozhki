@@ -332,6 +332,7 @@
       mainScreen: doc.getElementById("main-screen"),
       reviewScreen: doc.getElementById("review-screen"),
       weeklyScreen: doc.getElementById("weekly-screen"),
+      todayTitle: doc.getElementById("today-title"),
       historyScreen: doc.getElementById("history-screen"),
       weeklyTaskModal: doc.getElementById("weekly-task-modal"),
       copyTaskModal: doc.getElementById("copy-task-modal"),
@@ -3178,6 +3179,13 @@
       var _a, _b, _c, _d;
       const state = store.getState();
       const todayTasks = getTodayTasks(state);
+      if (elements.todayTitle) {
+        elements.todayTitle.textContent = `Сегодня ${(/* @__PURE__ */ new Date()).toLocaleDateString("ru-RU", {
+          day: "numeric",
+          month: "long",
+          year: "numeric"
+        })}`;
+      }
       const isSosView = Boolean((_a = runtime.sosView) == null ? void 0 : _a.active);
       const visibleTodayTasks = isSosView ? todayTasks.filter((task) => task.isResource || task.completed) : todayTasks;
       elements.tasksList.innerHTML = "";

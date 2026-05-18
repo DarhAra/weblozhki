@@ -626,6 +626,14 @@ export function createRenderers(app) {
     function renderMainScreen() {
         const state = store.getState();
         const todayTasks = getTodayTasks(state);
+
+        if (elements.todayTitle) {
+            elements.todayTitle.textContent = `Сегодня ${new Date().toLocaleDateString('ru-RU', {
+                day: 'numeric',
+                month: 'long',
+                year: 'numeric',
+            })}`;
+        }
         const isSosView = Boolean(runtime.sosView?.active);
         const visibleTodayTasks = isSosView
             ? todayTasks.filter(task => task.isResource || task.completed)

@@ -6,6 +6,7 @@ export function collectElements(doc = document) {
         mainScreen: doc.getElementById('main-screen'),
         reviewScreen: doc.getElementById('review-screen'),
         weeklyScreen: doc.getElementById('weekly-screen'),
+        todayTitle: doc.getElementById('today-title'),
         historyScreen: doc.getElementById('history-screen'),
         weeklyTaskModal: doc.getElementById('weekly-task-modal'),
         copyTaskModal: doc.getElementById('copy-task-modal'),

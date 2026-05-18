@@ -661,6 +661,7 @@ app.get('/api/auth/session', (req, res) => {
 app.post('/api/vk/auth', (req, res) => {
     const verification = vkLaunchParams.verify(req.body?.launchParams);
     if (!verification.ok) {
+        console.log('[VK_AUTH] Verification failed:', verification.code, req.body?.launchParams);
         return res.status(getVkAuthErrorStatus(verification.code)).json({
             error: verification.code,
             message: 'Could not verify VK launch parameters.',
@@ -669,6 +670,8 @@ app.post('/api/vk/auth', (req, res) => {
             csrfToken: req.csrfToken,
         });
     }
+
+    console.log('[VK_AUTH] Verification OK, vk_user_id:', verification.params.vk_user_id);
 
     const vkUserId = String(verification.params.vk_user_id);
     const linkedUser = repositories.findUserByVkUserId(vkUserId);
@@ -1057,6 +1060,7 @@ app.patch('/api/account/profile', requireAuthenticatedUser, (req, res) => {
 app.post('/api/account/link-vk', requireAuthenticatedUser, (req, res) => {
     const verification = vkLaunchParams.verify(req.body?.launchParams);
     if (!verification.ok) {
+        console.log('[VK_LINK] Verification failed:', verification.code, req.body?.launchParams);
         return res.status(getVkAuthErrorStatus(verification.code)).json({
             error: verification.code,
             message: 'Could not verify VK launch parameters.',
