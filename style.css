@@ -2156,7 +2156,7 @@ header h2 {
 }
 
 /* ТЕКСТОВЫЕ КНОПКИ */
-@media (max-width: 640px) {
+@media (max-width: 767px) {
     .voice-draft-item {
         grid-template-columns: 1fr;
     }
@@ -2785,7 +2785,7 @@ header h2 {
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 767px) {
     body {
         padding: 10px;
     }
