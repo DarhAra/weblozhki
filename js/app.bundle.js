@@ -3096,9 +3096,13 @@
         const taskEl = document.createElement("div");
         taskEl.className = "task-item";
         taskEl.innerHTML = `
-                <div class="task-desc">${escapeHtml(task.text)}</div>
-                <button class="postpone-btn" title="На сегодня" data-action="review-move-today" data-task-id="${task.id}">☀️На сегодня</button>
-                <button class="postpone-btn" title="На потом" data-action="review-move-deferred" data-task-id="${task.id}">📦На потом</button>
+                <div class="task-main">
+                    <div class="task-desc">${escapeHtml(task.text)}</div>
+                </div>
+                <div class="task-actions">
+                    <button class="postpone-btn" title="На сегодня" data-action="review-move-today" data-task-id="${task.id}">☀️На сегодня</button>
+                    <button class="postpone-btn" title="На потом" data-action="review-move-deferred" data-task-id="${task.id}">📦На потом</button>
+                </div>
             `;
         elements.reviewTasksList.appendChild(taskEl);
       });
@@ -3289,11 +3293,15 @@
         const weightClass = task.isResource ? "resource-weight" : "";
         const weightLabel = task.isResource ? "Ресурс" : `Вес: ${task.weight}`;
         taskEl.innerHTML = `
-                <div class="task-desc">${escapeHtml(task.text)}</div>
+                <div class="task-main">
+                    <div class="task-desc">${escapeHtml(task.text)}</div>
+                </div>
                 <div class="task-weight ${weightClass}">${weightLabel}</div>
-                <button class="postpone-btn" title="На сегодня" data-action="deferred-move-today" data-task-id="${task.id}">☀️</button>
-                <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
-                <button class="delete-btn" title="Удалить" data-action="deferred-delete-task" data-task-id="${task.id}">&times;</button>
+                <div class="task-actions">
+                    <button class="postpone-btn" title="На сегодня" data-action="deferred-move-today" data-task-id="${task.id}">☀️</button>
+                    <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
+                    <button class="delete-btn" title="Удалить" data-action="deferred-delete-task" data-task-id="${task.id}">&times;</button>
+                </div>
             `;
         elements.archiveList.appendChild(taskEl);
       });
@@ -3316,13 +3324,17 @@
         taskEl.dataset.taskId = task.id;
         const weightLabel = task.isResource ? "Ресурс" : `Вес: ${task.weight}`;
         taskEl.innerHTML = `
-                    <div class="task-desc">
-                        ${escapeHtml(task.text)}
-                        <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Завершено: ${formatDoneDate(task.completedAtDate)}</div>
+                    <div class="task-main">
+                        <div class="task-desc">
+                            ${escapeHtml(task.text)}
+                            <div style="font-size: 12px; color: var(--text-secondary); margin-top: 4px;">Завершено: ${formatDoneDate(task.completedAtDate)}</div>
+                        </div>
                     </div>
                     <div class="task-weight ${task.isResource ? "resource-weight" : ""}">${weightLabel}</div>
-                    <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
-                    <button class="delete-btn" title="Удалить" data-action="done-delete-task" data-task-id="${task.id}">&times;</button>
+                    <div class="task-actions">
+                        <button class="task-copy-btn" title="Скопировать" data-action="open-copy-task" data-task-id="${task.id}">⧉</button>
+                        <button class="delete-btn" title="Удалить" data-action="done-delete-task" data-task-id="${task.id}">&times;</button>
+                    </div>
                 `;
         elements.completedList.appendChild(taskEl);
       });
@@ -3445,9 +3457,13 @@
         const item = document.createElement("div");
         item.className = "task-item";
         item.innerHTML = `
-                <div class="task-desc">${escapeHtml(task.text)}</div>
+                <div class="task-main">
+                    <div class="task-desc">${escapeHtml(task.text)}</div>
+                </div>
                 <div class="task-weight">Вес: ${task.weight}</div>
-                <button class="postpone-btn" title="Оставить на сегодня" data-action="choose-low-energy-task" data-task-id="${task.id}">☀️</button>
+                <div class="task-actions">
+                    <button class="postpone-btn" title="Оставить на сегодня" data-action="choose-low-energy-task" data-task-id="${task.id}">☀️</button>
+                </div>
             `;
         elements.lowEnergySwapList.appendChild(item);
       });

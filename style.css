@@ -1116,13 +1116,14 @@ header h2 {
 .task-item {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 8px;
     padding: 12px 14px;
     background: #fff;
     border: 1px solid var(--border-color);
     border-radius: var(--radius);
     transition: 0.2s;
     cursor: grab;
+    flex-wrap: wrap;
 }
 
 .task-item:active {
@@ -1181,7 +1182,7 @@ header h2 {
 }
 
 .task-main {
-    flex: 1;
+    flex: 1 1 auto;
     min-width: 0;
 }
 
@@ -1189,6 +1190,7 @@ header h2 {
     display: flex;
     align-items: center;
     gap: 8px;
+    flex-basis: 100%;
 }
 
 .task-meta {
@@ -2153,6 +2155,20 @@ header h2 {
     .self-care-slot {
         margin-bottom: 0;
     }
+
+    .task-item {
+        flex-wrap: nowrap;
+        gap: 12px;
+    }
+
+    .task-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .task-actions {
+        flex-basis: auto;
+    }
 }
 
 /* ТЕКСТОВЫЕ КНОПКИ */
@@ -2971,20 +2987,6 @@ header h2 {
 
     .task-list {
         gap: 10px;
-    }
-
-    .task-item {
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-
-    .task-main {
-        flex: 1 1 auto;
-        min-width: 0;
-    }
-
-    .task-actions {
-        flex-basis: 100%;
     }
 
     .tasks-header {
