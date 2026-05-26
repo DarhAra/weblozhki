@@ -896,6 +896,47 @@ app.get('/api/auth/vk/oauth/callback', async (req, res) => {
     }
 });
 
+app.get('/api/dbg/vk-oauth-test', async (req, res) => {
+    const result = {
+        isConfigured: vkOAuth.isConfigured,
+        appId: config.vkAppId ? config.vkAppId.slice(0, 4) + '...' : '(empty)',
+        hasSecret: Boolean(config.vkAppSecret),
+        redirectUri: config.vkOauthRedirectUri || '(empty)',
+        tests: {},
+    };
+
+    result.tests.resolveVkApi = await (async () => {
+        try {
+            const dns = require('dns');
+            await dns.promises.lookup('id.vk.com');
+            return 'OK';
+        } catch (e) {
+            return `DNS FAIL: ${e.message}`;
+        }
+    })();
+
+    result.tests.httpsGet = await (async () => {
+        try {
+            const response = await fetch('https://id.vk.com/oauth2/user_info?client_id=' + config.vkAppId + '&access_token=test', { signal: AbortSignal.timeout(10000) });
+            return { status: response.status, ok: response.ok };
+        } catch (e) {
+            return `FETCH ERROR: ${e.message}`;
+        }
+    })();
+
+    result.tests.tokenEndpointDNS = await (async () => {
+        try {
+            const dns = require('dns');
+            await dns.promises.lookup(new URL(VK_OAUTH_TOKEN_URL).hostname);
+            return 'OK';
+        } catch (e) {
+            return `DNS FAIL: ${e.message}`;
+        }
+    })();
+
+    return res.json(result);
+});
+
 app.post('/api/auth/register', async (req, res) => {
     console.log('[LOGIN] Attempt:', { email: req.body?.email, ip: req.ip });
     const name = normalizeDisplayName(req.body?.name);
