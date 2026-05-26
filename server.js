@@ -767,6 +767,15 @@ app.post('/api/vk/auth', async (req, res) => {
     }
 });
 
+app.get('/api/auth/vk/oauth/callback', (req, res) => {
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.send(`<!DOCTYPE html>
+<html lang="ru">
+<head><meta charset="UTF-8"><title>Вход по VK ID</title></head>
+<body><script src="https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js"></script></body>
+</html>`);
+});
+
 app.post('/api/auth/vk/complete', async (req, res) => {
     const accessToken = typeof req.body?.access_token === 'string' ? req.body.access_token.trim() : '';
     const vkUserId = typeof req.body?.user_id === 'string' ? req.body.user_id.trim() : '';

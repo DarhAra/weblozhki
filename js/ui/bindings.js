@@ -961,7 +961,7 @@ export function bindAppEvents(app) {
 
         VKID.Config.init({
             app: Number(publicConfig.vkAppId),
-            redirectUrl: window.location.origin + '/',
+            redirectUrl: window.location.origin + '/api/auth/vk/oauth/callback',
             responseMode: VKID.ConfigResponseMode.Callback,
             source: VKID.ConfigSource.LOWCODE,
             scope: 'email',
