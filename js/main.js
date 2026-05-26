@@ -280,7 +280,6 @@ export async function initApp({ elements }) {
         const paymentReturn = params.get('paymentReturn');
         const paymentDonationId = params.get('donationId');
         const paymentStatus = params.get('paymentStatus');
-        const vkAuthError = params.get('vkAuthError');
         if (resetToken) {
             app.runtime.auth.mode = 'reset-password';
             app.runtime.auth.resetToken = resetToken;

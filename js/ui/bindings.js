@@ -252,13 +252,6 @@ export function bindAppEvents(app) {
     elements.breakdownManualBtn.textContent = '\u041d\u0435 \u0441\u0435\u0439\u0447\u0430\u0441';
     elements.breakdownSuggestedBtn.textContent = '\u041f\u043e\u043c\u043e\u0433\u0438 \u0440\u0430\u0437\u0431\u0438\u0442\u044c';
 
-    if (typeof window !== 'undefined') {
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.has('vkAuthError')) {
-            replaceHistoryWithoutParams(['vkAuthError']);
-        }
-    }
-
     function closeVoiceModal({ resetDraft = true } = {}) {
         elements.voiceModal.classList.add('hidden');
         voiceState.modalMode = 'hidden';
@@ -929,21 +922,85 @@ export function bindAppEvents(app) {
         void submitAuthForm();
     });
 
-    if (elements.authVkOAuthBtn) {
-        elements.authVkOAuthBtn.addEventListener('click', async () => {
-            if (runtime.auth.status === 'submitting') return;
-            runtime.auth.status = 'submitting';
-            runtime.auth.error = '';
-            app.renderers.renderAuthScreen();
+    let vkSdkInitialized = false;
+
+    async function waitForVkSdk(timeoutMs = 10000) {
+        if (typeof VKIDSDK !== 'undefined') return true;
+        const start = Date.now();
+        while (Date.now() - start < timeoutMs) {
+            await new Promise(r => setTimeout(r, 100));
+            if (typeof VKIDSDK !== 'undefined') return true;
+        }
+        return false;
+    }
+
+    async function initVkOneTap() {
+        if (vkSdkInitialized) return;
+        const sdkReady = await waitForVkSdk();
+        if (!sdkReady) return;
+
+        const VKID = window.VKIDSDK;
+        let publicConfig;
+        try {
+            publicConfig = await app.auth.getPublicConfig();
+        } catch {
+            return;
+        }
+
+        if (!publicConfig?.vkAppId) return;
+
+        VKID.Config.init({
+            app: Number(publicConfig.vkAppId),
+            redirectUrl: window.location.origin + '/api/auth/vk/complete',
+            responseMode: VKID.ConfigResponseMode.Callback,
+            source: VKID.ConfigSource.LOWCODE,
+            scope: '',
+        });
+
+        const oneTap = new VKID.OneTap();
+
+        oneTap.render({
+            container: elements.authVkOneTapContainer,
+            showAlternativeLogin: true,
+        })
+        .on(VKID.WidgetEvents.ERROR, () => {
+            vkSdkInitialized = false;
+        })
+        .on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, async function (payload) {
             try {
-                const { url } = await app.auth.vkOAuthUrl();
-                window.location.href = url;
-            } catch (error) {
-                runtime.auth.status = 'guest';
-                runtime.auth.error = error?.friendlyMessage || 'Сейчас не получается начать вход через VK.';
+                const tokenData = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
+                const user = await app.auth.vkComplete({
+                    access_token: tokenData.access_token,
+                    user_id: String(tokenData.user_id),
+                    email: tokenData.email || '',
+                    name: [tokenData.first_name, tokenData.last_name].filter(Boolean).join(' '),
+                });
+                if (user) {
+                    await app.startAuthenticatedFlow(user);
+                }
+            } catch {
+                runtime.auth.error = 'Сейчас не получается войти через VK. Попробуйте ещё раз.';
                 app.renderers.renderAuthScreen();
             }
         });
+
+        vkSdkInitialized = true;
+    }
+
+    function showVkOneTap() {
+        if (elements.authVkOneTapContainer && !elements.authVkOneTapContainer.classList.contains('hidden')) {
+            void initVkOneTap();
+        }
+    }
+
+    const origRenderAuthScreen = app.renderers.renderAuthScreen;
+    app.renderers.renderAuthScreen = function () {
+        origRenderAuthScreen.call(app.renderers);
+        showVkOneTap();
+    };
+
+    if (typeof window !== 'undefined' && !elements.authVkOneTapContainer?.classList.contains('hidden')) {
+        setTimeout(() => void initVkOneTap(), 500);
     }
 
     if (elements.authForgotPasswordBtn) {

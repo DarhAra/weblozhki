@@ -265,14 +265,9 @@ export function createRenderers(app) {
             elements.authError.classList.toggle('hidden', !auth.error);
         }
 
-        if (elements.authVkOAuthBtn) {
+        if (elements.authVkOneTapContainer) {
             const isVisible = !isResetMode && !isChecking && !isSubmitting;
-            elements.authVkOAuthBtn.classList.toggle('hidden', !isVisible);
-            const divider = elements.authVkOAuthBtn.previousElementSibling;
-            if (divider?.classList?.contains('auth-vk-divider')) {
-                divider.classList.toggle('hidden', !isVisible);
-            }
-            elements.authVkOAuthBtn.disabled = isBusy;
+            elements.authVkOneTapContainer.classList.toggle('hidden', !isVisible);
         }
 
         if (elements.authPassword && elements.authPassword.type !== 'password') {

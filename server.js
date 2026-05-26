@@ -631,10 +631,16 @@ app.use((req, res, next) => {
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' https://unpkg.com; connect-src 'self' https://id.vk.com https://api.vk.com; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
     next();
 });
 app.use(express.static(ROOT_DIR));
+
+app.get('/api/config/public', (_req, res) => {
+    res.json({
+        vkAppId: config.vkAppId || '',
+    });
+});
 
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
@@ -761,75 +767,41 @@ app.post('/api/vk/auth', async (req, res) => {
     }
 });
 
-app.get('/api/auth/vk/oauth/url', (req, res) => {
-    if (!vkOAuth.isConfigured) {
-        return res.status(503).json({
-            error: 'VK_OAUTH_NOT_CONFIGURED',
-            message: 'VK ID OAuth is not configured.',
+app.post('/api/auth/vk/complete', async (req, res) => {
+    const accessToken = typeof req.body?.access_token === 'string' ? req.body.access_token.trim() : '';
+    const vkUserId = typeof req.body?.user_id === 'string' ? req.body.user_id.trim() : '';
+    const vkEmail = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const displayName = typeof req.body?.name === 'string' ? req.body.name.trim().slice(0, 80) : '';
+
+    if (!accessToken || !vkUserId) {
+        return res.status(400).json({
+            error: 'VK_AUTH_INVALID',
+            message: 'Missing access token or user ID.',
         });
     }
 
-    const state = vkOAuth.generateState();
-    const url = vkOAuth.getAuthorizeUrl(state);
-
-    return res.json({ url, state });
-});
-
-app.get('/api/auth/vk/oauth/callback', async (req, res) => {
-    const code = typeof req.query?.code === 'string' ? req.query.code.trim() : '';
-    const state = typeof req.query?.state === 'string' ? req.query.state.trim() : '';
-    const error = typeof req.query?.error === 'string' ? req.query.error.trim() : '';
-    const errorDescription = typeof req.query?.error_description === 'string' ? req.query.error_description.trim() : '';
-
-    if (error) {
-        console.log('[VK_OAUTH] Authorization error:', error, errorDescription);
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent(errorDescription || error)}`);
+    const verification = await vkOAuth.verifyAccessToken(accessToken, vkUserId);
+    if (!verification.ok) {
+        console.log('[VK_COMPLETE] Verification failed:', verification.error);
+        return res.status(401).json({
+            error: 'VK_AUTH_FAILED',
+            message: 'Could not verify VK identity.',
+        });
     }
 
-    if (!code || !state) {
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Missing authorization code.')}`);
-    }
-
-    if (!vkOAuth.consumeState(state)) {
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Invalid or expired state. Please try again.')}`);
-    }
-
-    let tokenResponse;
-    try {
-        tokenResponse = await vkOAuth.exchangeCode(code);
-    } catch (exchangeError) {
-        logServerError('VK OAuth token exchange failed', exchangeError, { code: 'VK_OAUTH_TOKEN_EXCHANGE_FAILED' });
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not complete VK authorization.')}`);
-    }
-
-    const accessToken = String(tokenResponse.access_token || '');
-    const vkUserId = String(tokenResponse.user_id || '');
-    const vkEmail = typeof tokenResponse?.email === 'string' ? tokenResponse.email.trim().toLowerCase() : '';
-
-    if (!accessToken || !vkUserId) {
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not complete VK authorization.')}`);
-    }
-
-    let userInfo;
-    try {
-        userInfo = await vkOAuth.getUserInfo(accessToken, vkUserId);
-    } catch (infoError) {
-        logServerError('VK OAuth user info failed', infoError, { code: 'VK_OAUTH_USER_INFO_FAILED' });
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not get VK profile.')}`);
-    }
-
-    const userArray = Array.isArray(userInfo?.response) ? userInfo.response : [];
-    const vkProfile = userArray[0] || {};
-    const vkFirstName = String(vkProfile?.first_name || '').trim();
-    const vkLastName = String(vkProfile?.last_name || '').trim();
-    const vkPhoto = String(vkProfile?.photo_200 || '').trim();
+    const vkProfile = verification.user;
     const email = vkEmail || `vk_${vkUserId}@vk.miniapp`;
+    const name = displayName || [vkProfile.firstName, vkProfile.lastName].filter(Boolean).join(' ') || `VK User ${vkUserId}`;
 
     const existingByVk = repositories.findUserByVkUserId(vkUserId);
     if (existingByVk) {
         createSessionForUser(res, existingByVk.id, req);
         req.user = existingByVk;
-        return res.redirect(config.appBaseUrl || '/');
+        return res.json({
+            authenticated: true,
+            user: toPublicUser(existingByVk),
+            csrfToken: req.csrfToken,
+        });
     }
 
     const existingByEmail = email.includes('@') && !email.endsWith('@vk.miniapp')
@@ -848,13 +820,20 @@ app.get('/api/auth/vk/oauth/callback', async (req, res) => {
             });
             createSessionForUser(res, updatedUser.id, req);
             req.user = updatedUser;
-            return res.redirect(config.appBaseUrl || '/');
+            return res.json({
+                authenticated: true,
+                user: toPublicUser(updatedUser),
+                csrfToken: req.csrfToken,
+            });
         } catch (linkError) {
-            logServerError('Failed to link VK account via OAuth', linkError, {
-                code: 'VK_OAUTH_LINK_FAILED',
+            logServerError('Failed to link VK account', linkError, {
+                code: 'VK_LINK_FAILED',
                 userId: existingByEmail.id,
             });
-            return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not link VK account.')}`);
+            return res.status(500).json({
+                error: 'VK_LINK_FAILED',
+                message: 'Could not link VK account.',
+            });
         }
     }
 
@@ -863,10 +842,9 @@ app.get('/api/auth/vk/oauth/callback', async (req, res) => {
             crypto.randomBytes(24).toString('base64').replace(/[/+]/g, '') + 'Aa1',
         );
         const now = new Date().toISOString();
-        const displayName = [vkFirstName, vkLastName].filter(Boolean).join(' ').slice(0, 80) || `VK User ${vkUserId}`;
         const newUser = {
             id: `usr_${crypto.randomUUID()}`,
-            name: displayName,
+            name,
             email,
             passwordSalt: salt,
             passwordHash: hash,
@@ -881,87 +859,22 @@ app.get('/api/auth/vk/oauth/callback', async (req, res) => {
         repositories.createUser(newUser);
         createSessionForUser(res, newUser.id, req);
         req.user = newUser;
-        return res.redirect(config.appBaseUrl || '/');
+
+        return res.json({
+            authenticated: true,
+            user: toPublicUser(newUser),
+            csrfToken: req.csrfToken,
+        });
     } catch (createError) {
-        logServerError('Failed to create user via VK OAuth', createError, {
-            code: 'VK_OAUTH_CREATE_USER_FAILED',
+        logServerError('Failed to create user via VK', createError, {
+            code: 'VK_CREATE_USER_FAILED',
             vkUserId,
         });
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not create account.')}`);
+        return res.status(500).json({
+            error: 'VK_CREATE_USER_FAILED',
+            message: 'Could not create account.',
+        });
     }
-});
-
-app.get('/api/dbg/vk-oauth-test', async (req, res) => {
-    const result = {
-        isConfigured: vkOAuth.isConfigured,
-        appId: config.vkAppId ? config.vkAppId.slice(0, 4) + '...' : '(empty)',
-        hasSecret: Boolean(config.vkAppSecret),
-        redirectUri: config.vkOauthRedirectUri || '(empty)',
-        tests: {},
-    };
-
-    result.tests.resolveVkApi = await (async () => {
-        try {
-            const dns = require('dns');
-            await dns.promises.lookup('id.vk.com');
-            return 'OK';
-        } catch (e) {
-            return `DNS FAIL: ${e.message}`;
-        }
-    })();
-
-    result.tests.httpsGet = await (async () => {
-        try {
-            const response = await fetch('https://id.vk.com/oauth2/user_info?client_id=' + config.vkAppId + '&access_token=test', { signal: AbortSignal.timeout(10000) });
-            return { status: response.status, ok: response.ok };
-        } catch (e) {
-            return `FETCH ERROR: ${e.message}`;
-        }
-    })();
-
-    result.tests.tokenEndpointDNS = await (async () => {
-        try {
-            const dns = require('dns');
-            await dns.promises.lookup('id.vk.com');
-            return 'OK';
-        } catch (e) {
-            return `DNS FAIL: ${e.message}`;
-        }
-    })();
-
-    result.tests.tokenEndpointGet = await (async () => {
-        try {
-            const url = 'https://oauth.vk.com/access_token?' + new URLSearchParams({
-                client_id: config.vkAppId,
-                client_secret: config.vkAppSecret,
-                redirect_uri: config.vkOauthRedirectUri,
-                code: 'test_code_invalid',
-            });
-            const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-            const text = await response.text();
-            return { status: response.status, body: text.slice(0, 500) };
-        } catch (e) {
-            return `GET ERROR: ${e.message}`;
-        }
-    })();
-
-    result.tests.usersGetAPI = await (async () => {
-        try {
-            const url = 'https://api.vk.com/method/users.get?' + new URLSearchParams({
-                user_ids: '1',
-                fields: 'photo_200',
-                access_token: 'test',
-                v: '5.199',
-            });
-            const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
-            const text = await response.text();
-            return { status: response.status, body: text.slice(0, 500) };
-        } catch (e) {
-            return `GET ERROR: ${e.message}`;
-        }
-    })();
-
-    return res.json(result);
 });
 
 app.post('/api/auth/register', async (req, res) => {

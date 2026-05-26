@@ -11,6 +11,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="apple-touch-icon.png?v=20260422i">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css?v=20260523">
+    <script defer src="https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js" crossorigin></script>
 </head>
 
 <body>
@@ -59,12 +60,9 @@
                     <p id="auth-error" class="auth-error hidden"></p>
                     <button id="auth-submit-btn" class="primary-btn auth-submit-btn" type="submit">Войти</button>
                     <button id="auth-forgot-password-btn" class="text-btn auth-link-btn" type="button">Забыли пароль?</button>
-                    <div class="auth-vk-divider"><span>или</span></div>
-                    <button id="auth-vk-oauth-btn" class="vk-oauth-btn" type="button">
-                        <svg class="vk-oauth-icon" viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M25.54 34.58c-10.94 0-17.18-7.5-17.44-19.98h5.48c.17 9.16 4.22 13.04 7.42 13.84V14.6h5.16v7.9c3.16-.34 6.48-3.94 7.6-7.9h5.16c-.86 4.88-4.46 8.48-7.02 9.96 2.56 1.2 6.66 4.34 8.24 10.02h-5.68c-1.22-3.8-4.26-6.74-8.3-7.14v7.14h-.62z" fill="#0077FF"/></svg>
-                        Войти через VK
-                    </button>
                 </form>
+                <div id="auth-vk-onetap-container"></div>
+                <noscript>JavaScript is required for VK ID authorization.</noscript>
                 <p class="auth-footnote">Данные будут храниться в личном пространстве пользователя.</p>
             </div>
         </div>

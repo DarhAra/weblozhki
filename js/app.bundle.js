@@ -372,7 +372,7 @@
       authNotice: doc.getElementById("auth-notice"),
       authForgotPasswordBtn: doc.getElementById("auth-forgot-password-btn"),
       authError: doc.getElementById("auth-error"),
-      authVkOAuthBtn: doc.getElementById("auth-vk-oauth-btn"),
+      authVkOneTapContainer: doc.getElementById("auth-vk-onetap-container"),
       authSubmitBtn: doc.getElementById("auth-submit-btn"),
       forgotPasswordModal: doc.getElementById("forgot-password-modal"),
       closeForgotPasswordBtn: doc.getElementById("close-forgot-password-btn"),
@@ -1288,7 +1288,8 @@
   var API_AUTH_FORGOT_PASSWORD_URL = "/api/auth/forgot-password";
   var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
   var API_VK_AUTH_URL = "/api/vk/auth";
-  var API_VK_OAUTH_URL = "/api/auth/vk/oauth/url";
+  var API_VK_COMPLETE_URL = "/api/auth/vk/complete";
+  var API_PUBLIC_CONFIG_URL = "/api/config/public";
   var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
   var API_ACCOUNT_LINK_VK_URL = "/api/account/link-vk";
   var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
@@ -1457,12 +1458,20 @@
         throw error;
       }
     }
-    async function vkOAuthUrl() {
-      return requestJson(
-        API_VK_OAUTH_URL,
-        {},
-        "Сейчас не получается начать вход через VK."
+    async function vkComplete({ access_token, user_id, email, name }) {
+      const payload = await requestJson(
+        API_VK_COMPLETE_URL,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token, user_id, email, name })
+        },
+        "Сейчас не получается завершить вход через VK."
       );
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function getPublicConfig() {
+      return requestJson(API_PUBLIC_CONFIG_URL, {}, "");
     }
     async function login({ email, password }) {
       const payload = await requestJson(
@@ -1604,7 +1613,8 @@
     return {
       checkSession,
       authenticateWithVk,
-      vkOAuthUrl,
+      vkComplete,
+      getPublicConfig,
       login,
       register,
       logout,
@@ -2849,7 +2859,7 @@
       elements.storageStatus.title = status.message || (isServerMode ? "Данные синхронизированы с сервером." : "Изменения пока сохраняются только на этом устройстве.");
     }
     function renderAuthScreen() {
-      var _a, _b, _c, _d, _e, _f, _g, _h;
+      var _a, _b, _c, _d, _e, _f, _g;
       const auth = runtime.auth || {
         status: "guest",
         mode: "login",
@@ -2897,14 +2907,9 @@
         elements.authError.textContent = auth.error || "";
         elements.authError.classList.toggle("hidden", !auth.error);
       }
-      if (elements.authVkOAuthBtn) {
+      if (elements.authVkOneTapContainer) {
         const isVisible = !isResetMode && !isChecking && !isSubmitting;
-        elements.authVkOAuthBtn.classList.toggle("hidden", !isVisible);
-        const divider = elements.authVkOAuthBtn.previousElementSibling;
-        if ((_h = divider == null ? void 0 : divider.classList) == null ? void 0 : _h.contains("auth-vk-divider")) {
-          divider.classList.toggle("hidden", !isVisible);
-        }
-        elements.authVkOAuthBtn.disabled = isBusy;
+        elements.authVkOneTapContainer.classList.toggle("hidden", !isVisible);
       }
       if (elements.authPassword && elements.authPassword.type !== "password") {
         elements.authPassword.type = "password";
@@ -4264,7 +4269,7 @@
     return suggestions.slice(0, 3).map((text, index) => createBreakdownDraft(text, index === 1 ? 10 : 5, index));
   }
   function bindAppEvents(app) {
-    var _a;
+    var _a, _b;
     const { elements, store, runtime } = app;
     const authState = runtime.auth;
     const voiceState = runtime.voice;
@@ -4281,12 +4286,6 @@
     }
     elements.breakdownManualBtn.textContent = "Не сейчас";
     elements.breakdownSuggestedBtn.textContent = "Помоги разбить";
-    if (typeof window !== "undefined") {
-      const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.has("vkAuthError")) {
-        replaceHistoryWithoutParams(["vkAuthError"]);
-      }
-    }
     function closeVoiceModal({ resetDraft = true } = {}) {
       elements.voiceModal.classList.add("hidden");
       voiceState.modalMode = "hidden";
@@ -4414,7 +4413,7 @@
       }
     }
     function selectEasyPatternScenario(scenario) {
-      var _a2, _b;
+      var _a2, _b2;
       const today = getLocalDateString();
       const state = store.getState();
       const trigger = getEasyPatternTrigger(state, today);
@@ -4434,7 +4433,7 @@
         resourceId: resourceSuggestionId
       });
       easyPatternState.feedback = "";
-      if (!((_b = state.currentDayMeta) == null ? void 0 : _b.easyPatternShown)) {
+      if (!((_b2 = state.currentDayMeta) == null ? void 0 : _b2.easyPatternShown)) {
         markEasyPatternShown(store, today, trigger);
       }
       app.renderers.renderMainScreen();
@@ -4516,20 +4515,20 @@
       }
     }
     function getSelectedSupportAmount() {
-      var _a2, _b, _c, _d;
-      const customValue = (_b = (_a2 = elements.accountSupportCustomAmount) == null ? void 0 : _a2.value) == null ? void 0 : _b.trim();
+      var _a2, _b2, _c, _d;
+      const customValue = (_b2 = (_a2 = elements.accountSupportCustomAmount) == null ? void 0 : _a2.value) == null ? void 0 : _b2.trim();
       if (customValue) {
         return Number(customValue);
       }
       return Number(authState.payments.selectedAmount || ((_d = (_c = authState.payments.checkout) == null ? void 0 : _c.allowedAmounts) == null ? void 0 : _d[0]) || 149);
     }
     function renderSupportAmountButtons() {
-      var _a2, _b;
+      var _a2, _b2;
       if (!elements.accountSupportAmounts) {
         return;
       }
       const selectedAmount = Number(authState.payments.selectedAmount);
-      const allowedAmounts = ((_b = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b.length) ? authState.payments.checkout.allowedAmounts : [149, 299, 499];
+      const allowedAmounts = ((_b2 = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b2.length) ? authState.payments.checkout.allowedAmounts : [149, 299, 499];
       elements.accountSupportAmounts.innerHTML = allowedAmounts.map((amount) => `
                 <button class="secondary-btn support-amount-btn ${amount === selectedAmount && !elements.accountSupportCustomAmount.value ? "is-selected" : ""}" type="button" data-support-amount="${amount}">
                     ${amount} ₽
@@ -4537,7 +4536,7 @@
             `).join("");
     }
     function renderPaymentSummary() {
-      var _a2, _b;
+      var _a2, _b2;
       const payments = authState.payments;
       const support = payments.support;
       const latestDonation = payments.latestDonation;
@@ -4556,11 +4555,11 @@
       }
       elements.accountSupportSubmitBtn.disabled = payments.status === "submitting" || pendingOffline;
       elements.accountSupportSubmitBtn.textContent = payments.status === "submitting" ? "Открываем оплату…" : "Перейти к оплате";
-      elements.accountSupportCustomAmount.min = String(((_b = payments.checkout) == null ? void 0 : _b.minAmount) || 100);
+      elements.accountSupportCustomAmount.min = String(((_b2 = payments.checkout) == null ? void 0 : _b2.minAmount) || 100);
       renderSupportAmountButtons();
     }
     async function refreshPaymentStatus({ donationId, openReturnModal = false } = {}) {
-      var _a2, _b, _c;
+      var _a2, _b2, _c;
       authState.payments.status = "loading";
       authState.payments.error = "";
       elements.accountSupportError.textContent = "";
@@ -4570,7 +4569,7 @@
         authState.payments.support = (payload == null ? void 0 : payload.support) || null;
         authState.payments.latestDonation = (payload == null ? void 0 : payload.latestDonation) || null;
         authState.payments.checkout = (payload == null ? void 0 : payload.checkout) || authState.payments.checkout;
-        if (!authState.payments.selectedAmount && ((_b = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b.length)) {
+        if (!authState.payments.selectedAmount && ((_b2 = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b2.length)) {
           authState.payments.selectedAmount = authState.payments.checkout.allowedAmounts[0];
         }
         authState.payments.status = "idle";
@@ -4854,21 +4853,72 @@
       event.preventDefault();
       void submitAuthForm();
     });
-    if (elements.authVkOAuthBtn) {
-      elements.authVkOAuthBtn.addEventListener("click", async () => {
-        if (runtime.auth.status === "submitting") return;
-        runtime.auth.status = "submitting";
-        runtime.auth.error = "";
-        app.renderers.renderAuthScreen();
+    let vkSdkInitialized = false;
+    async function waitForVkSdk(timeoutMs = 1e4) {
+      if (typeof VKIDSDK !== "undefined") return true;
+      const start = Date.now();
+      while (Date.now() - start < timeoutMs) {
+        await new Promise((r) => setTimeout(r, 100));
+        if (typeof VKIDSDK !== "undefined") return true;
+      }
+      return false;
+    }
+    async function initVkOneTap() {
+      if (vkSdkInitialized) return;
+      const sdkReady = await waitForVkSdk();
+      if (!sdkReady) return;
+      const VKID = window.VKIDSDK;
+      let publicConfig;
+      try {
+        publicConfig = await app.auth.getPublicConfig();
+      } catch {
+        return;
+      }
+      if (!(publicConfig == null ? void 0 : publicConfig.vkAppId)) return;
+      VKID.Config.init({
+        app: Number(publicConfig.vkAppId),
+        redirectUrl: window.location.origin + "/api/auth/vk/complete",
+        responseMode: VKID.ConfigResponseMode.Callback,
+        source: VKID.ConfigSource.LOWCODE,
+        scope: ""
+      });
+      const oneTap = new VKID.OneTap();
+      oneTap.render({
+        container: elements.authVkOneTapContainer,
+        showAlternativeLogin: true
+      }).on(VKID.WidgetEvents.ERROR, () => {
+        vkSdkInitialized = false;
+      }).on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, async function(payload) {
         try {
-          const { url } = await app.auth.vkOAuthUrl();
-          window.location.href = url;
-        } catch (error) {
-          runtime.auth.status = "guest";
-          runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается начать вход через VK.";
+          const tokenData = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
+          const user = await app.auth.vkComplete({
+            access_token: tokenData.access_token,
+            user_id: String(tokenData.user_id),
+            email: tokenData.email || "",
+            name: [tokenData.first_name, tokenData.last_name].filter(Boolean).join(" ")
+          });
+          if (user) {
+            await app.startAuthenticatedFlow(user);
+          }
+        } catch {
+          runtime.auth.error = "Сейчас не получается войти через VK. Попробуйте ещё раз.";
           app.renderers.renderAuthScreen();
         }
       });
+      vkSdkInitialized = true;
+    }
+    function showVkOneTap() {
+      if (elements.authVkOneTapContainer && !elements.authVkOneTapContainer.classList.contains("hidden")) {
+        void initVkOneTap();
+      }
+    }
+    const origRenderAuthScreen = app.renderers.renderAuthScreen;
+    app.renderers.renderAuthScreen = function() {
+      origRenderAuthScreen.call(app.renderers);
+      showVkOneTap();
+    };
+    if (typeof window !== "undefined" && !((_b = elements.authVkOneTapContainer) == null ? void 0 : _b.classList.contains("hidden"))) {
+      setTimeout(() => void initVkOneTap(), 500);
     }
     if (elements.authForgotPasswordBtn) {
       elements.authForgotPasswordBtn.addEventListener("click", () => {
@@ -6705,7 +6755,6 @@
       const paymentReturn = params.get("paymentReturn");
       const paymentDonationId = params.get("donationId");
       const paymentStatus = params.get("paymentStatus");
-      const vkAuthError = params.get("vkAuthError");
       if (resetToken) {
         app.runtime.auth.mode = "reset-password";
         app.runtime.auth.resetToken = resetToken;
