@@ -631,7 +631,7 @@ app.use((req, res, next) => {
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' https://unpkg.com; connect-src 'self' https://id.vk.com https://api.vk.com; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' https://unpkg.com; connect-src 'self' https://id.vk.com https://id.vk.ru https://api.vk.com; frame-src 'self' https://id.vk.ru https://*.vk.ru; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
     next();
 });
 app.use(express.static(ROOT_DIR));

@@ -290,10 +290,6 @@ export async function initApp({ elements }) {
                 app.runtime.auth.payments.returnStatus = 'canceled';
             }
         }
-        if (vkAuthError) {
-            app.runtime.auth.error = vkAuthError;
-        }
-
         window.addEventListener('online', async () => {
             const syncSucceeded = await store.syncPendingState?.();
             if (syncSucceeded && app.runtime.auth.isOfflineAuthenticated) {

@@ -6781,9 +6781,6 @@
           app.runtime.auth.payments.returnStatus = "canceled";
         }
       }
-      if (vkAuthError) {
-        app.runtime.auth.error = vkAuthError;
-      }
       window.addEventListener("online", async () => {
         var _a2, _b2;
         const syncSucceeded = await ((_a2 = store.syncPendingState) == null ? void 0 : _a2.call(store));
