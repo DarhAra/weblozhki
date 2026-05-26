@@ -778,7 +778,6 @@ app.get('/api/auth/vk/oauth/url', (req, res) => {
 app.get('/api/auth/vk/oauth/callback', async (req, res) => {
     const code = typeof req.query?.code === 'string' ? req.query.code.trim() : '';
     const state = typeof req.query?.state === 'string' ? req.query.state.trim() : '';
-    const deviceId = typeof req.query?.device_id === 'string' ? req.query.device_id.trim() : '';
     const error = typeof req.query?.error === 'string' ? req.query.error.trim() : '';
     const errorDescription = typeof req.query?.error_description === 'string' ? req.query.error_description.trim() : '';
 
@@ -797,38 +796,34 @@ app.get('/api/auth/vk/oauth/callback', async (req, res) => {
 
     let tokenResponse;
     try {
-        tokenResponse = await vkOAuth.exchangeCode(code, deviceId);
+        tokenResponse = await vkOAuth.exchangeCode(code);
     } catch (exchangeError) {
         logServerError('VK OAuth token exchange failed', exchangeError, { code: 'VK_OAUTH_TOKEN_EXCHANGE_FAILED' });
         return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not complete VK authorization.')}`);
     }
 
     const accessToken = String(tokenResponse.access_token || '');
-    if (!accessToken) {
+    const vkUserId = String(tokenResponse.user_id || '');
+    const vkEmail = typeof tokenResponse?.email === 'string' ? tokenResponse.email.trim().toLowerCase() : '';
+
+    if (!accessToken || !vkUserId) {
         return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not complete VK authorization.')}`);
     }
 
     let userInfo;
     try {
-        userInfo = await vkOAuth.getUserInfo(accessToken);
+        userInfo = await vkOAuth.getUserInfo(accessToken, vkUserId);
     } catch (infoError) {
         logServerError('VK OAuth user info failed', infoError, { code: 'VK_OAUTH_USER_INFO_FAILED' });
         return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not get VK profile.')}`);
     }
 
-    const vkUser = userInfo?.user || userInfo;
-    const vkUserId = String(vkUser?.user_id || tokenResponse?.user_id || '');
-
-    if (!vkUserId) {
-        return res.redirect(`${config.appBaseUrl || '/'}?vkAuthError=${encodeURIComponent('Could not identify VK user.')}`);
-    }
-
-    const vkFirstName = String(vkUser?.first_name || '').trim();
-    const vkLastName = String(vkUser?.last_name || '').trim();
-    const vkAvatar = String(vkUser?.avatar || '').trim();
-    const vkEmail = typeof tokenResponse?.email === 'string' ? tokenResponse.email.trim().toLowerCase() : '';
-    const userEmail = typeof vkUser?.email === 'string' ? vkUser.email.trim().toLowerCase() : '';
-    const email = vkEmail || userEmail || `vk_${vkUserId}@vk.miniapp`;
+    const userArray = Array.isArray(userInfo?.response) ? userInfo.response : [];
+    const vkProfile = userArray[0] || {};
+    const vkFirstName = String(vkProfile?.first_name || '').trim();
+    const vkLastName = String(vkProfile?.last_name || '').trim();
+    const vkPhoto = String(vkProfile?.photo_200 || '').trim();
+    const email = vkEmail || `vk_${vkUserId}@vk.miniapp`;
 
     const existingByVk = repositories.findUserByVkUserId(vkUserId);
     if (existingByVk) {
@@ -934,26 +929,35 @@ app.get('/api/dbg/vk-oauth-test', async (req, res) => {
         }
     })();
 
-    result.tests.tokenEndpointPost = await (async () => {
+    result.tests.tokenEndpointGet = await (async () => {
         try {
-            const body = new URLSearchParams({
-                grant_type: 'authorization_code',
-                code: 'test_code_123',
+            const url = 'https://oauth.vk.com/access_token?' + new URLSearchParams({
                 client_id: config.vkAppId,
                 client_secret: config.vkAppSecret,
                 redirect_uri: config.vkOauthRedirectUri,
-                device_id: 'test_device',
+                code: 'test_code_invalid',
             });
-            const response = await fetch('https://id.vk.com/oauth2/token', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-                body: body.toString(),
-                signal: AbortSignal.timeout(15000),
-            });
+            const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
             const text = await response.text();
             return { status: response.status, body: text.slice(0, 500) };
         } catch (e) {
-            return `POST ERROR: ${e.message}`;
+            return `GET ERROR: ${e.message}`;
+        }
+    })();
+
+    result.tests.usersGetAPI = await (async () => {
+        try {
+            const url = 'https://api.vk.com/method/users.get?' + new URLSearchParams({
+                user_ids: '1',
+                fields: 'photo_200',
+                access_token: 'test',
+                v: '5.199',
+            });
+            const response = await fetch(url, { signal: AbortSignal.timeout(15000) });
+            const text = await response.text();
+            return { status: response.status, body: text.slice(0, 500) };
+        } catch (e) {
+            return `GET ERROR: ${e.message}`;
         }
     })();
 
