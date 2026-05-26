@@ -4865,32 +4865,45 @@
     }
     async function initVkOneTap() {
       if (vkSdkInitialized) return;
+      console.log("[VK] initVkOneTap: waiting for SDK...");
       const sdkReady = await waitForVkSdk();
-      if (!sdkReady) return;
+      if (!sdkReady) {
+        console.warn("[VK] SDK not loaded");
+        return;
+      }
+      console.log("[VK] SDK loaded");
       const VKID = window.VKIDSDK;
       let publicConfig;
       try {
         publicConfig = await app.auth.getPublicConfig();
       } catch {
+        console.warn("[VK] Failed to fetch public config");
         return;
       }
-      if (!(publicConfig == null ? void 0 : publicConfig.vkAppId)) return;
+      if (!(publicConfig == null ? void 0 : publicConfig.vkAppId)) {
+        console.warn("[VK] VK app ID not configured");
+        return;
+      }
+      console.log("[VK] Config:", { app: publicConfig.vkAppId });
       VKID.Config.init({
         app: Number(publicConfig.vkAppId),
-        redirectUrl: window.location.origin + "/api/auth/vk/complete",
+        redirectUrl: window.location.origin + "/",
         responseMode: VKID.ConfigResponseMode.Callback,
         source: VKID.ConfigSource.LOWCODE,
-        scope: ""
+        scope: "email"
       });
       const oneTap = new VKID.OneTap();
       oneTap.render({
         container: elements.authVkOneTapContainer,
         showAlternativeLogin: true
-      }).on(VKID.WidgetEvents.ERROR, () => {
+      }).on(VKID.WidgetEvents.ERROR, (error) => {
+        console.error("[VK] OneTap error:", error);
         vkSdkInitialized = false;
       }).on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, async function(payload) {
+        console.log("[VK] Login success, exchanging code...");
         try {
           const tokenData = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
+          console.log("[VK] Token received, completing auth...");
           const user = await app.auth.vkComplete({
             access_token: tokenData.access_token,
             user_id: String(tokenData.user_id),
@@ -4898,14 +4911,17 @@
             name: [tokenData.first_name, tokenData.last_name].filter(Boolean).join(" ")
           });
           if (user) {
+            console.log("[VK] Auth complete, starting flow...");
             await app.startAuthenticatedFlow(user);
           }
         } catch {
+          console.warn("[VK] Auth failed");
           runtime.auth.error = "Сейчас не получается войти через VK. Попробуйте ещё раз.";
           app.renderers.renderAuthScreen();
         }
       });
       vkSdkInitialized = true;
+      console.log("[VK] OneTap rendered");
     }
     function showVkOneTap() {
       if (elements.authVkOneTapContainer && !elements.authVkOneTapContainer.classList.contains("hidden")) {
