@@ -89,6 +89,7 @@ const config = {
     smtpFromName: process.env.SMTP_FROM_NAME || 'Мои ложки',
     vkAppId: process.env.VK_APP_ID || '',
     vkAppSecret: process.env.VK_APP_SECRET || '',
+    vkOauthRedirectUri: process.env.VK_OAUTH_REDIRECT_URI || (process.env.APP_BASE_URL ? `${process.env.APP_BASE_URL}/api/auth/vk/oauth/callback` : ''),
     yookassaShopId: process.env.YOOKASSA_SHOP_ID || '',
     yookassaSecretKey: process.env.YOOKASSA_SECRET_KEY || '',
     yookassaWebhookSecret: process.env.YOOKASSA_WEBHOOK_SECRET || '',
@@ -120,6 +121,7 @@ function getSafeRuntimeSummary() {
         dataEncryptionConfigured: Boolean(config.dataEncryptionKey || !config.isProduction),
         smtpConfigured: Boolean(config.smtpHost && config.smtpUser && config.smtpPassword && config.smtpFromEmail),
         vkAuthConfigured: Boolean(config.vkAppSecret),
+        vkOauthConfigured: Boolean(config.vkAppId && config.vkAppSecret && config.vkOauthRedirectUri),
         yookassaConfigured: Boolean(config.yookassaShopId && config.yookassaSecretKey),
     };
 }

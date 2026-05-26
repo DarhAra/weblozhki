@@ -252,6 +252,13 @@ export function bindAppEvents(app) {
     elements.breakdownManualBtn.textContent = '\u041d\u0435 \u0441\u0435\u0439\u0447\u0430\u0441';
     elements.breakdownSuggestedBtn.textContent = '\u041f\u043e\u043c\u043e\u0433\u0438 \u0440\u0430\u0437\u0431\u0438\u0442\u044c';
 
+    if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.has('vkAuthError')) {
+            replaceHistoryWithoutParams(['vkAuthError']);
+        }
+    }
+
     function closeVoiceModal({ resetDraft = true } = {}) {
         elements.voiceModal.classList.add('hidden');
         voiceState.modalMode = 'hidden';
@@ -921,6 +928,23 @@ export function bindAppEvents(app) {
         event.preventDefault();
         void submitAuthForm();
     });
+
+    if (elements.authVkOAuthBtn) {
+        elements.authVkOAuthBtn.addEventListener('click', async () => {
+            if (runtime.auth.status === 'submitting') return;
+            runtime.auth.status = 'submitting';
+            runtime.auth.error = '';
+            app.renderers.renderAuthScreen();
+            try {
+                const { url } = await app.auth.vkOAuthUrl();
+                window.location.href = url;
+            } catch (error) {
+                runtime.auth.status = 'guest';
+                runtime.auth.error = error?.friendlyMessage || 'Сейчас не получается начать вход через VK.';
+                app.renderers.renderAuthScreen();
+            }
+        });
+    }
 
     if (elements.authForgotPasswordBtn) {
         elements.authForgotPasswordBtn.addEventListener('click', () => {

@@ -280,6 +280,7 @@ export async function initApp({ elements }) {
         const paymentReturn = params.get('paymentReturn');
         const paymentDonationId = params.get('donationId');
         const paymentStatus = params.get('paymentStatus');
+        const vkAuthError = params.get('vkAuthError');
         if (resetToken) {
             app.runtime.auth.mode = 'reset-password';
             app.runtime.auth.resetToken = resetToken;
@@ -289,6 +290,9 @@ export async function initApp({ elements }) {
             if (paymentStatus === 'failed') {
                 app.runtime.auth.payments.returnStatus = 'canceled';
             }
+        }
+        if (vkAuthError) {
+            app.runtime.auth.error = vkAuthError;
         }
 
         window.addEventListener('online', async () => {

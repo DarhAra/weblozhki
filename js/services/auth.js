@@ -5,6 +5,7 @@ const API_AUTH_LOGOUT_URL = '/api/auth/logout';
 const API_AUTH_FORGOT_PASSWORD_URL = '/api/auth/forgot-password';
 const API_AUTH_RESET_PASSWORD_URL = '/api/auth/reset-password';
 const API_VK_AUTH_URL = '/api/vk/auth';
+const API_VK_OAUTH_URL = '/api/auth/vk/oauth/url';
 const API_ACCOUNT_PROFILE_URL = '/api/account/profile';
 const API_ACCOUNT_LINK_VK_URL = '/api/account/link-vk';
 const API_ACCOUNT_CHANGE_PASSWORD_URL = '/api/account/change-password';
@@ -192,6 +193,14 @@ export function createAuthService() {
         }
     }
 
+    async function vkOAuthUrl() {
+        return requestJson(
+            API_VK_OAUTH_URL,
+            {},
+            'Сейчас не получается начать вход через VK.',
+        );
+    }
+
     async function login({ email, password }) {
         const payload = await requestJson(
             API_AUTH_LOGIN_URL,
@@ -349,6 +358,7 @@ export function createAuthService() {
     return {
         checkSession,
         authenticateWithVk,
+        vkOAuthUrl,
         login,
         register,
         logout,

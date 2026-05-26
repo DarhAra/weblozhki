@@ -372,6 +372,7 @@
       authNotice: doc.getElementById("auth-notice"),
       authForgotPasswordBtn: doc.getElementById("auth-forgot-password-btn"),
       authError: doc.getElementById("auth-error"),
+      authVkOAuthBtn: doc.getElementById("auth-vk-oauth-btn"),
       authSubmitBtn: doc.getElementById("auth-submit-btn"),
       forgotPasswordModal: doc.getElementById("forgot-password-modal"),
       closeForgotPasswordBtn: doc.getElementById("close-forgot-password-btn"),
@@ -1287,6 +1288,7 @@
   var API_AUTH_FORGOT_PASSWORD_URL = "/api/auth/forgot-password";
   var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
   var API_VK_AUTH_URL = "/api/vk/auth";
+  var API_VK_OAUTH_URL = "/api/auth/vk/oauth/url";
   var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
   var API_ACCOUNT_LINK_VK_URL = "/api/account/link-vk";
   var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
@@ -1455,6 +1457,13 @@
         throw error;
       }
     }
+    async function vkOAuthUrl() {
+      return requestJson(
+        API_VK_OAUTH_URL,
+        {},
+        "Сейчас не получается начать вход через VK."
+      );
+    }
     async function login({ email, password }) {
       const payload = await requestJson(
         API_AUTH_LOGIN_URL,
@@ -1595,6 +1604,7 @@
     return {
       checkSession,
       authenticateWithVk,
+      vkOAuthUrl,
       login,
       register,
       logout,
@@ -2839,7 +2849,7 @@
       elements.storageStatus.title = status.message || (isServerMode ? "Данные синхронизированы с сервером." : "Изменения пока сохраняются только на этом устройстве.");
     }
     function renderAuthScreen() {
-      var _a, _b, _c, _d, _e, _f, _g;
+      var _a, _b, _c, _d, _e, _f, _g, _h;
       const auth = runtime.auth || {
         status: "guest",
         mode: "login",
@@ -2886,6 +2896,15 @@
       if (elements.authError) {
         elements.authError.textContent = auth.error || "";
         elements.authError.classList.toggle("hidden", !auth.error);
+      }
+      if (elements.authVkOAuthBtn) {
+        const isVisible = !isResetMode && !isChecking && !isSubmitting;
+        elements.authVkOAuthBtn.classList.toggle("hidden", !isVisible);
+        const divider = elements.authVkOAuthBtn.previousElementSibling;
+        if ((_h = divider == null ? void 0 : divider.classList) == null ? void 0 : _h.contains("auth-vk-divider")) {
+          divider.classList.toggle("hidden", !isVisible);
+        }
+        elements.authVkOAuthBtn.disabled = isBusy;
       }
       if (elements.authPassword && elements.authPassword.type !== "password") {
         elements.authPassword.type = "password";
@@ -4262,6 +4281,12 @@
     }
     elements.breakdownManualBtn.textContent = "Не сейчас";
     elements.breakdownSuggestedBtn.textContent = "Помоги разбить";
+    if (typeof window !== "undefined") {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.has("vkAuthError")) {
+        replaceHistoryWithoutParams(["vkAuthError"]);
+      }
+    }
     function closeVoiceModal({ resetDraft = true } = {}) {
       elements.voiceModal.classList.add("hidden");
       voiceState.modalMode = "hidden";
@@ -4829,6 +4854,22 @@
       event.preventDefault();
       void submitAuthForm();
     });
+    if (elements.authVkOAuthBtn) {
+      elements.authVkOAuthBtn.addEventListener("click", async () => {
+        if (runtime.auth.status === "submitting") return;
+        runtime.auth.status = "submitting";
+        runtime.auth.error = "";
+        app.renderers.renderAuthScreen();
+        try {
+          const { url } = await app.auth.vkOAuthUrl();
+          window.location.href = url;
+        } catch (error) {
+          runtime.auth.status = "guest";
+          runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается начать вход через VK.";
+          app.renderers.renderAuthScreen();
+        }
+      });
+    }
     if (elements.authForgotPasswordBtn) {
       elements.authForgotPasswordBtn.addEventListener("click", () => {
         openForgotPasswordModal();
@@ -6664,6 +6705,7 @@
       const paymentReturn = params.get("paymentReturn");
       const paymentDonationId = params.get("donationId");
       const paymentStatus = params.get("paymentStatus");
+      const vkAuthError = params.get("vkAuthError");
       if (resetToken) {
         app.runtime.auth.mode = "reset-password";
         app.runtime.auth.resetToken = resetToken;
@@ -6673,6 +6715,9 @@
         if (paymentStatus === "failed") {
           app.runtime.auth.payments.returnStatus = "canceled";
         }
+      }
+      if (vkAuthError) {
+        app.runtime.auth.error = vkAuthError;
       }
       window.addEventListener("online", async () => {
         var _a2, _b2;
