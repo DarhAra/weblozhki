@@ -927,10 +927,33 @@ app.get('/api/dbg/vk-oauth-test', async (req, res) => {
     result.tests.tokenEndpointDNS = await (async () => {
         try {
             const dns = require('dns');
-            await dns.promises.lookup(new URL(VK_OAUTH_TOKEN_URL).hostname);
+            await dns.promises.lookup('id.vk.com');
             return 'OK';
         } catch (e) {
             return `DNS FAIL: ${e.message}`;
+        }
+    })();
+
+    result.tests.tokenEndpointPost = await (async () => {
+        try {
+            const body = new URLSearchParams({
+                grant_type: 'authorization_code',
+                code: 'test_code_123',
+                client_id: config.vkAppId,
+                client_secret: config.vkAppSecret,
+                redirect_uri: config.vkOauthRedirectUri,
+                device_id: 'test_device',
+            });
+            const response = await fetch('https://id.vk.com/oauth2/token', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: body.toString(),
+                signal: AbortSignal.timeout(15000),
+            });
+            const text = await response.text();
+            return { status: response.status, body: text.slice(0, 500) };
+        } catch (e) {
+            return `POST ERROR: ${e.message}`;
         }
     })();
 
