@@ -3117,12 +3117,52 @@ header h2 {
     padding: 0;
 }
 
-#auth-vk-onetap-container {
-    margin-top: 12px;
+.auth-vk-divider {
     display: flex;
-    justify-content: center;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    margin: 6px 0 2px;
 }
 
-#auth-vk-onetap-container.hidden {
-    display: none;
+.auth-vk-divider::before,
+.auth-vk-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #dfe8e2;
+}
+
+.vk-oauth-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 14px 16px;
+    border: 1px solid #dfe8e2;
+    border-radius: 16px;
+    background: white;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s, border-color 0.2s;
+}
+
+.vk-oauth-btn:hover {
+    background: #f4f8f5;
+    border-color: #bfd4c7;
+}
+
+.vk-oauth-btn:active {
+    background: #e8f0eb;
+}
+
+.vk-oauth-icon {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
 }

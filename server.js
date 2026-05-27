@@ -631,7 +631,7 @@ app.use((req, res, next) => {
     }
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
-    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self' https://unpkg.com; connect-src 'self' https://id.vk.com https://id.vk.ru https://api.vk.com; frame-src 'self' https://id.vk.ru https://*.vk.ru; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
+    res.setHeader('Content-Security-Policy', "default-src 'self'; img-src 'self' data: https:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; script-src 'self'; connect-src 'self'; frame-ancestors 'self' https://vk.com https://*.vk.com https://vk.ru https://*.vk.ru; base-uri 'self'; form-action 'self'");
     next();
 });
 app.use(express.static(ROOT_DIR));
@@ -767,13 +767,134 @@ app.post('/api/vk/auth', async (req, res) => {
     }
 });
 
-app.get('/api/auth/vk/oauth/callback', (req, res) => {
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.send(`<!DOCTYPE html>
-<html lang="ru">
-<head><meta charset="UTF-8"><title>Вход по VK ID</title></head>
-<body><script src="https://unpkg.com/@vkid/sdk@<3.0.0/dist-sdk/umd/index.js"></script></body>
-</html>`);
+app.get('/api/auth/vk/oauth/url', (req, res) => {
+    if (!vkOAuth.isConfigured) {
+        return res.status(503).json({
+            error: 'VK_OAUTH_NOT_CONFIGURED',
+            message: 'VK OAuth is not configured.',
+        });
+    }
+
+    const state = vkOAuth.generateState();
+    const url = vkOAuth.getAuthorizeUrl(state);
+
+    return res.json({ url });
+});
+
+app.get('/api/auth/vk/oauth/callback', async (req, res) => {
+    const code = typeof req.query?.code === 'string' ? req.query.code.trim() : '';
+    const state = typeof req.query?.state === 'string' ? req.query.state.trim() : '';
+    const error = typeof req.query?.error === 'string' ? req.query.error.trim() : '';
+    const errorDescription = typeof req.query?.error_description === 'string' ? req.query.error_description.trim() : '';
+    const baseUrl = config.appBaseUrl || '/';
+
+    if (error) {
+        console.log('[VK] Auth error:', error, errorDescription);
+        return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent(errorDescription || error)}`);
+    }
+
+    if (!code || !state) {
+        return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Missing authorization code.')}`);
+    }
+
+    if (!vkOAuth.consumeState(state)) {
+        return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Invalid or expired request.')}`);
+    }
+
+    let tokenData;
+    try {
+        tokenData = await vkOAuth.exchangeCode(code);
+    } catch (exchangeError) {
+        logServerError('VK OAuth token exchange failed', exchangeError, { code: 'VK_OAUTH_TOKEN_EXCHANGE_FAILED' });
+        return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Could not complete VK authorization.')}`);
+    }
+
+    const accessToken = String(tokenData.access_token || '');
+    const vkUserId = String(tokenData.user_id || '');
+    const vkEmail = typeof tokenData?.email === 'string' ? tokenData.email.trim().toLowerCase() : '';
+
+    if (!accessToken || !vkUserId) {
+        return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Could not complete VK authorization.')}`);
+    }
+
+    let userInfo;
+    try {
+        userInfo = await vkOAuth.getUserInfo(accessToken, vkUserId);
+    } catch (infoError) {
+        logServerError('VK OAuth user info failed', infoError, { code: 'VK_OAUTH_USER_INFO_FAILED' });
+        return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Could not get VK profile.')}`);
+    }
+
+    const users = Array.isArray(userInfo?.response) ? userInfo.response : [];
+    const profile = users[0] || {};
+    const vkFirstName = String(profile.first_name || '').trim();
+    const vkLastName = String(profile.last_name || '').trim();
+    const email = vkEmail || `vk_${vkUserId}@vk.miniapp`;
+    const name = [vkFirstName, vkLastName].filter(Boolean).join(' ').slice(0, 80) || `VK User ${vkUserId}`;
+
+    const existingByVk = repositories.findUserByVkUserId(vkUserId);
+    if (existingByVk) {
+        createSessionForUser(res, existingByVk.id, req);
+        req.user = existingByVk;
+        return res.redirect(baseUrl);
+    }
+
+    const existingByEmail = email.includes('@') && !email.endsWith('@vk.miniapp')
+        ? repositories.findUserByEmail(email)
+        : null;
+
+    if (existingByEmail) {
+        try {
+            const now = new Date().toISOString();
+            const updatedUser = repositories.linkVkUser({
+                id: existingByEmail.id,
+                vkUserId,
+                vkLinkedAt: now,
+                vkFirstSeenAt: now,
+                updatedAt: now,
+            });
+            createSessionForUser(res, updatedUser.id, req);
+            req.user = updatedUser;
+            return res.redirect(baseUrl);
+        } catch (linkError) {
+            logServerError('Failed to link VK account', linkError, {
+                code: 'VK_LINK_FAILED',
+                userId: existingByEmail.id,
+            });
+            return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Could not link VK account.')}`);
+        }
+    }
+
+    try {
+        const { salt, hash } = await passwordService.hashPassword(
+            crypto.randomBytes(24).toString('base64').replace(/[/+]/g, '') + 'Aa1',
+        );
+        const now = new Date().toISOString();
+        const newUser = {
+            id: `usr_${crypto.randomUUID()}`,
+            name,
+            email,
+            passwordSalt: salt,
+            passwordHash: hash,
+            createdAt: now,
+            updatedAt: now,
+            passwordChangedAt: now,
+            vkUserId,
+            vkLinkedAt: now,
+            vkFirstSeenAt: now,
+        };
+
+        repositories.createUser(newUser);
+        createSessionForUser(res, newUser.id, req);
+        req.user = newUser;
+        return res.redirect(baseUrl);
+    } catch (createError) {
+        logServerError('Failed to create user via VK', createError, {
+            code: 'VK_CREATE_USER_FAILED',
+            vkUserId,
+        });
+        return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Could not create account.')}`);
+    }
 });
 
 app.post('/api/auth/vk/complete', async (req, res) => {

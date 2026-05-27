@@ -372,7 +372,7 @@
       authNotice: doc.getElementById("auth-notice"),
       authForgotPasswordBtn: doc.getElementById("auth-forgot-password-btn"),
       authError: doc.getElementById("auth-error"),
-      authVkOneTapContainer: doc.getElementById("auth-vk-onetap-container"),
+      authVkOAuthBtn: doc.getElementById("auth-vk-oauth-btn"),
       authSubmitBtn: doc.getElementById("auth-submit-btn"),
       forgotPasswordModal: doc.getElementById("forgot-password-modal"),
       closeForgotPasswordBtn: doc.getElementById("close-forgot-password-btn"),
@@ -1288,6 +1288,7 @@
   var API_AUTH_FORGOT_PASSWORD_URL = "/api/auth/forgot-password";
   var API_AUTH_RESET_PASSWORD_URL = "/api/auth/reset-password";
   var API_VK_AUTH_URL = "/api/vk/auth";
+  var API_VK_OAUTH_URL = "/api/auth/vk/oauth/url";
   var API_VK_COMPLETE_URL = "/api/auth/vk/complete";
   var API_PUBLIC_CONFIG_URL = "/api/config/public";
   var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
@@ -1375,6 +1376,9 @@
     if (errorCode === "VK_LINK_FAILED") {
       return "Сейчас не получается привязать аккаунт VK.";
     }
+    if (errorCode === "VK_OAUTH_NOT_CONFIGURED") {
+      return "Вход через VK временно недоступен.";
+    }
     return fallbackMessage;
   }
   async function requestJson(url, options = {}, fallbackMessage = "Сейчас не получается связаться с сервером.", _isRetry = false) {
@@ -1425,6 +1429,14 @@
         user: (payload == null ? void 0 : payload.user) || null,
         csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
       };
+    }
+    async function vkOAuthUrl() {
+      const payload = await requestJson(
+        API_VK_OAUTH_URL,
+        {},
+        "Сейчас не получается начать вход через VK."
+      );
+      return (payload == null ? void 0 : payload.url) || "";
     }
     async function authenticateWithVk({ launchParams }) {
       var _a, _b;
@@ -1613,6 +1625,7 @@
     return {
       checkSession,
       authenticateWithVk,
+      vkOAuthUrl,
       vkComplete,
       getPublicConfig,
       login,
@@ -2859,7 +2872,7 @@
       elements.storageStatus.title = status.message || (isServerMode ? "Данные синхронизированы с сервером." : "Изменения пока сохраняются только на этом устройстве.");
     }
     function renderAuthScreen() {
-      var _a, _b, _c, _d, _e, _f, _g;
+      var _a, _b, _c, _d, _e, _f, _g, _h;
       const auth = runtime.auth || {
         status: "guest",
         mode: "login",
@@ -2907,9 +2920,14 @@
         elements.authError.textContent = auth.error || "";
         elements.authError.classList.toggle("hidden", !auth.error);
       }
-      if (elements.authVkOneTapContainer) {
+      if (elements.authVkOAuthBtn) {
         const isVisible = !isResetMode && !isChecking && !isSubmitting;
-        elements.authVkOneTapContainer.classList.toggle("hidden", !isVisible);
+        elements.authVkOAuthBtn.classList.toggle("hidden", !isVisible);
+        elements.authVkOAuthBtn.disabled = isBusy;
+        const divider = elements.authVkOAuthBtn.previousElementSibling;
+        if ((_h = divider == null ? void 0 : divider.classList) == null ? void 0 : _h.contains("auth-vk-divider")) {
+          divider.classList.toggle("hidden", !isVisible);
+        }
       }
       if (elements.authPassword && elements.authPassword.type !== "password") {
         elements.authPassword.type = "password";
@@ -4269,7 +4287,7 @@
     return suggestions.slice(0, 3).map((text, index) => createBreakdownDraft(text, index === 1 ? 10 : 5, index));
   }
   function bindAppEvents(app) {
-    var _a, _b;
+    var _a;
     const { elements, store, runtime } = app;
     const authState = runtime.auth;
     const voiceState = runtime.voice;
@@ -4413,7 +4431,7 @@
       }
     }
     function selectEasyPatternScenario(scenario) {
-      var _a2, _b2;
+      var _a2, _b;
       const today = getLocalDateString();
       const state = store.getState();
       const trigger = getEasyPatternTrigger(state, today);
@@ -4433,7 +4451,7 @@
         resourceId: resourceSuggestionId
       });
       easyPatternState.feedback = "";
-      if (!((_b2 = state.currentDayMeta) == null ? void 0 : _b2.easyPatternShown)) {
+      if (!((_b = state.currentDayMeta) == null ? void 0 : _b.easyPatternShown)) {
         markEasyPatternShown(store, today, trigger);
       }
       app.renderers.renderMainScreen();
@@ -4515,20 +4533,20 @@
       }
     }
     function getSelectedSupportAmount() {
-      var _a2, _b2, _c, _d;
-      const customValue = (_b2 = (_a2 = elements.accountSupportCustomAmount) == null ? void 0 : _a2.value) == null ? void 0 : _b2.trim();
+      var _a2, _b, _c, _d;
+      const customValue = (_b = (_a2 = elements.accountSupportCustomAmount) == null ? void 0 : _a2.value) == null ? void 0 : _b.trim();
       if (customValue) {
         return Number(customValue);
       }
       return Number(authState.payments.selectedAmount || ((_d = (_c = authState.payments.checkout) == null ? void 0 : _c.allowedAmounts) == null ? void 0 : _d[0]) || 149);
     }
     function renderSupportAmountButtons() {
-      var _a2, _b2;
+      var _a2, _b;
       if (!elements.accountSupportAmounts) {
         return;
       }
       const selectedAmount = Number(authState.payments.selectedAmount);
-      const allowedAmounts = ((_b2 = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b2.length) ? authState.payments.checkout.allowedAmounts : [149, 299, 499];
+      const allowedAmounts = ((_b = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b.length) ? authState.payments.checkout.allowedAmounts : [149, 299, 499];
       elements.accountSupportAmounts.innerHTML = allowedAmounts.map((amount) => `
                 <button class="secondary-btn support-amount-btn ${amount === selectedAmount && !elements.accountSupportCustomAmount.value ? "is-selected" : ""}" type="button" data-support-amount="${amount}">
                     ${amount} ₽
@@ -4536,7 +4554,7 @@
             `).join("");
     }
     function renderPaymentSummary() {
-      var _a2, _b2;
+      var _a2, _b;
       const payments = authState.payments;
       const support = payments.support;
       const latestDonation = payments.latestDonation;
@@ -4555,11 +4573,11 @@
       }
       elements.accountSupportSubmitBtn.disabled = payments.status === "submitting" || pendingOffline;
       elements.accountSupportSubmitBtn.textContent = payments.status === "submitting" ? "Открываем оплату…" : "Перейти к оплате";
-      elements.accountSupportCustomAmount.min = String(((_b2 = payments.checkout) == null ? void 0 : _b2.minAmount) || 100);
+      elements.accountSupportCustomAmount.min = String(((_b = payments.checkout) == null ? void 0 : _b.minAmount) || 100);
       renderSupportAmountButtons();
     }
     async function refreshPaymentStatus({ donationId, openReturnModal = false } = {}) {
-      var _a2, _b2, _c;
+      var _a2, _b, _c;
       authState.payments.status = "loading";
       authState.payments.error = "";
       elements.accountSupportError.textContent = "";
@@ -4569,7 +4587,7 @@
         authState.payments.support = (payload == null ? void 0 : payload.support) || null;
         authState.payments.latestDonation = (payload == null ? void 0 : payload.latestDonation) || null;
         authState.payments.checkout = (payload == null ? void 0 : payload.checkout) || authState.payments.checkout;
-        if (!authState.payments.selectedAmount && ((_b2 = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b2.length)) {
+        if (!authState.payments.selectedAmount && ((_b = (_a2 = authState.payments.checkout) == null ? void 0 : _a2.allowedAmounts) == null ? void 0 : _b.length)) {
           authState.payments.selectedAmount = authState.payments.checkout.allowedAmounts[0];
         }
         authState.payments.status = "idle";
@@ -4853,88 +4871,23 @@
       event.preventDefault();
       void submitAuthForm();
     });
-    let vkSdkInitialized = false;
-    async function waitForVkSdk(timeoutMs = 1e4) {
-      if (typeof VKIDSDK !== "undefined") return true;
-      const start = Date.now();
-      while (Date.now() - start < timeoutMs) {
-        await new Promise((r) => setTimeout(r, 100));
-        if (typeof VKIDSDK !== "undefined") return true;
-      }
-      return false;
-    }
-    async function initVkOneTap() {
-      if (vkSdkInitialized) return;
-      console.log("[VK] initVkOneTap: waiting for SDK...");
-      const sdkReady = await waitForVkSdk();
-      if (!sdkReady) {
-        console.warn("[VK] SDK not loaded");
-        return;
-      }
-      console.log("[VK] SDK loaded");
-      const VKID = window.VKIDSDK;
-      let publicConfig;
-      try {
-        publicConfig = await app.auth.getPublicConfig();
-      } catch {
-        console.warn("[VK] Failed to fetch public config");
-        return;
-      }
-      if (!(publicConfig == null ? void 0 : publicConfig.vkAppId)) {
-        console.warn("[VK] VK app ID not configured");
-        return;
-      }
-      console.log("[VK] Config:", { app: publicConfig.vkAppId });
-      VKID.Config.init({
-        app: Number(publicConfig.vkAppId),
-        redirectUrl: window.location.origin + "/api/auth/vk/oauth/callback",
-        responseMode: VKID.ConfigResponseMode.Callback,
-        source: VKID.ConfigSource.LOWCODE,
-        scope: "email"
-      });
-      const oneTap = new VKID.OneTap();
-      oneTap.render({
-        container: elements.authVkOneTapContainer,
-        showAlternativeLogin: true
-      }).on(VKID.WidgetEvents.ERROR, (error) => {
-        console.error("[VK] OneTap error:", error);
-        vkSdkInitialized = false;
-      }).on(VKID.OneTapInternalEvents.LOGIN_SUCCESS, async function(payload) {
-        console.log("[VK] Login success, exchanging code...");
+    if (elements.authVkOAuthBtn) {
+      elements.authVkOAuthBtn.addEventListener("click", async () => {
+        if (runtime.auth.status === "submitting" || runtime.auth.status === "checking") return;
+        runtime.auth.status = "submitting";
+        runtime.auth.error = "";
+        app.renderers.renderAuthScreen();
         try {
-          const tokenData = await VKID.Auth.exchangeCode(payload.code, payload.device_id);
-          console.log("[VK] Token received, completing auth...");
-          const user = await app.auth.vkComplete({
-            access_token: tokenData.access_token,
-            user_id: String(tokenData.user_id),
-            email: tokenData.email || "",
-            name: [tokenData.first_name, tokenData.last_name].filter(Boolean).join(" ")
-          });
-          if (user) {
-            console.log("[VK] Auth complete, starting flow...");
-            await app.startAuthenticatedFlow(user);
+          const url = await app.auth.vkOAuthUrl();
+          if (url) {
+            window.location.href = url;
           }
-        } catch {
-          console.warn("[VK] Auth failed");
-          runtime.auth.error = "Сейчас не получается войти через VK. Попробуйте ещё раз.";
+        } catch (error) {
+          runtime.auth.status = "guest";
+          runtime.auth.error = (error == null ? void 0 : error.friendlyMessage) || "Сейчас не получается начать вход через VK.";
           app.renderers.renderAuthScreen();
         }
       });
-      vkSdkInitialized = true;
-      console.log("[VK] OneTap rendered");
-    }
-    function showVkOneTap() {
-      if (elements.authVkOneTapContainer && !elements.authVkOneTapContainer.classList.contains("hidden")) {
-        void initVkOneTap();
-      }
-    }
-    const origRenderAuthScreen = app.renderers.renderAuthScreen;
-    app.renderers.renderAuthScreen = function() {
-      origRenderAuthScreen.call(app.renderers);
-      showVkOneTap();
-    };
-    if (typeof window !== "undefined" && !((_b = elements.authVkOneTapContainer) == null ? void 0 : _b.classList.contains("hidden"))) {
-      setTimeout(() => void initVkOneTap(), 500);
     }
     if (elements.authForgotPasswordBtn) {
       elements.authForgotPasswordBtn.addEventListener("click", () => {

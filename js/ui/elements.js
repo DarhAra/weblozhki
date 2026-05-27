@@ -46,7 +46,7 @@ export function collectElements(doc = document) {
         authNotice: doc.getElementById('auth-notice'),
         authForgotPasswordBtn: doc.getElementById('auth-forgot-password-btn'),
         authError: doc.getElementById('auth-error'),
-        authVkOneTapContainer: doc.getElementById('auth-vk-onetap-container'),
+        authVkOAuthBtn: doc.getElementById('auth-vk-oauth-btn'),
         authSubmitBtn: doc.getElementById('auth-submit-btn'),
         forgotPasswordModal: doc.getElementById('forgot-password-modal'),
         closeForgotPasswordBtn: doc.getElementById('close-forgot-password-btn'),

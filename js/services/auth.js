@@ -5,6 +5,7 @@ const API_AUTH_LOGOUT_URL = '/api/auth/logout';
 const API_AUTH_FORGOT_PASSWORD_URL = '/api/auth/forgot-password';
 const API_AUTH_RESET_PASSWORD_URL = '/api/auth/reset-password';
 const API_VK_AUTH_URL = '/api/vk/auth';
+const API_VK_OAUTH_URL = '/api/auth/vk/oauth/url';
 const API_VK_COMPLETE_URL = '/api/auth/vk/complete';
 const API_PUBLIC_CONFIG_URL = '/api/config/public';
 const API_ACCOUNT_PROFILE_URL = '/api/account/profile';
@@ -100,6 +101,9 @@ function buildFriendlyAuthError(payload, fallbackMessage) {
     if (errorCode === 'VK_LINK_FAILED') {
         return 'Сейчас не получается привязать аккаунт VK.';
     }
+    if (errorCode === 'VK_OAUTH_NOT_CONFIGURED') {
+        return 'Вход через VK временно недоступен.';
+    }
     return fallbackMessage;
 }
 
@@ -159,6 +163,15 @@ export function createAuthService() {
             user: payload?.user || null,
             csrfToken: payload?.csrfToken || '',
         };
+    }
+
+    async function vkOAuthUrl() {
+        const payload = await requestJson(
+            API_VK_OAUTH_URL,
+            {},
+            'Сейчас не получается начать вход через VK.',
+        );
+        return payload?.url || '';
     }
 
     async function authenticateWithVk({ launchParams }) {
@@ -369,6 +382,7 @@ export function createAuthService() {
     return {
         checkSession,
         authenticateWithVk,
+        vkOAuthUrl,
         vkComplete,
         getPublicConfig,
         login,
