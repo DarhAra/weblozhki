@@ -742,9 +742,7 @@ export function bindAppEvents(app) {
     function switchAuthMode(mode) {
         authState.mode = mode === 'register' ? 'register' : 'login';
         authState.error = '';
-        authState.notice = runtime.vk.isMiniApp && runtime.vk.linkingRequired
-            ? 'Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK.'
-            : '';
+        authState.notice = '';
         authState.resetToken = null;
         authState.status = 'guest';
         app.renderers.renderAuthScreen();
@@ -823,13 +821,6 @@ export function bindAppEvents(app) {
             let user = authState.mode === 'register'
                 ? await app.auth.register({ name, email, password })
                 : await app.auth.login({ email, password });
-
-            if (runtime.vk.isMiniApp && runtime.vk.linkingRequired && runtime.vk.rawLaunchParams) {
-                user = await app.auth.linkVkAccount({
-                    launchParams: runtime.vk.rawLaunchParams,
-                });
-                runtime.vk.linkingRequired = false;
-            }
 
             resetAuthForm();
             authState.notice = '';
@@ -1165,9 +1156,7 @@ export function bindAppEvents(app) {
         authState.user = null;
         authState.mode = 'login';
         authState.status = 'guest';
-        authState.notice = runtime.vk.isMiniApp
-            ? 'Войдите, чтобы снова связать аккаунт с вашим профилем VK.'
-            : '';
+        authState.notice = '';
         authState.isOfflineAuthenticated = false;
         resetAuthForm({ preserveEmail: false });
         app.screens.showAuthScreen();

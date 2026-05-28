@@ -413,7 +413,7 @@ function ensureCsrfContext(req, res, next) {
 }
 
 function requireCsrfToken(req, res, next) {
-    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook' || req.path === '/api/vk/auth') {
+    if (!isStateChangingMethod(req.method) || req.path === '/api/payments/yookassa/webhook' || req.path === '/api/vk/auth' || req.path === '/api/auth/vk/complete') {
         return next();
     }
 
@@ -661,14 +661,16 @@ app.get('/api/auth/session', (req, res) => {
 });
 
 app.post('/api/vk/auth', async (req, res) => {
-    const verification = vkLaunchParams.verify(req.body?.launchParams);
+    const launchParamsInput = req.body?.launchParams;
+    const verification = vkLaunchParams.verify(launchParamsInput);
+    console.log('[VK_AUTH] Input:', JSON.stringify(launchParamsInput).slice(0, 300));
+    console.log('[VK_AUTH] Verification:', JSON.stringify(verification));
     if (!verification.ok) {
-        console.log('[VK_AUTH] Verification failed:', verification.code, req.body?.launchParams);
+        console.log('[VK_AUTH] Verification failed:', verification.code, 'appId:', config.vkAppId, 'configured:', vkLaunchParams.isConfigured);
         return res.status(getVkAuthErrorStatus(verification.code)).json({
             error: verification.code,
             message: 'Could not verify VK launch parameters.',
             authenticated: false,
-            linkingRequired: false,
             csrfToken: req.csrfToken,
         });
     }
@@ -682,7 +684,6 @@ app.post('/api/vk/auth', async (req, res) => {
         req.user = linkedUser;
         return res.json({
             authenticated: true,
-            linkingRequired: false,
             user: toPublicUser(linkedUser),
             csrfToken: req.csrfToken,
         });
@@ -694,7 +695,6 @@ app.post('/api/vk/auth', async (req, res) => {
             req.user = updatedUser;
             return res.json({
                 authenticated: true,
-                linkingRequired: false,
                 user: toPublicUser(updatedUser),
                 csrfToken: req.csrfToken,
             });
@@ -707,7 +707,6 @@ app.post('/api/vk/auth', async (req, res) => {
                 error: 'VK_LINK_FAILED',
                 message: 'Could not link VK account right now.',
                 authenticated: true,
-                linkingRequired: false,
                 csrfToken: req.csrfToken,
             });
         }
@@ -740,9 +739,10 @@ app.post('/api/vk/auth', async (req, res) => {
         createSessionForUser(res, newUser.id, req);
         req.user = newUser;
 
+        console.log('[VK_AUTH] Auto-registered new user:', newUser.id, 'vkUserId:', vkUserId, 'name:', newUser.name);
+
         return res.json({
             authenticated: true,
-            linkingRequired: false,
             user: toPublicUser(newUser),
             csrfToken: req.csrfToken,
         });
@@ -755,7 +755,17 @@ app.post('/api/vk/auth', async (req, res) => {
             error: 'VK_AUTO_REGISTER_FAILED',
             message: 'Could not complete VK sign-in.',
             authenticated: false,
-            linkingRequired: false,
+            csrfToken: req.csrfToken,
+        });
+    } catch (error) {
+        logServerError('Failed to auto-register VK user', error, {
+            code: 'VK_AUTO_REGISTER_FAILED',
+            vkUserId,
+        });
+        return res.status(error.statusCode || 500).json({
+            error: 'VK_AUTO_REGISTER_FAILED',
+            message: 'Could not complete VK sign-in.',
+            authenticated: false,
             csrfToken: req.csrfToken,
         });
     }

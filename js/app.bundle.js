@@ -1438,36 +1438,22 @@
       return (payload == null ? void 0 : payload.url) || "";
     }
     async function authenticateWithVk({ launchParams }) {
-      var _a, _b;
-      try {
-        const payload = await requestJson(
-          API_VK_AUTH_URL,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ launchParams })
+      const payload = await requestJson(
+        API_VK_AUTH_URL,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
           },
-          "Сейчас не получается проверить вход через VK."
-        );
-        return {
-          authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
-          linkingRequired: Boolean(payload == null ? void 0 : payload.linkingRequired),
-          user: (payload == null ? void 0 : payload.user) || null,
-          csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
-        };
-      } catch (error) {
-        if ((_a = error.payload) == null ? void 0 : _a.linkingRequired) {
-          return {
-            authenticated: false,
-            linkingRequired: true,
-            user: null,
-            csrfToken: ((_b = error.payload) == null ? void 0 : _b.csrfToken) || ""
-          };
-        }
-        throw error;
-      }
+          body: JSON.stringify({ launchParams })
+        },
+        "Сейчас не получается проверить вход через VK."
+      );
+      return {
+        authenticated: Boolean(payload == null ? void 0 : payload.authenticated),
+        user: (payload == null ? void 0 : payload.user) || null,
+        csrfToken: (payload == null ? void 0 : payload.csrfToken) || ""
+      };
     }
     async function vkComplete({ access_token, user_id, email, name }) {
       const payload = await requestJson(
@@ -4719,7 +4705,7 @@
     function switchAuthMode(mode) {
       authState.mode = mode === "register" ? "register" : "login";
       authState.error = "";
-      authState.notice = runtime.vk.isMiniApp && runtime.vk.linkingRequired ? "Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK." : "";
+      authState.notice = "";
       authState.resetToken = null;
       authState.status = "guest";
       app.renderers.renderAuthScreen();
@@ -4786,12 +4772,6 @@
       app.renderers.renderAuthScreen();
       try {
         let user = authState.mode === "register" ? await app.auth.register({ name, email, password }) : await app.auth.login({ email, password });
-        if (runtime.vk.isMiniApp && runtime.vk.linkingRequired && runtime.vk.rawLaunchParams) {
-          user = await app.auth.linkVkAccount({
-            launchParams: runtime.vk.rawLaunchParams
-          });
-          runtime.vk.linkingRequired = false;
-        }
         resetAuthForm();
         authState.notice = "";
         await app.startAuthenticatedFlow(user);
@@ -5077,7 +5057,7 @@
       authState.user = null;
       authState.mode = "login";
       authState.status = "guest";
-      authState.notice = runtime.vk.isMiniApp ? "Войдите, чтобы снова связать аккаунт с вашим профилем VK." : "";
+      authState.notice = "";
       authState.isOfflineAuthenticated = false;
       resetAuthForm({ preserveEmail: false });
       app.screens.showAuthScreen();
@@ -6422,36 +6402,74 @@
       launchParams: params
     };
   }
+  function buildLaunchParamsQuery(params) {
+    if (!params) return "";
+    return Object.entries(params).filter(([key]) => key === "sign" || key.startsWith("vk_")).map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`).join("&");
+  }
   function createVkService() {
     const state = {
       isVkMiniApp: false,
       rawLaunchParams: "",
       launchParams: {},
-      initialized: false
+      initialized: false,
+      bridgeAvailable: false
     };
     async function init() {
       const detected = collectLaunchParamsFromLocation();
-      state.isVkMiniApp = detected.isVkMiniApp;
       state.rawLaunchParams = detected.rawLaunchParams;
       state.launchParams = detected.launchParams;
-      if (state.isVkMiniApp && !state.initialized) {
+      try {
+        await import_vk_bridge.default.send("VKWebAppInit");
         state.initialized = true;
-        try {
-          await import_vk_bridge.default.send("VKWebAppInit");
-        } catch {
+        const bridgeResult = await getBridgeLaunchParams();
+        if (bridgeResult) {
+          state.isVkMiniApp = true;
+          state.bridgeAvailable = true;
+          state.rawLaunchParams = bridgeResult.rawLaunchParams;
+          state.launchParams = { ...state.launchParams, ...bridgeResult.launchParams };
         }
+      } catch {
+        state.isVkMiniApp = detected.isVkMiniApp;
+        state.bridgeAvailable = false;
       }
       return {
         isVkMiniApp: state.isVkMiniApp,
         rawLaunchParams: state.rawLaunchParams,
-        launchParams: { ...state.launchParams }
+        launchParams: { ...state.launchParams },
+        bridgeAvailable: state.bridgeAvailable
       };
+    }
+    async function getBridgeLaunchParams() {
+      try {
+        const result = await import_vk_bridge.default.send("VKWebAppGetLaunchParams");
+        if (result && hasLaunchParams(result)) {
+          return {
+            launchParams: result,
+            rawLaunchParams: buildLaunchParamsQuery(result)
+          };
+        }
+      } catch {
+      }
+      return null;
+    }
+    async function getAuthToken(scope = "") {
+      try {
+        const appId = Number(state.launchParams.vk_app_id);
+        if (!appId) return "";
+        const result = await import_vk_bridge.default.send("VKWebAppGetAuthToken", {
+          app_id: appId,
+          scope
+        });
+        return (result == null ? void 0 : result.access_token) || "";
+      } catch {
+        return "";
+      }
     }
     async function openUrl(url) {
       if (!url) {
         return false;
       }
-      if (state.isVkMiniApp) {
+      if (state.bridgeAvailable) {
         try {
           await import_vk_bridge.default.send("VKWebAppOpenURL", { url });
           return true;
@@ -6470,7 +6488,8 @@
     return {
       init,
       openUrl,
-      getLaunchParamsQuery
+      getLaunchParamsQuery,
+      getAuthToken
     };
   }
 
@@ -6559,7 +6578,7 @@
     return app;
   }
   async function initApp({ elements }) {
-    var _a, _b, _c, _d;
+    var _a, _b, _c;
     const store = createStore();
     const auth = createAuthService();
     const vk = createVkService();
@@ -6619,7 +6638,7 @@
           isMiniApp: false,
           launchParams: {},
           rawLaunchParams: "",
-          linkingRequired: false
+          bridgeAvailable: false
         },
         voice: {
           isSupported: false,
@@ -6714,6 +6733,7 @@
       app.runtime.vk.isMiniApp = Boolean(vkContext == null ? void 0 : vkContext.isVkMiniApp);
       app.runtime.vk.launchParams = (vkContext == null ? void 0 : vkContext.launchParams) || {};
       app.runtime.vk.rawLaunchParams = (vkContext == null ? void 0 : vkContext.rawLaunchParams) || "";
+      app.runtime.vk.bridgeAvailable = Boolean(vkContext == null ? void 0 : vkContext.bridgeAvailable);
       const params = new URLSearchParams(window.location.search);
       const resetToken = params.get("resetToken");
       const paymentReturn = params.get("paymentReturn");
@@ -6755,39 +6775,49 @@
       });
     }
     try {
-      if (app.runtime.vk.isMiniApp && app.runtime.vk.rawLaunchParams) {
-        const vkSession = await auth.authenticateWithVk({
-          launchParams: app.runtime.vk.rawLaunchParams
-        });
-        if (vkSession.authenticated && vkSession.user) {
-          app.runtime.vk.linkingRequired = false;
-          await app.startAuthenticatedFlow(vkSession.user);
-          return app;
+      if (app.runtime.vk.isMiniApp) {
+        const vkParams = app.runtime.vk.rawLaunchParams;
+        if (vkParams) {
+          try {
+            const vkSession = await auth.authenticateWithVk({
+              launchParams: vkParams
+            });
+            if (vkSession.authenticated && vkSession.user) {
+              await app.startAuthenticatedFlow(vkSession.user);
+              return app;
+            }
+          } catch {
+          }
         }
-        if (vkSession.linkingRequired) {
-          clearOfflineAuthSnapshot();
-          await ((_c = store.clearOfflineCache) == null ? void 0 : _c.call(store, { includeGuest: true }));
-          app.runtime.vk.linkingRequired = true;
-          app.runtime.auth.mode = "login";
-          app.runtime.auth.status = "guest";
-          app.runtime.auth.user = null;
-          app.runtime.auth.error = "";
-          app.runtime.auth.notice = "Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK.";
-          app.runtime.auth.isOfflineAuthenticated = false;
-          store.setSessionContext({ authenticated: false, userId: null });
-          app.screens.showAuthScreen();
-          return app;
+        if (app.runtime.vk.bridgeAvailable) {
+          try {
+            const accessToken = await vk.getAuthToken();
+            if (accessToken) {
+              const userId = String(app.runtime.vk.launchParams.vk_user_id || "");
+              const user = await auth.vkComplete({
+                access_token: accessToken,
+                user_id: userId,
+                email: "",
+                name: ""
+              });
+              if (user) {
+                await app.startAuthenticatedFlow(user);
+                return app;
+              }
+            }
+          } catch {
+          }
         }
       }
       const session = await auth.checkSession();
       if (!session.authenticated || !session.user) {
         clearOfflineAuthSnapshot();
-        await ((_d = store.clearOfflineCache) == null ? void 0 : _d.call(store, { includeGuest: true }));
+        await ((_c = store.clearOfflineCache) == null ? void 0 : _c.call(store, { includeGuest: true }));
         app.runtime.auth.mode = "login";
         app.runtime.auth.status = "guest";
         app.runtime.auth.user = null;
         app.runtime.auth.error = "";
-        app.runtime.auth.notice = app.runtime.vk.isMiniApp ? "Войдите, чтобы связать текущий аккаунт с вашим профилем VK." : "";
+        app.runtime.auth.notice = "";
         app.runtime.auth.isOfflineAuthenticated = false;
         store.setSessionContext({ authenticated: false, userId: null });
         app.screens.showAuthScreen();

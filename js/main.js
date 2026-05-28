@@ -177,7 +177,7 @@ export async function initApp({ elements }) {
                 isMiniApp: false,
                 launchParams: {},
                 rawLaunchParams: '',
-                linkingRequired: false,
+                bridgeAvailable: false,
             },
             voice: {
                 isSupported: false,
@@ -275,6 +275,7 @@ export async function initApp({ elements }) {
         app.runtime.vk.isMiniApp = Boolean(vkContext?.isVkMiniApp);
         app.runtime.vk.launchParams = vkContext?.launchParams || {};
         app.runtime.vk.rawLaunchParams = vkContext?.rawLaunchParams || '';
+        app.runtime.vk.bridgeAvailable = Boolean(vkContext?.bridgeAvailable);
         const params = new URLSearchParams(window.location.search);
         const resetToken = params.get('resetToken');
         const paymentReturn = params.get('paymentReturn');
@@ -318,29 +319,41 @@ export async function initApp({ elements }) {
     }
 
     try {
-        if (app.runtime.vk.isMiniApp && app.runtime.vk.rawLaunchParams) {
-            const vkSession = await auth.authenticateWithVk({
-                launchParams: app.runtime.vk.rawLaunchParams,
-            });
-            if (vkSession.authenticated && vkSession.user) {
-                app.runtime.vk.linkingRequired = false;
-                await app.startAuthenticatedFlow(vkSession.user);
-                return app;
+        if (app.runtime.vk.isMiniApp) {
+            const vkParams = app.runtime.vk.rawLaunchParams;
+            if (vkParams) {
+                try {
+                    const vkSession = await auth.authenticateWithVk({
+                        launchParams: vkParams,
+                    });
+                    if (vkSession.authenticated && vkSession.user) {
+                        await app.startAuthenticatedFlow(vkSession.user);
+                        return app;
+                    }
+                } catch {
+                    // Launch params auth failed, try token fallback
+                }
             }
 
-            if (vkSession.linkingRequired) {
-                clearOfflineAuthSnapshot();
-                await store.clearOfflineCache?.({ includeGuest: true });
-                app.runtime.vk.linkingRequired = true;
-                app.runtime.auth.mode = 'login';
-                app.runtime.auth.status = 'guest';
-                app.runtime.auth.user = null;
-                app.runtime.auth.error = '';
-                app.runtime.auth.notice = 'Войдите или создайте аккаунт, и мы привяжем его к вашему профилю VK.';
-                app.runtime.auth.isOfflineAuthenticated = false;
-                store.setSessionContext({ authenticated: false, userId: null });
-                app.screens.showAuthScreen();
-                return app;
+            if (app.runtime.vk.bridgeAvailable) {
+                try {
+                    const accessToken = await vk.getAuthToken();
+                    if (accessToken) {
+                        const userId = String(app.runtime.vk.launchParams.vk_user_id || '');
+                        const user = await auth.vkComplete({
+                            access_token: accessToken,
+                            user_id: userId,
+                            email: '',
+                            name: '',
+                        });
+                        if (user) {
+                            await app.startAuthenticatedFlow(user);
+                            return app;
+                        }
+                    }
+                } catch {
+                    // Token auth failed, fall through
+                }
             }
         }
 
@@ -352,9 +365,7 @@ export async function initApp({ elements }) {
             app.runtime.auth.status = 'guest';
             app.runtime.auth.user = null;
             app.runtime.auth.error = '';
-            app.runtime.auth.notice = app.runtime.vk.isMiniApp
-                ? 'Войдите, чтобы связать текущий аккаунт с вашим профилем VK.'
-                : '';
+            app.runtime.auth.notice = '';
             app.runtime.auth.isOfflineAuthenticated = false;
             store.setSessionContext({ authenticated: false, userId: null });
             app.screens.showAuthScreen();
