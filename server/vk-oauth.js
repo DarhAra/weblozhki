@@ -1,6 +1,6 @@
 const crypto = require('crypto');
 
-const VK_AUTHORIZE_URL = 'https://oauth.vk.com/authorize';
+const VK_AUTHORIZE_URL = 'https://id.vk.com/authorize';
 const VK_ACCESS_TOKEN_URL = 'https://oauth.vk.com/access_token';
 const VK_API_BASE = 'https://api.vk.com/method';
 const VK_API_VERSION = '5.199';
@@ -38,10 +38,9 @@ function createVkOAuthService(config, logger = console) {
 
     function getAuthorizeUrl(state) {
         const params = new URLSearchParams({
+            response_type: 'code',
             client_id: appId,
             redirect_uri: redirectUri,
-            response_type: 'code',
-            display: 'page',
             state,
             v: VK_API_VERSION,
         });
