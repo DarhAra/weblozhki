@@ -757,17 +757,6 @@ app.post('/api/vk/auth', async (req, res) => {
             authenticated: false,
             csrfToken: req.csrfToken,
         });
-    } catch (error) {
-        logServerError('Failed to auto-register VK user', error, {
-            code: 'VK_AUTO_REGISTER_FAILED',
-            vkUserId,
-        });
-        return res.status(error.statusCode || 500).json({
-            error: 'VK_AUTO_REGISTER_FAILED',
-            message: 'Could not complete VK sign-in.',
-            authenticated: false,
-            csrfToken: req.csrfToken,
-        });
     }
 });
 
