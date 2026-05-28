@@ -6411,33 +6411,36 @@
       isVkMiniApp: false,
       rawLaunchParams: "",
       launchParams: {},
-      initialized: false,
+      initPromise: null,
       bridgeAvailable: false
     };
     async function init() {
-      const detected = collectLaunchParamsFromLocation();
-      state.rawLaunchParams = detected.rawLaunchParams;
-      state.launchParams = detected.launchParams;
-      try {
-        await import_vk_bridge.default.send("VKWebAppInit");
-        state.initialized = true;
-        const bridgeResult = await getBridgeLaunchParams();
-        if (bridgeResult) {
-          state.isVkMiniApp = true;
-          state.bridgeAvailable = true;
-          state.rawLaunchParams = bridgeResult.rawLaunchParams;
-          state.launchParams = { ...state.launchParams, ...bridgeResult.launchParams };
+      if (state.initPromise) return state.initPromise;
+      state.initPromise = (async () => {
+        const detected = collectLaunchParamsFromLocation();
+        state.rawLaunchParams = detected.rawLaunchParams;
+        state.launchParams = detected.launchParams;
+        try {
+          await import_vk_bridge.default.send("VKWebAppInit");
+          const bridgeResult = await getBridgeLaunchParams();
+          if (bridgeResult) {
+            state.isVkMiniApp = true;
+            state.bridgeAvailable = true;
+            state.rawLaunchParams = bridgeResult.rawLaunchParams;
+            state.launchParams = { ...state.launchParams, ...bridgeResult.launchParams };
+          }
+        } catch {
+          state.isVkMiniApp = detected.isVkMiniApp;
+          state.bridgeAvailable = false;
         }
-      } catch {
-        state.isVkMiniApp = detected.isVkMiniApp;
-        state.bridgeAvailable = false;
-      }
-      return {
-        isVkMiniApp: state.isVkMiniApp,
-        rawLaunchParams: state.rawLaunchParams,
-        launchParams: { ...state.launchParams },
-        bridgeAvailable: state.bridgeAvailable
-      };
+        return {
+          isVkMiniApp: state.isVkMiniApp,
+          rawLaunchParams: state.rawLaunchParams,
+          launchParams: { ...state.launchParams },
+          bridgeAvailable: state.bridgeAvailable
+        };
+      })();
+      return state.initPromise;
     }
     async function getBridgeLaunchParams() {
       try {
@@ -6494,6 +6497,8 @@
   }
 
   // js/main.js
+  var earlyVk = createVkService();
+  earlyVk.init();
   var builtinAdvices = [
     "Выпить стакан чистой воды",
     "Сделать 5 глубоких вдохов и выдохов",
@@ -6581,7 +6586,7 @@
     var _a, _b, _c;
     const store = createStore();
     const auth = createAuthService();
-    const vk = createVkService();
+    const vk = earlyVk;
     const app = {
       elements,
       store,
