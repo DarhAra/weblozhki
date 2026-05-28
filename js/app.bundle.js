@@ -2853,7 +2853,7 @@
       elements.storageStatus.title = status.message || (isServerMode ? "Данные синхронизированы с сервером." : "Изменения пока сохраняются только на этом устройстве.");
     }
     function renderAuthScreen() {
-      var _a, _b, _c, _d, _e, _f, _g, _h;
+      var _a, _b, _c, _d, _e, _f, _g, _h, _i;
       const auth = runtime.auth || {
         status: "guest",
         mode: "login",
@@ -2867,13 +2867,14 @@
       const isBusy = isChecking || isSubmitting;
       elements.authTitle.textContent = isResetMode ? "Придумай новый пароль" : isRegisterMode ? "Создать аккаунт" : "Вход в аккаунт";
       elements.authSubtitle.textContent = isResetMode ? "Ссылка уже открыта. Остаётся только задать новый пароль для своего аккаунта." : isRegisterMode ? "Полноценный аккаунт хранит твои личные данные, настройки и историю только для тебя." : "Войдите один раз, и приложение будет помнить ваш аккаунт между визитами.";
-      (_a = elements.authLoading) == null ? void 0 : _a.classList.toggle("hidden", !isChecking);
-      (_b = elements.authModeSwitcher) == null ? void 0 : _b.classList.toggle("hidden", isChecking || isResetMode);
-      (_c = elements.authLoginModeBtn) == null ? void 0 : _c.classList.toggle("is-active", !isRegisterMode && !isResetMode);
-      (_d = elements.authRegisterModeBtn) == null ? void 0 : _d.classList.toggle("is-active", isRegisterMode);
-      (_e = elements.authNameField) == null ? void 0 : _e.classList.toggle("hidden", !isRegisterMode);
-      (_f = elements.authPasswordConfirmField) == null ? void 0 : _f.classList.toggle("hidden", !isRegisterMode && !isResetMode);
-      (_g = elements.authForgotPasswordBtn) == null ? void 0 : _g.classList.toggle("hidden", isRegisterMode || isResetMode);
+      (_a = elements.authForm) == null ? void 0 : _a.classList.toggle("hidden", isChecking);
+      (_b = elements.authLoading) == null ? void 0 : _b.classList.toggle("hidden", !isChecking);
+      (_c = elements.authModeSwitcher) == null ? void 0 : _c.classList.toggle("hidden", isChecking || isResetMode);
+      (_d = elements.authLoginModeBtn) == null ? void 0 : _d.classList.toggle("is-active", !isRegisterMode && !isResetMode);
+      (_e = elements.authRegisterModeBtn) == null ? void 0 : _e.classList.toggle("is-active", isRegisterMode);
+      (_f = elements.authNameField) == null ? void 0 : _f.classList.toggle("hidden", !isRegisterMode);
+      (_g = elements.authPasswordConfirmField) == null ? void 0 : _g.classList.toggle("hidden", !isRegisterMode && !isResetMode);
+      (_h = elements.authForgotPasswordBtn) == null ? void 0 : _h.classList.toggle("hidden", isRegisterMode || isResetMode);
       if (elements.authName) {
         elements.authName.disabled = isBusy || !isRegisterMode;
         elements.authName.required = isRegisterMode;
@@ -2906,7 +2907,7 @@
         elements.authVkOAuthBtn.classList.toggle("hidden", !isVisible);
         elements.authVkOAuthBtn.disabled = isBusy;
         const divider = elements.authVkOAuthBtn.previousElementSibling;
-        if ((_h = divider == null ? void 0 : divider.classList) == null ? void 0 : _h.contains("auth-vk-divider")) {
+        if ((_i = divider == null ? void 0 : divider.classList) == null ? void 0 : _i.contains("auth-vk-divider")) {
           divider.classList.toggle("hidden", !isVisible);
         }
       }

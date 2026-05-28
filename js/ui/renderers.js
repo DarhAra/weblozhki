@@ -218,6 +218,7 @@ export function createRenderers(app) {
             : isRegisterMode
                 ? 'Полноценный аккаунт хранит твои личные данные, настройки и историю только для тебя.'
                 : 'Войдите один раз, и приложение будет помнить ваш аккаунт между визитами.';
+        elements.authForm?.classList.toggle('hidden', isChecking);
         elements.authLoading?.classList.toggle('hidden', !isChecking);
         elements.authModeSwitcher?.classList.toggle('hidden', isChecking || isResetMode);
         elements.authLoginModeBtn?.classList.toggle('is-active', !isRegisterMode && !isResetMode);
