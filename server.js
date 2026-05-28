@@ -636,12 +636,6 @@ app.use((req, res, next) => {
 });
 app.use(express.static(ROOT_DIR));
 
-app.get('/api/config/public', (_req, res) => {
-    res.json({
-        vkAppId: config.vkAppId || '',
-    });
-});
-
 app.get('/api/health', (_req, res) => {
     res.json({ ok: true });
 });
@@ -891,61 +885,6 @@ app.get('/api/auth/vk/oauth/callback', async (req, res) => {
         logServerError('Failed to create user via VK', createError, { code: 'VK_CREATE_USER_FAILED', vkUserId });
         return res.redirect(`${baseUrl}?vkAuthError=${encodeURIComponent('Could not create account.')}`);
     }
-});
-
-app.post('/api/dbg/vk-test-exchange', express.urlencoded({ extended: false }), async (req, res) => {
-    const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
-    const deviceId = typeof req.body?.device_id === 'string' ? req.body.device_id.trim() : '';
-    const result = {};
-
-    if (!code) {
-        result.error = 'code is empty';
-        return res.json(result);
-    }
-
-    result.given = { code_length: code.length, device_id: deviceId || '(none)' };
-
-    result.tests = {};
-
-    result.tests.vkTokenUrl = 'https://id.vk.com/oauth2/token';
-
-    try {
-        const formBody = new URLSearchParams({
-            grant_type: 'authorization_code',
-            code,
-            client_id: config.vkAppId,
-            client_secret: config.vkAppSecret,
-            redirect_uri: config.appBaseUrl + '/api/auth/vk/oauth/callback',
-            device_id: deviceId,
-        });
-        const response = await fetch('https://id.vk.com/oauth2/token', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: formBody.toString(),
-            signal: AbortSignal.timeout(15000),
-        });
-        const text = await response.text();
-        result.tests.idVkToken = { status: response.status, body: text.slice(0, 1000) };
-    } catch (e) {
-        result.tests.idVkToken = `ERROR: ${e.message}`;
-    }
-
-    try {
-        const oauthUrl = 'https://oauth.vk.com/access_token?' + new URLSearchParams({
-            client_id: config.vkAppId,
-            client_secret: config.vkAppSecret,
-            redirect_uri: config.appBaseUrl + '/api/auth/vk/oauth/callback',
-            code,
-        });
-        const response = await fetch(oauthUrl, { signal: AbortSignal.timeout(15000) });
-        const text = await response.text();
-        result.tests.oauthVkAccessToken = { status: response.status, body: text.slice(0, 1000) };
-    } catch (e) {
-        result.tests.oauthVkAccessToken = `ERROR: ${e.message}`;
-    }
-
-    console.log('[DBG] VK test exchange result:', JSON.stringify(result, null, 2));
-    return res.json(result);
 });
 
 app.post('/api/auth/vk/complete', async (req, res) => {

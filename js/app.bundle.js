@@ -1290,7 +1290,6 @@
   var API_VK_AUTH_URL = "/api/vk/auth";
   var API_VK_OAUTH_URL = "/api/auth/vk/oauth/url";
   var API_VK_COMPLETE_URL = "/api/auth/vk/complete";
-  var API_PUBLIC_CONFIG_URL = "/api/config/public";
   var API_ACCOUNT_PROFILE_URL = "/api/account/profile";
   var API_ACCOUNT_LINK_VK_URL = "/api/account/link-vk";
   var API_ACCOUNT_CHANGE_PASSWORD_URL = "/api/account/change-password";
@@ -1482,9 +1481,6 @@
       );
       return (payload == null ? void 0 : payload.user) || null;
     }
-    async function getPublicConfig() {
-      return requestJson(API_PUBLIC_CONFIG_URL, {}, "");
-    }
     async function login({ email, password }) {
       const payload = await requestJson(
         API_AUTH_LOGIN_URL,
@@ -1627,7 +1623,6 @@
       authenticateWithVk,
       vkOAuthUrl,
       vkComplete,
-      getPublicConfig,
       login,
       register,
       logout,

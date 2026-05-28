@@ -7,7 +7,6 @@ const API_AUTH_RESET_PASSWORD_URL = '/api/auth/reset-password';
 const API_VK_AUTH_URL = '/api/vk/auth';
 const API_VK_OAUTH_URL = '/api/auth/vk/oauth/url';
 const API_VK_COMPLETE_URL = '/api/auth/vk/complete';
-const API_PUBLIC_CONFIG_URL = '/api/config/public';
 const API_ACCOUNT_PROFILE_URL = '/api/account/profile';
 const API_ACCOUNT_LINK_VK_URL = '/api/account/link-vk';
 const API_ACCOUNT_CHANGE_PASSWORD_URL = '/api/account/change-password';
@@ -221,10 +220,6 @@ export function createAuthService() {
         return payload?.user || null;
     }
 
-    async function getPublicConfig() {
-        return requestJson(API_PUBLIC_CONFIG_URL, {}, '');
-    }
-
     async function login({ email, password }) {
         const payload = await requestJson(
             API_AUTH_LOGIN_URL,
@@ -384,7 +379,6 @@ export function createAuthService() {
         authenticateWithVk,
         vkOAuthUrl,
         vkComplete,
-        getPublicConfig,
         login,
         register,
         logout,
