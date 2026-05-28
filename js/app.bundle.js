@@ -6411,39 +6411,35 @@
       isVkMiniApp: false,
       rawLaunchParams: "",
       launchParams: {},
-      initPromise: null,
+      initialized: false,
       bridgeAvailable: false
     };
     async function init() {
-      if (state.initPromise) return state.initPromise;
-      state.initPromise = (async () => {
-        const detected = collectLaunchParamsFromLocation();
-        state.rawLaunchParams = detected.rawLaunchParams;
-        state.launchParams = detected.launchParams;
-        try {
-          await Promise.race([
-            import_vk_bridge.default.send("VKWebAppInit"),
-            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5e3))
-          ]);
-          const bridgeResult = await getBridgeLaunchParams();
-          if (bridgeResult) {
-            state.isVkMiniApp = true;
-            state.bridgeAvailable = true;
-            state.rawLaunchParams = bridgeResult.rawLaunchParams;
-            state.launchParams = { ...state.launchParams, ...bridgeResult.launchParams };
-          }
-        } catch {
-          state.isVkMiniApp = detected.isVkMiniApp;
-          state.bridgeAvailable = false;
+      const detected = collectLaunchParamsFromLocation();
+      state.rawLaunchParams = detected.rawLaunchParams;
+      state.launchParams = detected.launchParams;
+      try {
+        await Promise.race([
+          import_vk_bridge.default.send("VKWebAppInit"),
+          new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5e3))
+        ]);
+        const bridgeResult = await getBridgeLaunchParams();
+        if (bridgeResult) {
+          state.isVkMiniApp = true;
+          state.bridgeAvailable = true;
+          state.rawLaunchParams = bridgeResult.rawLaunchParams;
+          state.launchParams = { ...state.launchParams, ...bridgeResult.launchParams };
         }
-        return {
-          isVkMiniApp: state.isVkMiniApp,
-          rawLaunchParams: state.rawLaunchParams,
-          launchParams: { ...state.launchParams },
-          bridgeAvailable: state.bridgeAvailable
-        };
-      })();
-      return state.initPromise;
+      } catch {
+        state.isVkMiniApp = detected.isVkMiniApp;
+        state.bridgeAvailable = false;
+      }
+      return {
+        isVkMiniApp: state.isVkMiniApp,
+        rawLaunchParams: state.rawLaunchParams,
+        launchParams: { ...state.launchParams },
+        bridgeAvailable: state.bridgeAvailable
+      };
     }
     async function getBridgeLaunchParams() {
       try {
