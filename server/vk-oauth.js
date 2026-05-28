@@ -41,6 +41,7 @@ function createVkOAuthService(config, logger = console) {
             response_type: 'code',
             client_id: appId,
             redirect_uri: redirectUri,
+            scope: 'email',
             state,
             v: VK_API_VERSION,
         });
