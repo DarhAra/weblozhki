@@ -6421,7 +6421,10 @@
         state.rawLaunchParams = detected.rawLaunchParams;
         state.launchParams = detected.launchParams;
         try {
-          await import_vk_bridge.default.send("VKWebAppInit");
+          await Promise.race([
+            import_vk_bridge.default.send("VKWebAppInit"),
+            new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), 5e3))
+          ]);
           const bridgeResult = await getBridgeLaunchParams();
           if (bridgeResult) {
             state.isVkMiniApp = true;
@@ -6497,8 +6500,6 @@
   }
 
   // js/main.js
-  var earlyVk = createVkService();
-  earlyVk.init();
   var builtinAdvices = [
     "Выпить стакан чистой воды",
     "Сделать 5 глубоких вдохов и выдохов",
@@ -6586,7 +6587,7 @@
     var _a, _b, _c;
     const store = createStore();
     const auth = createAuthService();
-    const vk = earlyVk;
+    const vk = createVkService();
     const app = {
       elements,
       store,

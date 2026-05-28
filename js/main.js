@@ -16,9 +16,6 @@ import {
     saveOfflineAuthSnapshot,
 } from './services/offline-auth.js';
 
-const earlyVk = createVkService();
-earlyVk.init();
-
 const builtinAdvices = [
     'Выпить стакан чистой воды',
     'Сделать 5 глубоких вдохов и выдохов',
@@ -123,7 +120,7 @@ async function startAuthenticatedFlow(app) {
 export async function initApp({ elements }) {
     const store = createStore();
     const auth = createAuthService();
-    const vk = earlyVk;
+    const vk = createVkService();
     const app = {
         elements,
         store,

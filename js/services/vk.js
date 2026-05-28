@@ -57,7 +57,10 @@ export function createVkService() {
             state.launchParams = detected.launchParams;
 
             try {
-                await bridge.send('VKWebAppInit');
+                await Promise.race([
+                    bridge.send('VKWebAppInit'),
+                    new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+                ]);
 
                 const bridgeResult = await getBridgeLaunchParams();
                 if (bridgeResult) {
