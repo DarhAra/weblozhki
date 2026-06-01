@@ -6468,6 +6468,24 @@
         return "";
       }
     }
+    async function getUserInfo() {
+      if (!state.bridgeAvailable) {
+        return null;
+      }
+      try {
+        const result = await import_vk_bridge.default.send("VKWebAppGetUserInfo");
+        if (result && typeof result === "object") {
+          return {
+            id: String(result.id || ""),
+            firstName: String(result.first_name || "").trim(),
+            lastName: String(result.last_name || "").trim(),
+            photo: String(result.photo_200 || result.photo_100 || "").trim()
+          };
+        }
+      } catch {
+      }
+      return null;
+    }
     async function openUrl(url) {
       if (!url) {
         return false;
@@ -6492,7 +6510,8 @@
       init,
       openUrl,
       getLaunchParamsQuery,
-      getAuthToken
+      getAuthToken,
+      getUserInfo
     };
   }
 
@@ -6782,8 +6801,22 @@
         const vkParams = app.runtime.vk.rawLaunchParams;
         if (vkParams) {
           try {
+            let enrichedParams = vkParams;
+            if (app.runtime.vk.bridgeAvailable) {
+              const userInfo = await vk.getUserInfo();
+              if (userInfo) {
+                const enriched = new URLSearchParams(vkParams);
+                if (!enriched.get("vk_first_name") && userInfo.firstName) {
+                  enriched.set("vk_first_name", userInfo.firstName);
+                }
+                if (!enriched.get("vk_last_name") && userInfo.lastName) {
+                  enriched.set("vk_last_name", userInfo.lastName);
+                }
+                enrichedParams = enriched.toString();
+              }
+            }
             const vkSession = await auth.authenticateWithVk({
-              launchParams: vkParams
+              launchParams: enrichedParams
             });
             if (vkSession.authenticated && vkSession.user) {
               await app.startAuthenticatedFlow(vkSession.user);
@@ -6797,11 +6830,13 @@
             const accessToken = await vk.getAuthToken();
             if (accessToken) {
               const userId = String(app.runtime.vk.launchParams.vk_user_id || "");
+              const userInfo = await vk.getUserInfo();
+              const displayName = userInfo ? [userInfo.firstName, userInfo.lastName].filter(Boolean).join(" ") : "";
               const user = await auth.vkComplete({
                 access_token: accessToken,
                 user_id: userId,
                 email: "",
-                name: ""
+                name: displayName
               });
               if (user) {
                 await app.startAuthenticatedFlow(user);

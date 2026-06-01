@@ -111,6 +111,28 @@ export function createVkService() {
         }
     }
 
+    async function getUserInfo() {
+        if (!state.bridgeAvailable) {
+            return null;
+        }
+
+        try {
+            const result = await bridge.send('VKWebAppGetUserInfo');
+            if (result && typeof result === 'object') {
+                return {
+                    id: String(result.id || ''),
+                    firstName: String(result.first_name || '').trim(),
+                    lastName: String(result.last_name || '').trim(),
+                    photo: String(result.photo_200 || result.photo_100 || '').trim(),
+                };
+            }
+        } catch {
+            // Bridge call failed
+        }
+
+        return null;
+    }
+
     async function openUrl(url) {
         if (!url) {
             return false;
@@ -142,5 +164,6 @@ export function createVkService() {
         openUrl,
         getLaunchParamsQuery,
         getAuthToken,
+        getUserInfo,
     };
 }
