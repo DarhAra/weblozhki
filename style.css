@@ -3169,3 +3169,9 @@ header h2 {
     height: 22px;
     flex-shrink: 0;
 }
+
+.vk-mini-app .support-cta-btn,
+.vk-mini-app #support-modal,
+.vk-mini-app #payment-return-modal {
+    display: none !important;
+}

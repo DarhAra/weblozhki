@@ -572,6 +572,10 @@ export function bindAppEvents(app) {
     }
 
     async function refreshPaymentStatus({ donationId, openReturnModal = false } = {}) {
+        if (app.runtime.vk.isMiniApp) {
+            return;
+        }
+
         authState.payments.status = 'loading';
         authState.payments.error = '';
         elements.accountSupportError.textContent = '';
@@ -614,6 +618,10 @@ export function bindAppEvents(app) {
     }
 
     async function startDonationCheckout() {
+        if (app.runtime.vk.isMiniApp) {
+            return;
+        }
+
         if (!navigator.onLine || runtime.auth.isOfflineAuthenticated || runtime.persistenceStatus?.mode === 'offline-authenticated') {
             elements.accountSupportError.textContent = 'Для оплаты нужно подключение к интернету и активная серверная сессия.';
             elements.accountSupportError.classList.remove('hidden');
@@ -655,6 +663,10 @@ export function bindAppEvents(app) {
     }
 
     async function openProjectSupport() {
+        if (app.runtime.vk.isMiniApp) {
+            return;
+        }
+
         openSupportModal();
         await refreshPaymentStatus();
     }
@@ -1028,6 +1040,7 @@ export function bindAppEvents(app) {
 
     if (elements.accountSupportSubmitBtn) {
         elements.accountSupportSubmitBtn.addEventListener('click', () => {
+            if (app.runtime.vk.isMiniApp) return;
             void startDonationCheckout();
         });
     }
@@ -1861,6 +1874,7 @@ export function bindAppEvents(app) {
 
     if (elements.openSupportCtaBtn) {
         elements.openSupportCtaBtn.addEventListener('click', () => {
+            if (app.runtime.vk.isMiniApp) return;
             void openProjectSupport();
         });
     }
@@ -1868,7 +1882,9 @@ export function bindAppEvents(app) {
     elements.openAccountBtn.addEventListener('click', () => {
         closeAppMenu();
         openAccountModal();
-        void refreshPaymentStatus();
+        if (!app.runtime.vk.isMiniApp) {
+            void refreshPaymentStatus();
+        }
     });
 
     elements.closeAccountBtn.addEventListener('click', () => {
@@ -1934,6 +1950,10 @@ export function bindAppEvents(app) {
     });
 
     app.handlePaymentReturn = async () => {
+        if (app.runtime.vk.isMiniApp) {
+            return;
+        }
+
         const donationId = authState.payments.returnDonationId;
         if (!donationId) {
             return;

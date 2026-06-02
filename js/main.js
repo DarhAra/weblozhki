@@ -256,7 +256,7 @@ export async function initApp({ elements }) {
             saveOfflineAuthSnapshot(user);
         }
         const result = await startAuthenticatedFlow(app);
-        if (!isOfflineAuthenticated && typeof app.handlePaymentReturn === 'function') {
+        if (!isOfflineAuthenticated && !app.runtime.vk.isMiniApp && typeof app.handlePaymentReturn === 'function') {
             await app.handlePaymentReturn();
         }
         return result;
@@ -276,19 +276,24 @@ export async function initApp({ elements }) {
         app.runtime.vk.launchParams = vkContext?.launchParams || {};
         app.runtime.vk.rawLaunchParams = vkContext?.rawLaunchParams || '';
         app.runtime.vk.bridgeAvailable = Boolean(vkContext?.bridgeAvailable);
+        if (app.runtime.vk.isMiniApp) {
+            document.body.classList.add('vk-mini-app');
+        }
         const params = new URLSearchParams(window.location.search);
         const resetToken = params.get('resetToken');
-        const paymentReturn = params.get('paymentReturn');
-        const paymentDonationId = params.get('donationId');
-        const paymentStatus = params.get('paymentStatus');
         if (resetToken) {
             app.runtime.auth.mode = 'reset-password';
             app.runtime.auth.resetToken = resetToken;
         }
-        if (paymentReturn === '1' && paymentDonationId) {
-            app.runtime.auth.payments.returnDonationId = paymentDonationId;
-            if (paymentStatus === 'failed') {
-                app.runtime.auth.payments.returnStatus = 'canceled';
+        if (!app.runtime.vk.isMiniApp) {
+            const paymentReturn = params.get('paymentReturn');
+            const paymentDonationId = params.get('donationId');
+            const paymentStatus = params.get('paymentStatus');
+            if (paymentReturn === '1' && paymentDonationId) {
+                app.runtime.auth.payments.returnDonationId = paymentDonationId;
+                if (paymentStatus === 'failed') {
+                    app.runtime.auth.payments.returnStatus = 'canceled';
+                }
             }
         }
         window.addEventListener('online', async () => {

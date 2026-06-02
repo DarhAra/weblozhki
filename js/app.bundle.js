@@ -4560,6 +4560,9 @@
     }
     async function refreshPaymentStatus({ donationId, openReturnModal = false } = {}) {
       var _a2, _b, _c;
+      if (app.runtime.vk.isMiniApp) {
+        return;
+      }
       authState.payments.status = "loading";
       authState.payments.error = "";
       elements.accountSupportError.textContent = "";
@@ -4595,6 +4598,9 @@
     }
     async function startDonationCheckout() {
       var _a2;
+      if (app.runtime.vk.isMiniApp) {
+        return;
+      }
       if (!navigator.onLine || runtime.auth.isOfflineAuthenticated || ((_a2 = runtime.persistenceStatus) == null ? void 0 : _a2.mode) === "offline-authenticated") {
         elements.accountSupportError.textContent = "Для оплаты нужно подключение к интернету и активная серверная сессия.";
         elements.accountSupportError.classList.remove("hidden");
@@ -4631,6 +4637,9 @@
       }
     }
     async function openProjectSupport() {
+      if (app.runtime.vk.isMiniApp) {
+        return;
+      }
       openSupportModal();
       await refreshPaymentStatus();
     }
@@ -4948,6 +4957,7 @@
     }
     if (elements.accountSupportSubmitBtn) {
       elements.accountSupportSubmitBtn.addEventListener("click", () => {
+        if (app.runtime.vk.isMiniApp) return;
         void startDonationCheckout();
       });
     }
@@ -5658,13 +5668,16 @@
     }
     if (elements.openSupportCtaBtn) {
       elements.openSupportCtaBtn.addEventListener("click", () => {
+        if (app.runtime.vk.isMiniApp) return;
         void openProjectSupport();
       });
     }
     elements.openAccountBtn.addEventListener("click", () => {
       closeAppMenu();
       openAccountModal();
-      void refreshPaymentStatus();
+      if (!app.runtime.vk.isMiniApp) {
+        void refreshPaymentStatus();
+      }
     });
     elements.closeAccountBtn.addEventListener("click", () => {
       closeAccountModal();
@@ -5715,6 +5728,9 @@
       app.renderers.renderWeeklyScreen();
     });
     app.handlePaymentReturn = async () => {
+      if (app.runtime.vk.isMiniApp) {
+        return;
+      }
       const donationId = authState.payments.returnDonationId;
       if (!donationId) {
         return;
@@ -6738,7 +6754,7 @@
         saveOfflineAuthSnapshot(user);
       }
       const result = await startAuthenticatedFlow(app);
-      if (!isOfflineAuthenticated && typeof app.handlePaymentReturn === "function") {
+      if (!isOfflineAuthenticated && !app.runtime.vk.isMiniApp && typeof app.handlePaymentReturn === "function") {
         await app.handlePaymentReturn();
       }
       return result;
@@ -6756,19 +6772,24 @@
       app.runtime.vk.launchParams = (vkContext == null ? void 0 : vkContext.launchParams) || {};
       app.runtime.vk.rawLaunchParams = (vkContext == null ? void 0 : vkContext.rawLaunchParams) || "";
       app.runtime.vk.bridgeAvailable = Boolean(vkContext == null ? void 0 : vkContext.bridgeAvailable);
+      if (app.runtime.vk.isMiniApp) {
+        document.body.classList.add("vk-mini-app");
+      }
       const params = new URLSearchParams(window.location.search);
       const resetToken = params.get("resetToken");
-      const paymentReturn = params.get("paymentReturn");
-      const paymentDonationId = params.get("donationId");
-      const paymentStatus = params.get("paymentStatus");
       if (resetToken) {
         app.runtime.auth.mode = "reset-password";
         app.runtime.auth.resetToken = resetToken;
       }
-      if (paymentReturn === "1" && paymentDonationId) {
-        app.runtime.auth.payments.returnDonationId = paymentDonationId;
-        if (paymentStatus === "failed") {
-          app.runtime.auth.payments.returnStatus = "canceled";
+      if (!app.runtime.vk.isMiniApp) {
+        const paymentReturn = params.get("paymentReturn");
+        const paymentDonationId = params.get("donationId");
+        const paymentStatus = params.get("paymentStatus");
+        if (paymentReturn === "1" && paymentDonationId) {
+          app.runtime.auth.payments.returnDonationId = paymentDonationId;
+          if (paymentStatus === "failed") {
+            app.runtime.auth.payments.returnStatus = "canceled";
+          }
         }
       }
       window.addEventListener("online", async () => {
