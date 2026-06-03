@@ -857,6 +857,16 @@ app.get('/api/auth/vk/oauth/callback', async (req, res) => {
         }
     }
 
+    if (email.endsWith('@vk.miniapp')) {
+        const pendingId = vkOAuth.storePendingAuth({
+            accessToken,
+            vkUserId,
+            name,
+            deviceId,
+        });
+        return res.redirect(`${baseUrl}?vkPendingAuth=${encodeURIComponent(pendingId)}&vkNeedEmail=1`);
+    }
+
     try {
         const { salt, hash } = await passwordService.hashPassword(
             crypto.randomBytes(24).toString('base64').replace(/[/+]/g, '') + 'Aa1',
@@ -955,6 +965,13 @@ app.post('/api/auth/vk/complete', async (req, res) => {
             });
         }
     }
+    if (email.endsWith('@vk.miniapp')) {
+        return res.status(400).json({
+            error: 'VK_NEEDS_EMAIL',
+            message: 'Email is required to complete VK sign-in. Please provide your email.',
+        });
+    }
+
 
     try {
         const { salt, hash } = await passwordService.hashPassword(
@@ -996,6 +1013,109 @@ app.post('/api/auth/vk/complete', async (req, res) => {
     }
 });
 
+
+app.post('/api/auth/vk/complete-pending', async (req, res) => {
+    const code = typeof req.body?.code === 'string' ? req.body.code.trim() : '';
+    const email = normalizeEmail(req.body?.email);
+
+    if (!code || !email) {
+        return res.status(400).json({
+            error: 'VK_PENDING_INVALID',
+            message: 'Missing code or email.',
+        });
+    }
+
+    const pending = vkOAuth.consumePendingAuth(code);
+    if (!pending) {
+        return res.status(400).json({
+            error: 'VK_PENDING_EXPIRED',
+            message: 'This VK sign-in session has expired. Please try again.',
+        });
+    }
+
+    const { accessToken, vkUserId, name: pendingName, deviceId } = pending;
+    const displayName = pendingName || ('VK User ' + vkUserId);
+
+    const existingByVk = repositories.findUserByVkUserId(vkUserId);
+    if (existingByVk) {
+        createSessionForUser(res, existingByVk.id, req);
+        req.user = existingByVk;
+        return res.json({
+            authenticated: true,
+            user: toPublicUser(existingByVk),
+            csrfToken: req.csrfToken,
+        });
+    }
+
+    const existingByEmail = repositories.findUserByEmail(email);
+    if (existingByEmail) {
+        try {
+            const now = new Date().toISOString();
+            const updatedUser = repositories.linkVkUser({
+                id: existingByEmail.id,
+                vkUserId,
+                vkLinkedAt: now,
+                vkFirstSeenAt: now,
+                updatedAt: now,
+            });
+            createSessionForUser(res, updatedUser.id, req);
+            req.user = updatedUser;
+            return res.json({
+                authenticated: true,
+                user: toPublicUser(updatedUser),
+                csrfToken: req.csrfToken,
+            });
+        } catch (linkError) {
+            logServerError('Failed to link VK account', linkError, {
+                code: 'VK_LINK_FAILED',
+                userId: existingByEmail.id,
+            });
+            return res.status(500).json({
+                error: 'VK_LINK_FAILED',
+                message: 'Could not link VK account.',
+            });
+        }
+    }
+
+    try {
+        const { salt, hash } = await passwordService.hashPassword(
+            crypto.randomBytes(24).toString('base64').replace(/[/+]/g, '') + 'Aa1',
+        );
+        const now = new Date().toISOString();
+        const newUser = {
+            id: `usr_${crypto.randomUUID()}`,
+            name: displayName.slice(0, 80),
+            email,
+            passwordSalt: salt,
+            passwordHash: hash,
+            createdAt: now,
+            updatedAt: now,
+            passwordChangedAt: now,
+            vkUserId,
+            vkLinkedAt: now,
+            vkFirstSeenAt: now,
+        };
+
+        repositories.createUser(newUser);
+        createSessionForUser(res, newUser.id, req);
+        req.user = newUser;
+
+        return res.json({
+            authenticated: true,
+            user: toPublicUser(newUser),
+            csrfToken: req.csrfToken,
+        });
+    } catch (createError) {
+        logServerError('Failed to create user via VK', createError, {
+            code: 'VK_CREATE_USER_FAILED',
+            vkUserId,
+        });
+        return res.status(500).json({
+            error: 'VK_CREATE_USER_FAILED',
+            message: 'Could not create account.',
+        });
+    }
+});
 app.post('/api/auth/register', async (req, res) => {
     console.log('[LOGIN] Attempt:', { email: req.body?.email, ip: req.ip });
     const name = normalizeDisplayName(req.body?.name);

@@ -1,4 +1,4 @@
-/* Generated from js/main.js. Run `npm run build` after editing source modules. */
+/* Generated from js/main.js. Run 'npm run build' after editing source modules. */
 (() => {
   var __create = Object.create;
   var __defProp = Object.defineProperty;
@@ -426,6 +426,7 @@
       finishReviewBtn: doc.getElementById("finish-review-btn"),
       morningTitle: doc.getElementById("morning-title"),
       storageStatus: doc.getElementById("storage-status"),
+      themeToggleBtn: doc.getElementById("theme-toggle-btn"),
       appHelperAvatar: doc.getElementById("app-helper-avatar"),
       openAppMenuBtn: doc.getElementById("open-app-menu-btn"),
       appMenuPopover: doc.getElementById("app-menu-popover"),
@@ -522,6 +523,12 @@
       closeInboxSortBtn: doc.getElementById("close-inbox-sort-btn"),
       inboxSortCard: doc.getElementById("inbox-sort-card"),
       closeSosBtn: doc.getElementById("close-sos-btn"),
+      vkEmailModal: doc.getElementById("vk-email-modal"),
+      vkEmailForm: doc.getElementById("vk-email-form"),
+      vkEmailInput: doc.getElementById("vk-email-input"),
+      vkEmailError: doc.getElementById("vk-email-error"),
+      closeVkEmailBtn: doc.getElementById("close-vk-email-btn"),
+      vkEmailSubmitBtn: doc.getElementById("vk-email-submit-btn"),
       sosArchiveBtn: doc.getElementById("sos-archive-btn"),
       sosTomorrowBtn: doc.getElementById("sos-tomorrow-btn"),
       sosCancelBtn: doc.getElementById("sos-cancel-btn"),
@@ -1465,6 +1472,21 @@
         },
         "Сейчас не получается завершить вход через VK."
       );
+      if ((payload == null ? void 0 : payload.error) === "VK_NEEDS_EMAIL") {
+        throw new Error("VK_NEEDS_EMAIL");
+      }
+      return (payload == null ? void 0 : payload.user) || null;
+    }
+    async function completePendingVkAuth({ code, email }) {
+      const payload = await requestJson(
+        "/api/auth/vk/complete-pending",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code, email })
+        },
+        "Сейчас не получается завершить вход через VK."
+      );
       return (payload == null ? void 0 : payload.user) || null;
     }
     async function login({ email, password }) {
@@ -1723,7 +1745,8 @@
       tasks: [],
       inboxItems: [],
       preferences: {
-        breakDownLargeTasksPromptMode: "ask-first-time"
+        breakDownLargeTasksPromptMode: "ask-first-time",
+        theme: "system"
       },
       resources: [
         { id: "res_1", text: "Попить кофе" },
@@ -1749,6 +1772,9 @@
     }
     if (typeof state.preferences.breakDownLargeTasksPromptMode !== "string") {
       state.preferences.breakDownLargeTasksPromptMode = "ask-first-time";
+    }
+    if (typeof state.preferences.theme !== "string") {
+      state.preferences.theme = "system";
     }
   }
   function ensureTemplateDefaults(template) {
@@ -4846,6 +4872,16 @@
       event.stopPropagation();
       toggleAppMenu();
     });
+    elements.themeToggleBtn.addEventListener("click", () => {
+      const current = app.theme.getSavedTheme() || "system";
+      let next;
+      if (current === "system") next = "dark";
+      else if (current === "dark") next = "light";
+      else next = "system";
+      app.theme.setSavedTheme(next);
+      app.theme.applyTheme(next);
+      app.theme.updateToggleIcon();
+    });
     elements.authLoginModeBtn.addEventListener("click", () => {
       switchAuthMode("login");
     });
@@ -6615,16 +6651,74 @@
     }
     return app;
   }
+  function initTheme(store) {
+    function getSavedTheme() {
+      try {
+        return localStorage.getItem("resourceTodoTheme");
+      } catch {
+        return null;
+      }
+    }
+    function setSavedTheme(mode) {
+      try {
+        localStorage.setItem("resourceTodoTheme", mode);
+      } catch {
+      }
+    }
+    const theme = getSavedTheme() || "system";
+    const darkQuery = typeof window !== "undefined" ? window.matchMedia("(prefers-color-scheme: dark)") : null;
+    function applyTheme(mode) {
+      if (mode === "dark") {
+        document.documentElement.classList.add("dark-theme");
+        document.documentElement.style.colorScheme = "dark";
+      } else if (mode === "light") {
+        document.documentElement.classList.remove("dark-theme");
+        document.documentElement.style.colorScheme = "light";
+      } else if (darkQuery) {
+        if (darkQuery.matches) {
+          document.documentElement.classList.add("dark-theme");
+          document.documentElement.style.colorScheme = "dark";
+        } else {
+          document.documentElement.classList.remove("dark-theme");
+          document.documentElement.style.colorScheme = "light";
+        }
+      }
+    }
+    applyTheme(theme);
+    darkQuery == null ? void 0 : darkQuery.addEventListener("change", (e) => {
+      const current = getSavedTheme() || "system";
+      if (current === "system") {
+        if (e.matches) {
+          document.documentElement.classList.add("dark-theme");
+          document.documentElement.style.colorScheme = "dark";
+        } else {
+          document.documentElement.classList.remove("dark-theme");
+          document.documentElement.style.colorScheme = "light";
+        }
+      }
+    });
+    function updateToggleIcon() {
+      const toggleBtn = document.getElementById("theme-toggle-btn");
+      if (toggleBtn) {
+        const isDark = document.documentElement.classList.contains("dark-theme");
+        toggleBtn.textContent = isDark ? "☀️" : "🌙";
+      }
+    }
+    updateToggleIcon();
+    return { theme, applyTheme, getSavedTheme, setSavedTheme, updateToggleIcon };
+  }
   async function initApp({ elements }) {
     var _a, _b, _c;
     const store = createStore();
     const auth = createAuthService();
     const vk = createVkService();
+    const themeControl = initTheme(store);
     const app = {
       elements,
       store,
       auth,
       vk,
+      theme: themeControl,
       runtime: {
         builtinAdvices,
         currentAdvice: "",
@@ -6776,10 +6870,15 @@
         document.body.classList.add("vk-mini-app");
       }
       const params = new URLSearchParams(window.location.search);
+      const vkPendingAuth = params.get("vkPendingAuth");
+      const vkNeedEmail = params.get("vkNeedEmail");
       const resetToken = params.get("resetToken");
       if (resetToken) {
         app.runtime.auth.mode = "reset-password";
         app.runtime.auth.resetToken = resetToken;
+      }
+      if (vkPendingAuth && vkNeedEmail) {
+        elements.vkEmailModal.classList.remove("hidden");
       }
       if (!app.runtime.vk.isMiniApp) {
         const paymentReturn = params.get("paymentReturn");

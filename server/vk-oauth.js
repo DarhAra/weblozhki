@@ -6,6 +6,7 @@ const VK_USER_INFO_URL = 'https://id.vk.com/oauth2/user_info';
 const VK_API_BASE = 'https://api.vk.com/method';
 const VK_API_VERSION = '5.199';
 const STATE_TTL_MS = 10 * 60 * 1000;
+const PENDING_TTL_MS = 5 * 60 * 1000;
 
 function base64Url(input) {
     return input
@@ -31,6 +32,26 @@ function createVkOAuthService(config, logger = console) {
             }
         }
     }, 60_000);
+
+    const pendingStore = new Map();
+
+    setInterval(() => {
+        const now = Date.now();
+        for (const [key, entry] of pendingStore) {
+        }
+    }, 60_000);
+
+    function storePendingAuth(data) {
+        const id = crypto.randomBytes(16).toString('hex');
+        pendingStore.set(id, { ...data, createdAt: Date.now() });
+        return id;
+    }
+
+    function consumePendingAuth(pendingId) {
+        const entry = pendingStore.get(pendingId);
+        if (!entry) return null;
+        pendingStore.delete(pendingId);
+    }
 
     function generateState() {
         const state = crypto.randomBytes(24).toString('hex');
@@ -222,6 +243,8 @@ function createVkOAuthService(config, logger = console) {
         exchangeCode,
         getUserInfo,
         verifyAccessToken,
+        storePendingAuth,
+        consumePendingAuth,
     };
 }
 

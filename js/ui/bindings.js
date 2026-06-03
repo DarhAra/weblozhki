@@ -912,6 +912,17 @@ export function bindAppEvents(app) {
         toggleAppMenu();
     });
 
+    elements.themeToggleBtn.addEventListener('click', () => {
+        const current = app.theme.getSavedTheme() || 'system';
+        let next;
+        if (current === 'system') next = 'dark';
+        else if (current === 'dark') next = 'light';
+        else next = 'system';
+        app.theme.setSavedTheme(next);
+        app.theme.applyTheme(next);
+        app.theme.updateToggleIcon();
+    });
+
     elements.authLoginModeBtn.addEventListener('click', () => {
         switchAuthMode('login');
     });

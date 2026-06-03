@@ -112,6 +112,7 @@ function getDefaultState() {
         inboxItems: [],
         preferences: {
             breakDownLargeTasksPromptMode: 'ask-first-time',
+            theme: 'system',
         },
         resources: [
             { id: 'res_1', text: 'Попить кофе' },
@@ -140,6 +141,10 @@ function ensurePreferenceDefaults(state) {
 
     if (typeof state.preferences.breakDownLargeTasksPromptMode !== 'string') {
         state.preferences.breakDownLargeTasksPromptMode = 'ask-first-time';
+    }
+
+    if (typeof state.preferences.theme !== 'string') {
+        state.preferences.theme = 'system';
     }
 }
 

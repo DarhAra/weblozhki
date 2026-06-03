@@ -204,6 +204,24 @@ export function createAuthService() {
             'Сейчас не получается завершить вход через VK.',
         );
 
+        if (payload?.error === 'VK_NEEDS_EMAIL') {
+            throw new Error('VK_NEEDS_EMAIL');
+        }
+
+        return payload?.user || null;
+    }
+
+    async function completePendingVkAuth({ code, email }) {
+        const payload = await requestJson(
+            '/api/auth/vk/complete-pending',
+            {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ code, email }),
+            },
+            'Сейчас не получается завершить вход через VK.',
+        );
+
         return payload?.user || null;
     }
 

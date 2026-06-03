@@ -117,15 +117,83 @@ async function startAuthenticatedFlow(app) {
     return app;
 }
 
+function initTheme(store) {
+    function getSavedTheme() {
+        try {
+            return localStorage.getItem('resourceTodoTheme');
+        } catch {
+            return null;
+        }
+    }
+
+    function setSavedTheme(mode) {
+        try {
+            localStorage.setItem('resourceTodoTheme', mode);
+        } catch {
+            // localStorage not available
+        }
+    }
+
+    const theme = getSavedTheme() || 'system';
+    const darkQuery = typeof window !== 'undefined' ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+    function applyTheme(mode) {
+        if (mode === 'dark') {
+            document.documentElement.classList.add('dark-theme');
+            document.documentElement.style.colorScheme = 'dark';
+        } else if (mode === 'light') {
+            document.documentElement.classList.remove('dark-theme');
+            document.documentElement.style.colorScheme = 'light';
+        } else if (darkQuery) {
+            if (darkQuery.matches) {
+                document.documentElement.classList.add('dark-theme');
+                document.documentElement.style.colorScheme = 'dark';
+            } else {
+                document.documentElement.classList.remove('dark-theme');
+                document.documentElement.style.colorScheme = 'light';
+            }
+        }
+    }
+
+    applyTheme(theme);
+
+    darkQuery?.addEventListener('change', (e) => {
+        const current = getSavedTheme() || 'system';
+        if (current === 'system') {
+            if (e.matches) {
+                document.documentElement.classList.add('dark-theme');
+                document.documentElement.style.colorScheme = 'dark';
+            } else {
+                document.documentElement.classList.remove('dark-theme');
+                document.documentElement.style.colorScheme = 'light';
+            }
+        }
+    });
+
+    function updateToggleIcon() {
+        const toggleBtn = document.getElementById('theme-toggle-btn');
+        if (toggleBtn) {
+            const isDark = document.documentElement.classList.contains('dark-theme');
+            toggleBtn.textContent = isDark ? '☀️' : '🌙';
+        }
+    }
+
+    updateToggleIcon();
+
+    return { theme, applyTheme, getSavedTheme, setSavedTheme, updateToggleIcon };
+}
+
 export async function initApp({ elements }) {
     const store = createStore();
     const auth = createAuthService();
     const vk = createVkService();
+    const themeControl = initTheme(store);
     const app = {
         elements,
         store,
         auth,
         vk,
+        theme: themeControl,
         runtime: {
             builtinAdvices,
             currentAdvice: '',
@@ -280,11 +348,17 @@ export async function initApp({ elements }) {
             document.body.classList.add('vk-mini-app');
         }
         const params = new URLSearchParams(window.location.search);
+        const vkPendingAuth = params.get('vkPendingAuth');
+        const vkNeedEmail = params.get('vkNeedEmail');
         const resetToken = params.get('resetToken');
         if (resetToken) {
             app.runtime.auth.mode = 'reset-password';
             app.runtime.auth.resetToken = resetToken;
         }
+        if (vkPendingAuth && vkNeedEmail) {
+            elements.vkEmailModal.classList.remove('hidden');
+        }
+
         if (!app.runtime.vk.isMiniApp) {
             const paymentReturn = params.get('paymentReturn');
             const paymentDonationId = params.get('donationId');
